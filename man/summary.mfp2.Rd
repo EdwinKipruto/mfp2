@@ -87,6 +87,8 @@ final MFP model with an otherwise unchanged model that omits the variable.
 \item \strong{Model Fit}: full-linear and final-MFP deviances for GLMs,
 or minus twice the fitted likelihood for survival models (partial
 likelihood for Cox and Fine--Gray), with model degrees of freedom.
+GEE models instead show selection scores for AIC/BIC, and omit this
+block for p-value selection.
 }
 
 The joint LRT is a diagnostic: the variable was selected by the MFP

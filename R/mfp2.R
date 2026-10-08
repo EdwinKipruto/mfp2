@@ -1,739 +1,546 @@
 #' Multivariable Fractional Polynomial Models with Extensions
 #'
-#' Fits multivariable fractional polynomial (MFP) models with selection of
-#' predictors and functional forms for continuous predictors. Extensions include
-#' approximate cumulative distribution (ACD) functions for sigmoid-shaped
-#' associations and methods for predictors with exact zeros, including
-#' spike-at-zero (SAZ) selection. Models can be specified with a formula and
-#' data frame or with a numeric predictor matrix and response.
-#' Supported models include Gaussian, binomial, Poisson, Gamma, inverse-Gaussian,
-#' and negative-binomial regression; multinomial and ordinal regression;
-#' Cox, parametric survival, and Fine-Gray models; and clustered models fitted
-#' with generalized estimating equations (GEE). The two input interfaces
-#' provide the same core modelling options but handle factors, offsets, and
-#' variable-specific settings differently.
+#' `mfp2()` selects predictors for a regression model and chooses a linear or
+#' fractional-polynomial form for each selected continuous predictor. It also
+#' supports approximate cumulative distribution (ACD) transformations for
+#' sigmoid-shaped relationships and spike-at-zero modelling for predictors
+#' with many exact zeros. Models can be specified with a formula and data frame
+#' or with a numeric predictor matrix and an outcome. Both interfaces use the
+#' same selection procedure. The formula interface handles categorical predictors
+#' automatically; the matrix interface requires them to be coded as numeric
+#' columns. Supported regression models include Gaussian, binomial, Poisson, Gamma,
+#' inverse Gaussian, negative binomial, multinomial, and ordinal models.
+#' For time-to-event outcomes, it supports Cox, parametric survival,
+#' and Fine-Gray competing-risks models. It also supports generalized
+#' estimating equations (GEE) for clustered data.
 #'
 #' @section Fractional-polynomial model selection:
-#' Fractional polynomials represent continuous predictor effects using powers
-#' selected from a predefined set. An FP1 function has one transformed term,
+#' For a continuous predictor `x`, a linear effect has the form
+#' \eqn{\beta_1 x}. A first-degree fractional polynomial (FP1) replaces
+#' `x` with a selected power:
 #'
-#' \deqn{\beta_1 x^{p_1},}
+#' \deqn{\beta_1 x^{p_1}.}
 #'
-#' and an FP2 function has two transformed terms,
+#' A second-degree fractional polynomial (FP2) uses two powers:
 #'
 #' \deqn{\beta_1 x^{p_1} + \beta_2 x^{p_2}.}
 #'
-#' For repeated powers, \eqn{p_1 = p_2 = p}, the second term is
-#' \eqn{x^p \log(x)}. A power of zero denotes \eqn{\log(x)}. The default
-#' candidate set is `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`.
+#' By convention, a power of zero means \eqn{\log(x)}. If the two powers
+#' are equal, the second term is \eqn{x^p\log(x)}; for two zero powers,
+#' the terms are \eqn{\log(x)} and \eqn{\{\log(x)\}^2}. Here `x` denotes
+#' the positive input after any shifting and scaling. The default candidate
+#' powers are `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`.
 #'
-#' With `criterion = "pvalue"`, variable and functional-form selection use the
-#' MFP closed-testing procedure controlled by `select` and `alpha`. With
-#' `criterion = "aic"` or `"bic"`, candidate models are compared using the
-#' corresponding information criterion. Selection is repeated until the model
-#' stabilises or the maximum number of `cycles` is reached.
+#' The `df` setting limits the maximum FP degree: `df = 1` allows only a
+#' linear effect, `df = 2` allows up to FP1, and the default `df = 4`
+#' allows up to FP2. Higher degrees can be allowed. Predictors with only
+#' two or three distinct values are restricted to `df = 1`. With four or
+#' five distinct values, a default or global `df` is capped at `2`, but
+#' an explicitly set predictor-specific value is retained. Selection may
+#' still omit a predictor or choose a simpler form. Predictors in `keep`
+#' cannot be omitted, but their functional forms may still be selected.
 #'
-#' A predictor may be omitted, retained as linear, or represented by an FP1 or
-#' FP2 function, subject to its `df`, candidate `powers`, and selection settings.
-#' Variables named in `keep` remain in the model, although their functional form
-#' may still be selected.
+#' With `criterion = "pvalue"`, a closed-test-style procedure uses `select`
+#' for predictor inclusion and `alpha` for functional-form comparisons.
+#' With `"aic"` or `"bic"`, candidate models are compared using the chosen
+#' information criterion.
 #'
-#' See `vignette("MFP_Introduction", package = "mfp2")` for the complete
-#' closed-test procedure, the multivariable backfitting algorithm, influential
-#' observations, sample-size considerations, and other methodological details.
+#' See `mfp` vignette for methodological details.
 #'
 #' @section Formula and matrix interfaces:
-#' The formula interface, `mfp2(formula, data, ...)`, is recommended for most
-#' users. Variable-specific settings are supplied with [fp()] or [fp2()] terms;
-#' term-specific settings override corresponding global defaults. Factors are
-#' expanded automatically, and formula terms may include `offset()` and, for
-#' survival models, `strata()`. Continuous variables included through `.` remain
-#' subject to global MFP settings unless overridden in an `fp()` term.
+#' For most users, the formula interface is the simpler choice:
+#' `mfp2(formula, data, ...)`. It handles factors automatically. Use [fp()]
+#' or [fp2()] to set options for individual continuous predictors; other
+#' predictors, including those added with `.`, use the applicable top-level
+#' settings. An `fp()` term has its own default `select = 0.05`, so set
+#' `select` inside the term if a different value is needed. Formulas may
+#' also include `offset()` and, for survival models, `strata()`.
 #'
-#' The matrix interface, `mfp2(x, y, ...)`, requires a numeric predictor matrix.
-#' Categorical predictors must already be represented by numeric indicator or
-#' contrast columns. Use `term_groups` when several columns represent one
-#' conceptual predictor so that they are selected, retained, and tested jointly.
+#' The matrix interface, `mfp2(x, y, ...)`, takes a numeric predictor
+#' matrix. Categorical predictors must first be coded as numeric columns.
+#' If several columns represent one predictor, use `term_groups` to have
+#' them selected and tested together.
 #'
-#' Both interfaces use the same model-selection procedure, but differ in how
-#' factors, offsets, strata, and variable-specific options are supplied.
-#' Formula predictor names and matrix column names must be unique, non-missing,
-#' non-empty, and must not contain the backtick character. Other non-syntactic
-#' names, including spaces and hyphens, remain supported. Names supplied through
-#' `keep`, `powers`, `acd_vars`, `zero_vars`, `catzero_vars`, or `spike_vars` are
-#' validated against the applicable formula terms, matrix columns, or `term_groups`;
-#' unknown names cause an error.
-#'
-#' `mfp2()` does not reserve names such as `y`, `offset_`, `strata_`, or names
-#' beginning with `..mfp2_`. Predictors with these names are accepted and are
-#' not overwritten during formula fitting.
+#' Both interfaces use the same selection procedure. Predictor names must
+#' be unique, non-empty, and free of backticks. Names given in options such
+#' as `keep` and `powers` must match predictors in the model.
 #'
 #' @section Model families and responses:
-#' Supported likelihood GLMs are `"gaussian"`, `"binomial"`, `"poisson"`,
-#' `"Gamma"`, `"inverse.gaussian"`, and `"negbin"`. The first five accept a
-#' character name, family function, or family object, including the links
-#' implemented by [stats::glm()]. Quasi families are deliberately excluded
-#' because MFP selection here requires a log likelihood for likelihood-ratio,
-#' AIC, or BIC comparisons. Negative binomial is selected with `"negbin"`;
-#' `fitter` is set silently to `"fastglm"`, its required backend.
+#' Set `family` to choose the model. Standard choices are `"gaussian"` for
+#' numeric outcomes, `"binomial"` for binary outcomes, `"poisson"` for counts,
+#' and `"Gamma"` or `"inverse.gaussian"` for positive numeric outcomes.
+#' Use `"negbin"` for negative-binomial count regression. The first five
+#' also accept a GLM family function or object, so you can choose a link
+#' supported by [stats::glm()]. Quasi families are not supported.
 #'
-#' Multicategory outcomes use [multinomial_family()] for unordered responses or
-#' [ordinal_family()] for ordered responses. Multinomial models require at least
-#' three classes and use the `nnet` package. Ordinal models require at least
-#' three ordered categories, estimate proportional-odds slopes shared across
-#' cut-points, and use the optional `rms` package.
+#' Binomial responses may be values from 0 to 1, a two-level factor, or a
+#' two-column matrix of success and failure counts. Poisson and negative-
+#' binomial responses must be nonnegative integer counts. Count matrices
+#' must contain at least one trial in every row.
 #'
-#' Survival families are separate: use `"cox"`, [survreg_family()], or
-#' [finegray_family()]. Character `"survreg"` and `"finegray"` select their
-#' default specifications. Parametric models accept the distributions supported
-#' by [survival::survreg()]. Fine--Gray responses are multi-state `Surv`
-#' objects; `finegray_family(etype = "relapse")` selects the endpoint.
+#' For outcomes with at least three categories, use [multinomial_family()]
+#' for unordered categories or [ordinal_family()] for ordered categories.
+#' Multinomial models also accept a matrix of counts by category. See
+#' **Multinomial models** and **Ordinal models** for response details.
 #'
-#' Clustered responses use [gee_family()] with a Gaussian, binomial, Poisson,
-#' or Gamma marginal response family. See **Generalized estimating equations**
-#' for the fitting, p-value-selection, Stata-compatibility, and information-
-#' criterion details.
+#' For survival outcomes, use `"cox"` with a right-censored [survival::Surv()]
+#' response, [survreg_family()] for parametric survival regression, or
+#' [finegray_family()] for competing risks with a multi-state `Surv`
+#' response. The character values `"survreg"` and `"finegray"` use the
+#' respective default settings.
 #'
-#' Gaussian models use a finite numeric response vector. Gamma and inverse-
-#' Gaussian responses must additionally be strictly positive. Poisson and
-#' negative-binomial models require finite, nonnegative integer counts.
-#' Binomial models accept a numeric response in `[0, 1]`, a two-level factor,
-#' or a two-column numeric matrix of nonnegative integer grouped counts with a
-#' positive row total. Multinomial responses may contain unordered class labels
-#' or class-count matrices, as described under **Multinomial models**. Ordinal
-#' responses may be ordered factors or vectors whose sorted unique values give
-#' the category order, as described under **Ordinal models**. Cox models require
-#' `family = "cox"` and an ordinary
-#' right-censored response created with [survival::Surv()], using two columns for
-#' follow-up time and event status. GEE responses (via [gee_family()]) follow
-#' the same rules as their inner response family (Gaussian, binomial, Poisson,
-#' or Gamma), including the two-column grouped-count form for binomial data.
+#' For clustered observations, use [gee_family()] with a Gaussian,
+#' binomial, Poisson, or Gamma response family. The response follows the
+#' rules for that family. See **Generalized estimating equations**.
 #'
 #' @section Generalized estimating equations:
-#' GEE models are specified with [gee_family()] and fitted through the
-#' \pkg{geepack} package. The top-level `id` argument is required and identifies
-#' independent clusters; observations belonging to one cluster must be
-#' contiguous. The optional `waves` argument supplies within-cluster visit
-#' order. [gee_family()] selects the working correlation (`"independence"`,
-#' `"exchangeable"`, or `"ar1"`), standard-error method, and scale settings.
-#' Repeated candidate fits use [geepack::geese.fit()], while the retained model
-#' is refitted with [geepack::geeglm()] and returned as a native `geeglm`
-#' object.
+#' Specify a GEE model with [gee_family()]. The required `id` argument
+#' identifies clusters; the package groups their observations before fitting.
+#' The optional `waves` argument specifies visit order within clusters.
+#' [gee_family()] sets the response family, working correlation,
+#' standard-error method, and scale settings. The final model is returned
+#' as a `geeglm` object.
 #'
-#' With `criterion = "pvalue"`, GEE selection reproduces the calculation used by
-#' Stata `mfp: xtgee`. Candidate powers within a fixed degree are chosen using
-#' the negative overall robust Wald chi-square. Closed-test statistics are
-#' differences of those negative-Wald values, referred to the chi-square
-#' distribution with the MFP model-df difference. This is an approximate
-#' difference-of-overall-Wald comparison, not a single-fit block Wald test.
-#' The quantity printed as
-#' `Deviance` is therefore not the response-family deviance and is not an
-#' additive likelihood deviance. To reproduce Stata's clustered robust
-#' covariance convention, the geepack sandwich covariance is multiplied by
-#' \eqn{K/(K-1)}, where \eqn{K} is the number of independent clusters. The
-#' initial visiting order uses robust coefficient-block Wald tests from the
-#' full linear GEE, matching Stata's ordering pass.
+#' With `criterion = "pvalue"`, selection uses approximate comparisons of
+#' overall robust Wald statistics, following Stata's `mfp: xtgee`
+#' calculation. During verbose fitting, the selection tables display
+#' `Wald chi-sq` for candidates and `Wald diff.` for comparisons. The robust
+#' covariance uses the finite-cluster correction \eqn{K/(K-1)}, where
+#' \eqn{K} is the number of clusters.
 #'
-#' As throughout `mfp2`, the searched FP1 candidate set retains power \eqn{1}.
-#' Thus the same fitted linear function can appear as the separately specified
-#' one-df linear model and as a searched two-df FP1 model. The extra FP1 degree
-#' of freedom accounts for selecting its power from the candidate set. This
-#' rule is shared by GEE p-value and information-criterion selection.
+#' With `criterion = "aic"` or `"bic"`, selection uses quasi-likelihood
+#' scores:
 #'
-#' For GEE, `criterion = "aic"` uses the QICu form,
-#' \deqn{-2Q + 2p,}
-#' and `criterion = "bic"` uses the package's BIC-like quasi-likelihood score,
-#' \deqn{-2Q + \log(K)p,}
-#' where \eqn{p} is the MFP model degrees of freedom, including the extra
-#' FP-power search charge, and \eqn{K} is the number of independent clusters.
-#' This charge makes the first criterion an MFP-adjusted QICu score; the second
-#' is not Pan's QIC. These criteria use quasi-likelihood only; neither
-#' the response-family deviance nor the negative-Wald Stata compatibility
-#' quantity enters their calculation.
+#' \deqn{-2Q + 2p \quad\text{or}\quad -2Q + \log(K)p,}
 #'
-#' Quasi-likelihood contributions are multiplied by the effective prior
-#' weights. For a grouped-binomial response, the effective weight is the prior
-#' weight multiplied by the row's binomial total. For Gamma responses the
-#' implemented quasi-likelihood contribution is
-#' \deqn{w_i\{-y_i/\mu_i-\log(\mu_i)\}.}
-#' Consequently, weighted and grouped-binomial information-criterion calculations use all
-#' response information, and the Gamma quasi-likelihood is consistent with
-#' the Gamma family-deviance differences. The response-family deviance remains
-#' available for descriptive model-fit reporting but is kept separate from
-#' GEE p-value selection and from the quasi-likelihood information criteria.
+#' respectively. Here \eqn{Q} is the quasi-likelihood, and \eqn{p} counts
+#' mean-model coefficients, including the intercept, plus an allowance for
+#' selecting FP powers. The first is an MFP-adjusted QICu score; the second
+#' is a package-specific BIC-like score.
+#'
+#' For AIC or BIC selection, [print.mfp2()] and [summary.mfp2()] show the
+#' full-linear and selected-MFP scores under `Selection Scores`. Smaller
+#' scores are preferred. For GEE p-value selection, they omit the `Model Fit`
+#' block; Wald comparisons appear during verbose fitting.
 #'
 #' @section Shifting, scaling, and centering:
-#' FP transformations involving logarithms, negative powers, or fractional
-#' powers require positive inputs. By default, `mfp2()` estimates a shift where
-#' needed and, for ordinary FP variables, a power-of-ten scale factor to avoid
-#' numerically extreme values. Variables that undergo the ACD transformation are
-#' shifted but not scaled, following the Royston--Sauerbrei definition; their
-#' effective scale is always `1`. Set `shift = 0` or `scale = 1` to disable the
-#' corresponding automatic step for ordinary FP variables. Centering is applied
-#' after the FP or ACD transformation.
+#' FP functions involving logarithms or non-integer or negative powers need
+#' positive inputs. By default, `mfp2()` adds a shift when needed and chooses
+#' a power-of-ten scale for ordinary FP predictors to keep values numerically
+#' manageable during selection. ACD predictors may be shifted but are not
+#' scaled. Use `shift = 0` or `scale = 1` to turn off the corresponding
+#' automatic step for ordinary FP predictors.
 #'
-#' In the matrix interface, an unnamed scalar is a global setting, whereas a
-#' named vector is variable-specific and may name only a subset of columns. For
-#' example, `shift = c(age = 20)` fixes the shift for `age` at 20 and leaves all
-#' other shifts automatic; `scale = c(age = 10)` behaves analogously. Any column
-#' omitted from a named shift or scale vector uses automatic estimation. Users
-#' must not supply `NA` as an explicit shift or scale value.
+#' In `mfp2.default()`, a single unnamed value applies to all predictors.
+#' A named value applies only to the specified column: for example,
+#' `shift = c(age = 20)` fixes the shift for `age`, while shifts for other
+#' columns are chosen automatically. The same rule applies to `scale`.
+#' Do not supply `NA` as an explicit shift or scale value.
 #'
-#' An explicit shift is never silently enlarged. For every predictor ultimately
-#' fitted with a nonlinear FP transformation, all shifted values must be strictly
-#' positive. If a supplied shift is insufficient, fitting stops and reports the
-#' affected variable or variables.
+#' A supplied shift is not increased automatically. If it leaves values
+#' nonpositive for a nonlinear FP that requires positive inputs, fitting
+#' stops with an error. Linear predictors (`df = 1`) and predictors using
+#' `zero`, `catzero`, or `spike` receive a shift of zero.
 #'
-#' Linear terms (`df = 1`) and variables using `zero`, `catzero`, or `spike`
-#' handling receive a zero shift so that their zero component remains at zero.
-#' With `center = TRUE`, transformed continuous terms are centered on their
-#' fitted-sample mean. For a zero-handled FP or ACD column, the transformation
-#' is first constructed with value zero where the original covariate is zero;
-#' its mean is then calculated over the complete fitted sample and subtracted
-#' from every row. This ordinary centering changes the intercept
-#' parameterisation but not fitted values. Binary terms are centered by
-#' subtracting their lower observed value. Formula-generated 0/1 factor
-#' indicators follow that binary rule; other factor contrast columns are
-#' centered on their fitted-sample means, including polynomial contrasts that
-#' happen to contain only two distinct numeric values.
+#' With `center = TRUE`, transformed continuous columns are centered on
+#' their mean in the fitted sample. For a predictor with exact-zero handling,
+#' its transformed values are set to zero at the original zeros *before*
+#' this mean is subtracted. Thus, its centered values at zero need not be
+#' zero. Binary columns have their lower observed value subtracted.
+#' Formula-generated factor columns follow the appropriate binary or
+#' mean-centering rule. Centering changes the intercept but not fitted values.
 #'
-#' The final fitted basis is shifted but unscaled, so a coefficient may multiply
-#' a term such as `phi(x + shift)` rather than the raw predictor `x`. New
-#' observations supplied to [predict.mfp2()] are given on the original predictor
-#' scale; the fitted shift, scale, and centering values are reapplied
-#' automatically.
-#'
-#' The exact automatic rules and worked calculations are described in
-#' `vignette("mfp2_introduction", package = "mfp2")`.
+#' The final fitted FP basis uses shifted, unscaled values; scaling is used
+#' during selection. Supply new observations to [predict.mfp2()] on their
+#' original predictor scale. Prediction applies the fitted transformation
+#' and centering settings automatically.
 #'
 #' @section Categorical predictors and grouped terms:
-#' In the formula interface, unordered and ordered factors are handled
-#' automatically. Each factor is treated as one fixed linear term and is
-#' selected, retained, or removed as a whole. Naming a factor in `keep` retains
-#' all of its fitted contrasts.
-#'
-#' Ordered factors use their configured contrasts, which are polynomial
-#' contrasts by default. The resulting test is an omnibus test of the complete
-#' ordered-factor effect; it is not a one-degree-of-freedom trend test and does
-#' not impose monotonicity. For a prespecified ordinal trend, supply an explicit
-#' numeric score and restrict it to a linear effect with `df = 1`.
-#'
-#' Factor terms are always modelled as fixed linear effects; FP, ACD, zero,
-#' catzero, and SAZ options do not apply to them. For formula fits, prediction
-#' uses the original factor variables and fitted levels and contrasts. When
-#' centering is enabled, treatment indicators retain their zero reference and
-#' other contrast columns use their fitted-sample means. The configured contrast
-#' matrix is retained; centering only subtracts one fitted-sample constant from
-#' each generated column, so all differences between factor levels are
-#' preserved. In the matrix
-#' interface, manually created indicator or contrast columns should be grouped
-#' with `term_groups`; without formula metadata, their usual numeric centering
-#' rule applies.
-#'
-#' Detailed examples, including factor behaviour after subsetting, are provided
-#' in `vignette("mfp2_introduction", package = "mfp2")`.
-#'
-#' @section ACD modelling:
-#' The ACD extension is intended for continuous predictors whose associations
-#' may have a smooth sigmoid shape that is difficult to represent adequately
-#' with the standard FP1 and FP2 families. The transformation approximates the
-#' empirical cumulative distribution by smoothing inverse-normal ranks and maps
-#' the predictor to an approximately uniform scale on `(0, 1)`.
-#'
-#' In the matrix interface, list candidate variables in `acd_vars`. In the formula
-#' interface, use `fp(x, acd = TRUE)`. Requesting ACD sets the term's maximum
-#' `df` to 4 so that the complete FSPA candidate family can be assessed. When
-#' the fitting data contain fewer than five distinct values, the term is handled
-#' with standard MFP instead of ACD. For an eligible ACD term, `mfp2()`
-#' evaluates an ACD-extended two-component function and simpler alternatives,
-#' including standard FP1, ACD-only, linear, and omitted forms. Eligible ACD
-#' variables are shifted when needed for positive FP inputs but are not scaled;
-#' this same shifted, unscaled representation is used for both the direct FP
-#' component and the construction of `A(x)`. Selection uses the ACD
-#' function-selection procedure when `criterion = "pvalue"`, or direct AIC/BIC
-#' comparison for information-criterion selection.
-#'
-#' When ACD and `zero = TRUE` are requested for the same variable, ACD is fitted
-#' conditionally on the positive component. If there are `n+` observations with
-#' `x > 0`, their ranks are computed among those `n+` observations and converted
-#' to normal scores using `(rank - 0.5) / n+`; rows with `x == 0` do not enter
-#' either the ranks or the auxiliary FP1 fit. The fitted transformation is
-#' applied only to `x > 0`, while `A(0)` is defined as exactly `0`. Any selected
-#' FP function of `x` or `A(x)` is likewise evaluated only on positive rows.
-#' Fitting requires at least two distinct positive values. The same positive-
-#' only definition is used during prediction and plotting.
-#'
-#' See `vignette("mfp2_ACD", package = "mfp2")` for the complete construction
-#' of the transformation, the six candidate model families, the five-step
-#' closed-test sequence, interpretation, and worked examples.
-#'
-#' @section Exact-zero and spike-at-zero modelling:
-#' The `zero`, `catzero`, and `spike` options address related but distinct
-#' modelling goals for nonnegative covariates containing exact zeros:
-#'
-#' \itemize{
-#'   \item `zero` applies the continuous FP function to positive values only;
-#'     values with `x = 0` form the zero component.
-#'   \item `catzero` adds a fixed binary indicator for the exact-zero component
-#'     while also fitting the positive-component function.
-#'   \item `spike` invokes SAZ selection to determine whether the final model
-#'     retains both components, only the positive-component function, or only
-#'     the binary zero-component indicator.
-#' }
-#'
-#' In the matrix interface, use `zero_vars`, `catzero_vars`, and `spike_vars`.
-#' In the formula interface, use `fp(x, zero = TRUE)`,
-#' `fp(x, catzero = TRUE)`, or `fp(x, spike = TRUE)`.
-#'
-#' `catzero` implies `zero`. While SAZ remains eligible, `spike` implies both
-#' `catzero` and `zero`. Binary predictors are not eligible for any of these
-#' options, so the options are ignored for them. `zero` and `catzero` are also
-#' ignored for an all-positive predictor because there is no exact-zero
-#' component to represent.
-#'
-#' All three options require nonnegative covariates (`x >= 0`). The zero
-#' component is exactly `x = 0` and the positive component is `x > 0`.
-#' Negative values are rejected before fitting and are never silently recoded.
-#' Recode them explicitly only when it is scientifically appropriate for them
-#' to represent the zero group.
-#'
-#' These rules also apply when the same variable is assessed with ACD. Thus ACD
-#' plus `zero`, `catzero`, or `spike` models the ACD/FP function on `x > 0` and
-#' keeps its continuous contribution exactly zero at `x = 0`. `catzero` may add
-#' `I(x == 0)`, and SAZ may retain the continuous component, the indicator, or
-#' both; it does not change the definition of the positive-part ACD function.
-#'
-#' The SAZ selection path depends on `criterion`. With
-#' `criterion = "pvalue"`, the two-stage closed-test procedure is retained:
-#' Stage 1 uses `select` for overall term inclusion and `alpha` for
-#' positive-component functional-form comparisons while retaining the binary
-#' component; Stage 2 tests removal of each component at `alpha`. With
-#' `criterion = "aic"` or `"bic"`, there is no closed-test split. The null,
-#' binary-only, positive-only, and positive-plus-binary candidates are compared
-#' jointly, with the positive functional form optimized independently in the
-#' latter two branches. For maximum ordinary FP degree \eqn{d}, this is a
-#' \eqn{2d+4}-model comparison containing linear and best FP1 through FP\eqn{d}
-#' forms in each positive branch. A requested SAZ variable is eligible only
-#' when both the exact-zero and positive components contain at least
-#' `min_saz_prop` of the observations and the variable is not binary.
-#' With the default value `0.10`, each component must contain at least 10 percent
-#' of observations. If eligibility fails, SAZ selection is not used; explicit
-#' `zero` or `catzero` handling is retained only when requested separately.
-#'
-#' See `vignette("mfp2_introduction", package = "mfp2")` for practical
-#' spike-at-zero guidance. The criterion-specific algorithm, eligibility rules,
-#' and component interpretations are specified in this help section.
-#'
-#' @section Subsetting:
-#' When `subset` is used, automatically estimated shift and scale values are
-#' obtained from the full input data before the subset is applied. Model
-#' selection and final fitting then use only the selected observations.
-#' Consequently, `subset` is not equivalent to subsetting the data before
-#' calling `mfp2()`.
-#'
-#' In the formula interface, the subset expression is evaluated once with names
-#' resolved first from `data` and then from the formula environment. In the
-#' matrix interface, supply a logical vector or unique numeric/integer row
-#' positions evaluated in the calling environment. Supplied numeric positions
-#' retain their order. `weights`, `offset`, and `strata` must remain aligned with
-#' the original rows.
-#'
-#' The argument is intended for analyses that require common shift and scale
-#' values across several analysis subsets. It should not be used to remove
-#' missing observations or to construct cross-validation folds; prepare those
-#' analysis data explicitly before fitting. If subsetting removes factor levels
-#' or leaves too little variation to estimate a grouped matrix term, fitting may
-#' stop. After any subset is applied, the number of fitted observations must be
-#' greater than the number of predictor columns used for fitting. In the formula
-#' interface, one categorical predictor can contribute several such columns.
-#' Detailed factor, contrast, and grouped-term behaviour is documented in
-#' `vignette("mfp2_introduction", package = "mfp2")`.
-#'
-#' @section Survival models:
-#' Cox models currently support ordinary right-censored [survival::Surv()]
-#' responses of the form `Surv(time, event)`. Event coding is interpreted by
-#' [survival::Surv()]; the usual coding is `0` for censoring and `1` for an event.
-#' In the matrix interface, stratification is supplied through `strata`; multiple
-#' variables may be given as a matrix or data frame. In the formula interface,
-#' use `strata()` or `survival::strata()`. Multiple formula strata terms are
-#' combined. The direct `strata` argument to `mfp2.formula()` is deprecated but
-#' remains available temporarily for compatibility; if both forms are supplied,
-#' the formula term takes precedence. Formula offsets likewise take precedence
-#' over an external `offset` argument. The `ties`, `nocenter`, and Cox control
-#' settings follow [survival::coxph()]. See [predict.mfp2()] for the additional
-#' data required by Cox prediction types such as survival probabilities.
-#'
-#' Parametric survival models use [survreg_family()] and return a regular
-#' `survreg` object. Here `strata` specifies separate scale parameters, as in
-#' [survival::survreg()].
-#'
-#' Fine--Gray models use [finegray_family()] for subdistribution-hazards
-#' modelling. Depending on `finegray_family(strata_action = ...)`, `strata()`
-#' stratifies the censoring distribution, the baseline subdistribution hazard,
-#' or both; the default is both.
-#' `id` is optional for ordinary one-row-per-subject data and required only for
-#' a start--stop multi-state response.
-#'
-#' @section Multinomial models:
-#' Use `family = "multinomial"` or [multinomial_family()]. The response may be
-#' a factor, a character or numeric class-label vector with at least three
-#' classes, or a numeric matrix with at least three class-count columns.
-#' Non-factor label vectors are converted to factors. The first response level
-#' or column is the reference unless `multinomial_family(reference = ...)`
-#' selects another one.
-#'
-#' A predictor has one selected FP transformation shared by every
-#' non-reference logit, while its regression coefficients remain logit
-#' specific. With \eqn{Q = C - 1} logits, a linear term contributes \eqn{Q}
-#' regression df and an FP of degree \eqn{m} contributes \eqn{Qm + m} df:
-#' \eqn{Qm} coefficients plus \eqn{m} shared-power search df. Candidate models
-#' use the matrix-level `nnet` path; the retained model also inherits from
-#' `multinom`.
-#'
-#' @section Ordinal models:
-#' Use [ordinal_family()] for a cumulative-link ordinal regression model. The
-#' response must have at least three observed categories. An ordered factor
-#' supplies its category order directly. Numeric values are ordered
-#' increasingly; character values and unordered-factor levels are sorted
-#' alphabetically. Because alphabetical order may not represent the intended
-#' scientific ordering, an ordered factor is recommended for labelled outcomes.
-#'
-#' The default `link = "logistic"` fits a proportional-odds model. Each predictor
-#' has one slope shared across all response cut-points, while the retained model
-#' also estimates one threshold intercept for every category after the first.
-#' The selected fit inherits from `rms::orm`; the optional `rms` package must be
-#' installed. See [ordinal_family()] for the available links and interpretation
-#' of the coefficient direction.
-#'
-#' @section Compatibility with the `mfp` package:
-#' Both `mfp` and `mfp2` export `fp()`. Within formulas passed to `mfp2()` or
-#' `mfpi()`, bare `fp()` always uses the `mfp2` version regardless of package
-#' attachment order. The [fp2()] alias remains available as an explicit
-#' alternative.
+#' In the formula interface, factors are expanded into contrast columns
+#' automatically. Each factor is selected or removed as one term. To keep a
+#' factor, give `keep` its name, not the names of its contrast columns:
 #'
 #' \preformatted{
-#' fit <- mfp2(y ~ fp2(x1) + fp2(x2), data = dat)
+#' mfp2(y ~ age + race, data = dat, keep = "race")
+#' }
+#'
+#' Factors are not FP-transformed, and ACD and zero options do not apply
+#' to them. Ordered factors use their configured contrasts, which are
+#' polynomial by default. They are tested as a whole, rather than with a
+#' single trend test.
+#'
+#' In the matrix interface, create the indicator or contrast columns yourself.
+#' Use `term_groups` to select columns representing one categorical predictor
+#' together. For example, if `x` has columns `age`, `raceB`, and `raceC`:
+#'
+#' \preformatted{
+#' mfp2(x, y, term_groups = list(race = c("raceB", "raceC")),
+#'      keep = "race")
+#' }
+#'
+#' Here `keep = "race"` retains both `raceB` and `raceC`. With centering
+#' enabled, formula-generated treatment indicators keep their zero reference;
+#' other contrast columns are centered on their fitted-sample means. See
+#' **Shifting, scaling, and centering**.
+#'
+#' @section ACD modelling:
+#' The approximate cumulative distribution (ACD) transformation can model
+#' a smooth S-shaped relationship between a continuous predictor and the
+#' outcome (Royston, 2014; Royston and Sauerbrei, 2016). It uses smoothed
+#' ranks to transform predictor values to a scale between 0 and 1.
+#'
+#' In the matrix interface, specify predictors in `acd_vars`. In a formula,
+#' use `fp(x, acd = TRUE)`. Model selection considers ACD-based forms,
+#' ordinary fractional polynomials, a linear effect, and exclusion of the
+#' predictor. If the predictor has fewer than five distinct values, standard
+#' MFP is used instead. ACD predictors may be shifted but are not scaled.
+#' Selection uses the ACD function-selection procedure with
+#' `criterion = "pvalue"`; with `"aic"` or `"bic"`, candidate models are
+#' compared using the chosen criterion.
+#'
+#' When ACD is combined with `zero = TRUE`, the transformation is fitted
+#' using positive values only; at least two distinct positive values are
+#' required. Exact zeros receive a transformed value of zero before
+#' centering. During prediction and plotting, positive values use the fitted
+#' transformation, and exact zeros again receive zero before centering.
+#'
+#' See `vignette("mfp2_ACD", package = "mfp2")` for the ACD
+#' function-selection procedure.
+#'
+#' @section Zero, catzero, and spike-at-zero modelling:
+#' Three options are available for nonnegative predictors that contain
+#' exact zeros.
+#'
+#' \itemize{
+#'   \item `zero` applies the continuous transformation to positive values
+#'     only. Its value at zero is set to zero before centering.
+#'   \item `catzero` transforms positive values in the same way as `zero`
+#'     and adds a binary variable that equals 1 when the predictor is zero
+#'     and 0 otherwise.
+#'   \item `spike` uses the spike-at-zero selection algorithm to decide whether
+#'   the final model includes the positive-value function, the zero indicator,
+#'   both, or neither.
+#' }
+#'
+#' In the matrix interface, use `zero_vars`, `catzero_vars`, or `spike_vars`.
+#' In a formula, use `fp(x, zero = TRUE)`, `fp(x, catzero = TRUE)`, or
+#' `fp(x, spike = TRUE)`. `catzero` includes `zero` handling. An eligible
+#' `spike` request includes both `catzero` and `zero` handling. If ACD is
+#' also requested, its transformation uses positive values only.
+#'
+#' Negative values cause an error and are never treated as zeros. These
+#' options do not apply to binary predictors. `zero` and `catzero` are
+#' ignored if the predictor has no exact zeros.
+#'
+#' Spike-at-zero selection requires at least `min_saz_prop` of observations
+#' with zero values and at least that proportion with positive values.
+#' The default is `0.10`. If either group is too small, spike-at-zero
+#' selection is skipped. Separately requested `zero` or `catzero` handling
+#' remains in effect. With `criterion = "pvalue"`, spike-at-zero selection uses
+#' a two-stage procedure controlled by `select` and `alpha`. With
+#' `criterion = "aic"` or `"bic"`, it uses a one-stage procedure that
+#' compares all candidate models directly. Further details on spike-at-zero
+#' modelling are given by Kipruto and Sauerbrei (2026).
+#'
+#'
+#' @section Subsetting:
+#' When you use `subset`, `mfp2()` determines automatic shifts and scales
+#' from the full input data before selecting observations. Model selection
+#' and fitting then use only the selected observations. The result may
+#' differ from a fit where the data were subset before calling `mfp2()`.
+#'
+#' In the formula interface, you can select rows using a column of `data`.
+#' For example, if `dat` has a column called `group`, this fits the model
+#' using only rows where `group` is `"A"`:
+#'
+#' \preformatted{
+#' mfp2(y ~ age, data = dat, subset = group == "A")
+#' }
+#'
+#' In the matrix interface, supply a logical vector or unique row numbers.
+#' The package applies the subset to `x`, `y`, `weights`, `offset`, and
+#' `strata` together. Row numbers retain the order you specify.
+#'
+#' Use `subset` when analyses of different groups should use shifts and
+#' scales determined from the same full dataset. For cross-validation or
+#' removal of missing values, prepare the analysis data before fitting.
+#' The subset must leave more observations than predictor columns.
+#'
+#' @section Survival models:
+#' Cox models require a right-censored [survival::Surv()] response, usually
+#' `Surv(time, event)` with `0` for censoring and `1` for an event. For
+#' stratification, use `strata()` in a formula or the `strata` argument with
+#' matrix input. The separate `strata` argument in the formula interface is
+#' deprecated. Cox settings such as `ties`, `nocenter`, and `control` follow
+#' [survival::coxph()].
+#'
+#' Parametric survival models use [survreg_family()] and return a `survreg`
+#' object. Here, `strata` allows separate scale parameters, as in
+#' [survival::survreg()].
+#'
+#' Fine--Gray models use [finegray_family()] with a multi-state `Surv`
+#' response. By default, `strata()` applies to both the censoring
+#' distribution and the baseline subdistribution hazard; change this with
+#' `strata_action`. Supply `id` for start–stop responses; it is optional
+#' when each subject has one row.
+#'
+#' See [predict.mfp2()] for the data needed to predict survival probabilities.
+#'
+#' @section Multinomial models:
+#' Use `family = "multinomial"` or [multinomial_family()] for an outcome
+#' with at least three unordered classes. The response can contain class
+#' labels or be a matrix of counts, with one column per class. The first
+#' class is the reference; use `multinomial_family(reference = ...)` to
+#' choose another.
+#'
+#' For each continuous predictor, the selected FP powers are shared across
+#' classes, but each non-reference class has its own coefficients. Selection
+#' degrees of freedom account for both the class-specific coefficients and
+#' the search for shared powers. The final fit inherits from `multinom`.
+#'
+#' @section Ordinal models:
+#' Use [ordinal_family()] when the outcome has at least three categories
+#' with a meaningful order. An ordered factor specifies that order.
+#' Otherwise, numeric values are ordered from smallest to largest, and
+#' character values and unordered factor levels are ordered alphabetically.
+#' For example, to set the order of named categories:
+#'
+#' \preformatted{
+#' severity <- factor(
+#'   c("low", "high", "medium", "low"),
+#'   levels = c("low", "medium", "high"),
+#'   ordered = TRUE
+#' )
+#' }
+#'
+#' The default `link = "logistic"` fits a proportional-odds model. It uses
+#' the same fitted function for each predictor when comparing higher outcome
+#' categories with lower ones. The final fit is an `orm` object and requires
+#' the optional `rms` package. See [ordinal_family()] for other links and
+#' how to interpret coefficient signs.
+#'
+#' @section Compatibility with the `mfp` package:
+#' Both `mfp` and `mfp2` provide `fp()`. In formulas passed to `mfp2()`
+#' or `mfpi()`, `fp()` always uses the `mfp2` version, even when both
+#' packages are loaded. `fp()` and [fp2()] are equivalent in these formulas:
+#'
+#' \preformatted{
+#' fit1 <- mfp2(y ~ fp(x1) + fp(x2), data = dat)
+#' fit2 <- mfp2(y ~ fp2(x1) + fp2(x2), data = dat)
 #' }
 #'
 #' @section Convergence and inference:
-#' MFP selection typically stabilises within a small number of cycles.
-#' Convergence status is available in `convergence_mfp`. If the procedure does
-#' not converge, consider increasing `cycles` and reviewing borderline
-#' selection decisions, influential observations, and the chosen `select` and
-#' `alpha` values.
+#' MFP selection usually converges within 2–4 cycles. With `verbose = TRUE`,
+#' progress messages report when it converges. Lack of convergence involves
+#' oscillation between two or more models and is extremely rare. If selection
+#' does not converge within the allowed number of `cycles`, `mfp2()`
+#' returns the model obtained after the final cycle. Consider
+#' increasing `cycles`, changing `select` or `alpha`, or using
+#' `criterion = "aic"` or `"bic"`.
 #'
-#' Standard errors, confidence intervals, and p-values from the final fitted
-#' model are conditional on the selected model and do not account for uncertainty
-#' introduced by variable selection, functional-form selection, ACD selection,
-#' or SAZ selection.
+#' Standard errors, confidence intervals, and p-values from the final model
+#' do not account for uncertainty from selecting predictors or their
+#' functional forms, including ACD and spike-at-zero selection.
 #'
-#' @param x For `mfp2.default()`, a numeric predictor matrix with one row per
-#'   observation and one column per predictor. Column names must be
-#'   unique, non-missing, non-empty, and must not contain the backtick character.
-#'   Other
-#'   non-syntactic names, including spaces and hyphens, are supported.
-#' @param term_groups For `mfp2.default()`, an optional named list that lets
-#'   you treat several columns of `x` as one term, typically the dummy columns
-#'   of a factor. For example, `list(race = c("raceB", "raceC"))` groups
-#'   `raceB` and `raceC` under the name `race`; they are then jointly selected
-#'   and jointly tested rather than considered as different variables. Grouped
-#'   columns must be fixed linear terms (`df = 1`) and cannot use ACD, zero,
-#'   catzero, or SAZ handling. Any column of `x` that does not appear in
-#'   `term_groups` is handled on its own as a single-column term.
-#' @param y Response for `mfp2.default()`. Gaussian models require a finite
-#'   numeric vector; Gamma and inverse-Gaussian responses must be finite and
-#'   strictly positive; Poisson and negative-binomial models require finite
-#'   nonnegative integer counts. Binomial models accept a numeric vector in
-#'   `[0, 1]`, a two-level factor, or a two-column matrix of nonnegative integer
-#'   successes and failures. Multinomial models accept a factor or a character
-#'   or numeric class-label vector with at least three classes, or a numeric
-#'   matrix with at least three nonnegative integer class-count columns. Ordinal
-#'   models accept an ordered factor or a numeric, integer, character, or
-#'   unordered-factor response with at least three observed categories. Cox
-#'   models require a two-column right-censored [survival::Surv()] object.
-#'   Parametric survival models accept the non-counting censoring types handled
-#'   by [survival::survreg()]. Fine--Gray models require a multi-state `Surv`
-#'   response.
+#' @param x For `mfp2.default()`, a numeric matrix with one row per observation
+#' and one column per predictor. Column names are required.
+#' @param y Outcome for `mfp2.default()`. In the formula interface, put the
+#' outcome on the left side of the formula. Its required format depends on
+#' `family`; see **Model families and responses**.
+#' @param term_groups For `mfp2.default()`, an optional named list of columns
+#' to select and test together as one term. This is useful for dummy columns
+#' representing a categorical predictor. For example,
+#' `list(race = c("raceB", "raceC"))` treats both columns as the predictor
+#' `race`. Grouped columns must be linear (`df = 1`) and cannot use ACD or
+#' zero, catzero, or spike-at-zero modelling. Columns not listed are handled
+#' individually.
 #' @param formula For `mfp2.formula()`, a model formula. Use [fp()] or [fp2()]
 #'   to set variable-specific FP, ACD, zero, catzero, or SAZ options.
 #' @param data For `mfp2.formula()`, a data frame containing the variables in
-#'   `formula`.
-#' @param weights Optional finite numeric observation weights. All weights must
-#'   be strictly positive; zero and negative weights are not supported. This
-#'   restriction keeps likelihood-based MFP model comparisons well-defined
-#'   across all supported families. Ordinal models currently accept only
-#'   omitted weights or an explicit all-ones vector. In the formula interface,
-#'   an expression is evaluated first in `data` and then in the formula
-#'   environment, matching standard formula-model lookup rules.
-#' @param offset Optional numeric offset with one value per observation. For a
-#'   multinomial model, supply an `n` by `C` class-offset matrix or an `n` by
-#'   `C - 1` reference-logit offset matrix. In the
-#'   formula interface, an expression is evaluated first in `data` and then in
-#'   the formula environment; an offset may alternatively be included with
-#'   `offset()`. Corresponding values must be supplied when predicting from a
-#'   model that used an external offset.
-#' @param cycles Maximum number of MFP backfitting cycles. Default `5`.
-#' @param scale For `mfp2.default()`, `NULL`, a single unnamed positive numeric
-#'   value, or a named positive numeric vector for one or more columns of `x`.
-#'   An unnamed scalar is applied to every column. Named values are matched to
-#'   `colnames(x)`, so their order does not matter; names must be non-empty,
-#'   unique, and known columns. A named partial vector fixes only the specified
-#'   scales, while scales for unspecified columns are estimated automatically.
-#'   Unnamed multi-value vectors are not accepted. `NULL` estimates every scale
-#'   automatically, while `scale = 1` disables scaling globally. Binary
-#'   predictors and variables that undergo ACD transformation are always assigned
-#'   scale `1`, even when another value is supplied. Binary rescaling is
-#'   unnecessary, and the published ACD definition uses shifted but unscaled
-#'   covariate values. In `mfp2.formula()`, the top-level value is a
-#'   scalar global default; use `fp()` or `fp2()` for variable-specific values.
-#'   Final regression coefficients are expressed on the original data scale,
-#'   which may include a shift and centering; see **Shifting, scaling, and centering**.
-#' @param shift For `mfp2.default()`, `NULL`, a single unnamed finite numeric
-#'   value, or a named finite numeric vector for one or more columns of `x`.
-#'   An unnamed scalar is applied to every column. Named values are matched to
-#'   `colnames(x)`, so their order does not matter; names must be non-empty,
-#'   unique, and known columns. A named partial vector fixes only the specified
-#'   shifts, while shifts for unspecified columns are estimated automatically.
-#'   Unnamed multi-value vectors are not accepted. `NULL` estimates every shift
-#'   automatically, while `shift = 0` disables shifting globally. Binary
-#'   predictors are always assigned shift `0`, even when another value is
-#'   supplied. Each explicit
-#'   shift used for a nonlinear FP term must make that predictor strictly
-#'   positive; otherwise fitting fails and identifies the affected variable.
-#'   In `mfp2.formula()`, the top-level value is a scalar global default; use
-#'   `fp()` or `fp2()` for variable-specific values.
-#' @param df Maximum degrees of freedom for each predictor's
-#'   fractional-polynomial function. Must be `1` (linear) or a positive even
-#'   integer (`2` for FP1, `4` for FP2, etc.). Default `4`.
-#'   In `mfp2.default()`, an unnamed scalar is applied to all predictors.
-#'   A named numeric vector may override one or more columns of `x`; values are
-#'   matched by `colnames(x)`, order does not matter, and omitted columns use
-#'   the default `df = 4`. Unnamed multi-value vectors are not accepted. In
-#'   `mfp2.formula()`, only a single global default is accepted; override it for
-#'   individual terms with `fp(x, df = value)`.
-#'   The effective `df` may be reduced automatically when a predictor has few
-#'   distinct values: 2--3 distinct values force `df = 1`; 4--5 distinct values
-#'   cap `df` at `min(2, requested)`; 6 or more distinct values use the
-#'   requested value unchanged.
-#' @param center Controls centering of final transformed terms. In
-#'   `mfp2.default()`, supply either a single unnamed logical value applied to
-#'   every predictor or a named logical vector for one or more columns of `x`.
-#'   Named values are matched to `colnames(x)`, so their order does not matter;
-#'   names must be non-empty, unique, and known columns. Omitted columns in a
-#'   named partial specification use the default `center = TRUE`. Unnamed
-#'   multi-value logical vectors are not accepted. In `mfp2.formula()`, the
-#'   top-level value is a scalar global default; use `fp()` or `fp2()` for
-#'   variable-specific values. Continuous transformed terms, including
-#'   zero-handled FP and ACD columns after their exact-zero rows have been set to
-#'   zero, are centered on their complete fitted-sample mean. The same constant
-#'   is subtracted from every row, so centering cannot change fitted values.
-#'   Binary terms are centered by subtracting their lower observed value. In formula fits,
-#'   0/1 factor indicators follow the binary rule, while non-indicator factor
-#'   contrasts are centered on their fitted-sample means even if a contrast has
-#'   only two distinct numeric values.
+#' `formula`.
+#' @param weights Optional numeric observation weights. All weights must
+#' be strictly positive. In the formula interface, an expression is evaluated
+#' first in `data` and then in the formula environment.
+#' @param offset A known term added to the model, such as the log of exposure
+#' time. With formula input you can write `offset()` in the formula instead.
+#' When predicting for new data, supply the matching offset.
 #' @param subset Optional observations used for model selection and fitting.
-#'   Formula calls accept an expression evaluated in `data` and the formula
-#'   environment. Matrix calls accept a logical vector or unique numeric/integer
-#'   row positions. Automatic shift and scale values are estimated before the
-#'   subset is applied. See the Subsetting section.
-#' @param family Model family. Use a likelihood family implemented by
-#'   [stats::glm()] (`"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`, or
-#'   `"inverse.gaussian"`) as a character name, function, or family object;
-#'   quasi families are not supported. Use `"negbin"` for a negative-binomial
-#'   model, `"multinomial"` or [multinomial_family()] for an
-#'   unpenalized baseline-category multinomial model, `"ordinal"` or
-#'   [ordinal_family()] for a proportional-odds ordinal model, `"cox"` for Cox
-#'   models, [survreg_family()] for parametric survival models,
-#'   [finegray_family()] for Fine--Gray models, or [gee_family()] for a
-#'   marginal model fitted by generalized estimating equations (GEE, via the
-#'   \pkg{geepack} package; Gaussian, binomial, Poisson, and Gamma responses
-#'   only, requiring the `id` clustering argument).
-#'   Default `"gaussian"`.
-#' @param fitter Backend used to fit the many candidate GLMs during the FP
-#'   search. `"base"` (default) uses `stats::glm()`. `"fastglm"` uses the
-#'   optional `fastglm` package, which can be considerably faster on large
-#'   problems. If `"fastglm"` is chosen but the package is not installed, or
-#'   a candidate fit fails, ordinary GLMs fall back to `"base"` with a
-#'   warning. Negative-binomial models always use `"fastglm"` and stop with
-#'   an error if the package is unavailable. Survival, multinomial, and
-#'   ordinal models ignore this argument, as they use their own fitters.
-#' @param criterion Selection criterion. One of `"pvalue"` (default), `"aic"`,
-#'   or `"bic"`. With `"pvalue"`, variable inclusion is controlled by `select`,
-#'   while functional-form comparisons and SAZ Stage-2 component-removal tests
-#'   are controlled by `alpha`. With `"aic"` or `"bic"`, candidate models are
-#'   compared directly by their information-criterion value and `select`/`alpha`
-#'   are ignored.
-#' @param select Nominal significance level for variable selection. Default
-#'  `0.05`. In `mfp2.default()`, an unnamed scalar is applied to all
-#'   predictors. A named numeric vector may override one or more columns of
-#'   `x`; values are matched by `colnames(x)`, order does not matter, and
-#'   omitted columns use the default `select = 0.05`. Unnamed multi-value
-#'   vectors are not accepted. In `mfp2.formula()`, the top-level `select` is a
-#'   single scalar that sets the selection level for plain (non-`fp()`) terms
-#'   only. Terms wrapped in `fp()` (or `fp2()`) are governed by their own
-#'   `select` argument, which defaults to `0.05` and is **not** inherited from
-#'   the top-level value; to force such a term into the model, set its level
-#'   explicitly with `fp(x, select = 1)` (equivalent to naming it in `keep`), or
-#'   list it in `keep`. Setting the top-level `select = 1` therefore forces in
-#'   plain terms but has no effect on `fp()` terms. For spike-at-zero terms,
-#'   `select` controls only Stage-1 inclusion; Stage-2 component-removal tests
-#'   use `alpha`. Ignored when `criterion` is `"aic"` or `"bic"`.
-#' @param alpha Significance level for closed tests between FP functions of
-#'   different degrees (e.g. FP2 versus FP1 versus linear). Under
-#'   `criterion = "pvalue"`, simplification occurs only when the comparison
-#'   p-value is strictly greater than `alpha`, matching the original MFP
-#'   endpoint convention. Thus `alpha = 1` prevents functional-form
-#'   simplification, including the exact boundary case `p = 1`. Equivalently,
-#'   valid `p <= alpha` retains the more complex model; an invalid or non-finite
-#'   p-value is not evidence for simplification. This convention applies to all
-#'   five ACD FSPA comparisons and to the Stage-2 component-removal tests of
-#'   spike-at-zero terms.
-#'   Default `0.05`. In `mfp2.default()`, an unnamed
-#'   scalar is applied to all predictors.
-#'   A named numeric vector may override one or more columns of `x`; values are
-#'   matched by `colnames(x)`, order does not matter, and omitted columns use
-#'   the default `alpha = 0.05`. Unnamed multi-value vectors are not accepted.
-#'   In `mfp2.formula()`, the top-level `alpha` sets the level for plain
-#'   (non-`fp()`) terms; terms wrapped in `fp()` (or `fp2()`) use their own
-#'   `alpha` argument, which defaults to `0.05` and is not inherited from the
-#'   top-level value. Ignored when `criterion` is `"aic"` or `"bic"`.
-#' @param keep Character vector of predictor names that must remain in the final
-#' model regardless of the selection criterion. Under `criterion = "pvalue"`,
-#' this is equivalent to setting `select = 1` for each named variable. The
-#' functional form of kept variables may still be simplified by the
-#' `alpha`-level closed test or information criterion. For a kept spike-at-zero
-#' term under `criterion = "pvalue"`, Stage 2 still uses `alpha`, so either SAZ
-#' component may be removed while the term itself remains forced into the model.
-#' Under AIC/BIC, the null row is excluded from the joint SAZ comparison, but
-#' either component may still be removed while the term remains represented.
-#' Names must match formula term names or, for matrix fits, column names or
-#' `term_groups` names.
-#' @param xorder Order in which conceptual predictors enter the backfitting
-#' algorithm. One of `"ascending"` (default), `"descending"`, or `"original"`.
-#' For significance-based ordering, each conceptual predictor is evaluated as a
-#' whole in the full linear model. A `zero` term uses its positive component;
-#' a `catzero` or retained spike-at-zero term uses both its positive component
-#' and binary structural-zero indicator. `"ascending"` visits the smallest
-#' p-value first, `"descending"` the largest, and `"original"` preserves the
-#' input term order.
-#' @param powers Optional named list of candidate FP powers for individual predictors.
-#' The default set is `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where 0 stands
-#' for the logarithm. Names must match the corresponding formula terms or
-#' matrix column names. For predictors with `df > 1`, the candidate set must
-#' include at least one power other than 1; the algorithm needs a non-linear
-#' candidate to search over. To restrict a predictor to a linear effect,
-#' set `df = 1` rather than limiting its power set. Per-term settings in
-#' [fp()] take precedence over entries in this list.
-#' @param ties Method for handling tied event times in Cox and Fine--Gray models. Supported
-#' values are `"breslow"` (default) and `"efron"`. `"exact"` is not supported
-#' because MFP selection uses Cox candidate fits that do not implement the
-#' exact partial likelihood. The argument has no effect for other families.
-#' See [survival::coxph()] for details.
-#' @param strata Optional survival-model strata for the matrix interface. For
-#' Cox it defines baseline-hazard strata, for `survreg` separate scale
-#' parameters, and for Fine--Gray censoring-distribution strata. A vector or
-#' factor supplies one categorical stratum label per observation; character,
-#' numeric, integer, and logical values are accepted. A matrix or data frame may
-#' supply multiple stratification variables, one per column, which are combined
-#' into a single factor before fitting. In formula fits, use `strata(...)` in
-#' the formula. Supplying `strata` directly to `mfp2.formula()` is deprecated;
-#' it remains available temporarily for compatibility, and a formula term takes
-#' precedence if both forms are supplied.
-#' @param id Cluster or subject identifier, one value per observation. For
-#'   [finegray_family()] it is the Fine--Gray subject identifier (required for a
-#'   start--stop multi-state response, optional otherwise). For [gee_family()]
-#'   it identifies the correlated clusters and is **required**; observations
-#'   from the same cluster must appear in contiguous rows. In formula fits, the
-#'   argument is evaluated first in `data` and then in the formula environment.
-#'   It is not used by other families.
-#' @param waves Optional integer-like visit identifier for [gee_family()], one
-#'   value per observation, giving the order of repeated measurements within
-#'   each cluster and representing gaps for the `"ar1"` working correlation.
-#'   Must be unique within each cluster. Evaluated like `id` in formula fits,
-#'   and used only by GEE models.
-#' @param nocenter Numeric set of values used to identify Cox/Fine--Gray predictor
-#' columns that should be left uncentered. A column is left
-#' uncentered when all of its values are contained in `nocenter`. The default
-#' `c(-1, 0, 1)` matches [survival::coxph()] and typically leaves indicator
-#' and dummy columns uncentered. Set `NULL` to allow all eligible columns to
-#' be recentered. Applies only to Cox and Fine--Gray models.
-#' @param acd_vars Character vector naming continuous predictors to be assessed with
-#' the approximate cumulative distribution (ACD) extension. An ACD request
-#' triggers the function-selection procedure for ACD (FSPA), which evaluates
-#' extended two-component functions alongside simpler alternatives. See the
-#' ACD modelling section. Model summaries and plots identify terms whose final
-#' representation retains an ACD component. This argument applies to
-#' `mfp2.default()` only; in the formula interface use `fp(x, acd = TRUE)`.
+#' Formula calls accept an expression evaluated in `data` and the formula
+#' environment. Matrix calls accept a logical vector or unique numeric/integer
+#' row positions. Automatic shift and scale values are estimated before the
+#' subset is applied. See the Subsetting section.
+#' @param cycles Maximum number of MFP backfitting cycles. Default `5`.
+#' @param scale Divisor used when preparing predictors for FP selection.
+#' `NULL` chooses scales automatically; `1` turns off automatic scaling.
+#' In `mfp2.default()`, use a named value such as `c(age = 10)` to set
+#' one column's scale. In formulas, set it inside `fp()` or `fp2()`.
+#' Binary and ACD predictors always use scale `1`. See **Shifting,
+#' scaling, and centering**.
+#' @param shift Value added to predictors before FP transformation.
+#' `NULL` chooses shifts automatically; `0` turns off automatic shifting.
+#' In `mfp2.default()`, use a named value such as `c(age = 20)` to set
+#' one column's shift. In formulas, set it inside `fp()` or `fp2()`.
+#' Binary and linear predictors, and those using exact-zero handling,
+#' always have shift `0`. See **Shifting, scaling, and centering**.
+#' @param df Maximum FP complexity: `1` allows linear only, `2` allows up
+#' to FP1, and `4` allows up to FP2. The default is `4`. Selection may
+#' choose a simpler form or omit the predictor. In `mfp2.default()`, use
+#' a named value such as `c(age = 2)` for one column; in formulas, use
+#' `fp(age, df = 2)`. Predictors with few distinct values may be limited
+#' to a simpler form. See **Fractional-polynomial model selection**.
+#' @param center If `TRUE` (default), center predictors after any FP or ACD
+#' transformation; `FALSE` leaves them uncentered. Continuous terms use
+#' their mean and binary terms use their lower observed value in the data.
+#' Centering does not change fitted values. In `mfp2.default()`,
+#' use one logical value for all predictors or a named vector for selected
+#' columns; unspecified columns use `TRUE`. In `mfp2.formula()`, use
+#' `fp()` or `fp2()` to set this for an individual predictor.
+#' @param family Model family; default `"gaussian"`. Supported GLM families
+#' are `"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`, and
+#' `"inverse.gaussian"`, supplied as a name, function, or family object.
+#' Quasi families are not supported. Use `"negbin"` for negative-binomial
+#' models; `"multinomial"` or [multinomial_family()] for multinomial models;
+#' `"ordinal"` or [ordinal_family()] for cumulative-link ordinal models;
+#' `"cox"` for Cox models; [survreg_family()] for parametric survival
+#' models; [finegray_family()] for Fine--Gray models; or [gee_family()]
+#' for generalized estimating equations. GEE supports Gaussian,
+#' binomial, Poisson, and Gamma response families.
+#' @param fitter Backend for GLM candidate fits during the FP search.
+#' `"base"` (default) uses [stats::glm.fit()]; `"fastglm"` uses the
+#' optional `fastglm` package. If `fastglm` is unavailable, ordinary GLMs
+#' use the base backend with a warning. Negative-binomial models
+#' always use `fastglm` and require it to be installed. Survival,
+#' multinomial, ordinal, and GEE models use their own fitters and ignore
+#' this setting.
+#' @param criterion Model-selection criterion: `"pvalue"` (default),
+#' `"aic"`, or `"bic"`. With `"pvalue"`, `select` controls predictor
+#' inclusion and `alpha` controls FP functional form and spike-at-zero component
+#' comparisons. With `"aic"` or `"bic"`, the model with the lowest score is
+#' selected. For GEE models, `"aic"` and `"bic"` use quasi likelihood
+#' based scores; see **Model selection criteria** for their definitions.
+#' @param select Significance level for predictor inclusion when
+#' `criterion = "pvalue"`; default `0.05`. In `mfp2.default()`, a single
+#' value applies to all predictors. A named vector sets the selection level
+#' for the specified predictors; all others use the default of `0.05`. In
+#' `mfp2.formula()`, the top-level value applies only to terms outside
+#' `fp()` or `fp2()`; those terms each default to `0.05` unless set
+#' explicitly, for example `fp(x, select = 1)`. Under p-value selection,
+#' `select = 1` forces inclusion. For spike-at-zero terms, `select`
+#' controls initial inclusion; `alpha` controls subsequent component
+#' removal. `select` does not affect AIC or BIC selection; use `keep`
+#' to retain a term under those criteria.
+#' @param alpha Significance level for choosing between FP forms when
+#' `criterion = "pvalue"`; default `0.05`. A simpler form is chosen only
+#' when its comparison p-value is greater than `alpha`, so `alpha = 1`
+#' prevents this simplification. For spike-at-zero terms, `alpha` also
+#' controls tests that remove either component. In `mfp2.default()`,
+#' a single value applies to all predictors. A named vector sets values
+#' for specified predictors; all others use `0.05`. In
+#' `mfp2.formula()`, the top-level value applies only to terms outside
+#' `fp()` or `fp2()`. Set `alpha` within `fp()` or `fp2()` to change it
+#' for those terms. `alpha` does not affect AIC or BIC selection.
+#' @param keep Character vector naming predictors to retain in the final
+#' model under any selection criterion. For a formula interface, use a
+#' predictor name  from the formula, such as `keep = "age"`. For a matrix
+#' interface, use a column name from `x` or a name in `term_groups`. Keeping a
+#' predictor does not prevent selection of a simpler functional form.
+#' @param xorder Order in which predictors are examined during backfitting:
+#' `"ascending"` (default), `"descending"`, or `"original"`.
+#' To rank predictors, each is tested as a whole by removing it from
+#' the full starting model. `"ascending"` visits the smallest
+#' p-value first, `"descending"` the largest, and `"original"` follows
+#' the input term order.
+#' @param powers Optional named list of candidate FP powers for individual
+#' predictors, for example `list(age = c(0, 1, 2))`. Predictors not named
+#' use `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where `0` denotes a
+#' logarithm. Each list element must contain at least one finite numeric
+#' power; duplicate powers are removed. Use the predictor's column name
+#' as the list name. To allow only a linear effect, set `df = 1`. Powers
+#' supplied inside `fp()` or `fp2()` take precedence over this list.
+#' @param ties Method for handling tied event times in Cox and Fine-Gray models.
+#' Supported values are `"breslow"` (default) and `"efron"`. `"exact"` is not
+#' supported. The argument has no effect for other families. See
+#' [survival::coxph()] for details.
+#' @param strata Optional stratification for Cox, parametric survival, and
+#' Fine-Gray models. In `mfp2.default()`, supply one stratum label per
+#' observation as a vector or factor. To stratify by several variables,
+#' supply a matrix or data frame with one variable per column. In
+#' `mfp2.formula()`, put `strata(...)` in the formula. The separate
+#' `strata` argument is deprecated for formula fits; if both are supplied,
+#' the formula term takes precedence.
+#' @param id A subject or cluster identifier, with one value per observation.
+#' Use the same ID for observations from the same subject or cluster. IDs
+#' cannot be missing. Fine--Gray models require `id` for start--stop
+#' multi-state data; it is optional when there is one row per subject. GEE
+#' models always require `id` and group observations by cluster before
+#' fitting, preserving their order within each cluster. In formula fits,
+#' `id` is looked up first in `data`, then in the formula environment. It
+#' is not used by other model families.
+#' @param waves Optional index giving the order of repeated observations
+#' within each `id` cluster in GEE models. Supply one positive integer per
+#' observation; values must be unique within each cluster. `waves` does not
+#' reorder rows. See [geepack::geeglm()] for further details. In formula
+#' fits, `waves` is looked up first in `data`, then in the formula environment.
+#' @param nocenter Numeric values that exempt a Cox or Fine--Gray predictor
+#' column from centering when every value in that column is among them.
+#' The default, `c(-1, 0, 1)`, leaves indicator columns uncentered, as in
+#' [survival::coxph()]. Set `NULL` to allow all predictor columns to be
+#' centered. Ignored for other model families.
+#' @param acd_vars Character vector naming continuous columns of `x` to
+#' consider for approximate cumulative distribution (ACD) modelling.
+#' ACD functions are compared with simpler alternatives and need not be
+#' selected. Applies only to `mfp2.default()`; in formulas, use
+#' `fp(x, acd = TRUE)` or `fp2(x, acd = TRUE)`. See **ACD modelling**.
 #' @param acdx Deprecated compatibility alias for `acd_vars` in
-#' `mfp2.default()`. Use `acd_vars` in new matrix-interface code. Supplying both
-#' arguments is an error.
-#' @param ftest Logical. If `TRUE`, use F-distribution critical values instead
-#' of chi-squared critical values for the selection tests in Gaussian models.
-#' This may improve small-sample behaviour for variable selection,
-#' functional-form selection, and spike-at-zero testing. Default `FALSE`.
-#' Ignored for non-Gaussian families.
-#' @param control `NULL` or a named list of fitting controls for the selected
-#' model family. `NULL` uses the relevant defaults. For ordinary GLMs, use
-#' settings accepted by [stats::glm.control()]; for Cox and Fine--Gray
-#' models, [survival::coxph.control()]; for parametric survival models,
-#' [survival::survreg.control()]; and for GEE models,
-#' [geepack::geese.control()]. Multinomial models accept `maxit`, `reltol`,
-#' `abstol`, `trace`, and `MaxNWts`. Ordinal models accept `maxit`, `eps`,
-#' `tol`, and `trace`.
-#' @param zero_vars Character vector of nonnegative continuous predictors for
-#' which exact-zero values form a structural-zero component. Only values with
-#' `x > 0` undergo the FP function; values with `x = 0` contribute zero to the
-#' linear predictor. When the same variable is in `acd_vars`, positive-only ranking,
-#' ACD fitting, subsequent FP transformation, and centering are used, with
-#' `A(0) = 0`. The shift for these variables is forced to zero. Applies
-#' to `mfp2.default()` only; in the formula interface use
-#' `fp(x, zero = TRUE)`. Negative values are rejected and must be explicitly
-#' recoded if they should represent the zero group. See the exact-zero and
-#' spike-at-zero modelling section.
-#' @param catzero_vars Character vector of nonnegative continuous predictors that combine an
-#' FP transformation of their positive values with a binary indicator for
-#' exact-zero values (`x = 0`). The indicator enters the model as a separate fixed
-#' covariate. Requesting `catzero` implies `zero` handling for the same
-#' variable. Applies to `mfp2.default()` only; in the formula interface use
-#' `fp(x, catzero = TRUE)`. Negative values are rejected and require explicit
-#' recoding when they should represent the zero group.
-#' @param spike_vars Character vector of nonnegative continuous predictors to be assessed
-#' with the spike-at-zero (SAZ) algorithm. P-value selection uses two-stage
-#' closed testing; AIC/BIC selection compares the complete candidate family
-#' jointly. SAZ selection determines
-#' whether the final model retains both the binary zero-indicator and
-#' continuous FP component, only the continuous component, or only the binary
-#' indicator. Requesting `spike` implies both `catzero` and `zero` handling
-#' while SAZ remains eligible. A predictor is eligible for SAZ only when both
-#' the exact-zero and positive components meet the `min_saz_prop`
-#' threshold and the variable is not binary; ineligible spike requests are
-#' reset. Applies to `mfp2.default()` only; in the formula interface use
-#' `fp(x, spike = TRUE)`.
-#' @param min_saz_prop Numeric in `(0, 0.5)`. Minimum required
-#'   proportion in each component of a spike-at-zero covariate: the zero
-#'   component and the positive continuous component. Default `0.10`. A
-#'   spike-at-zero candidate is retained for SAZ modelling only if both the
-#'   zero proportion and the positive-observation proportion meet this
-#'   threshold. Variables that fail this check are not assessed with SAZ. For
-#'   large samples the default can be lowered, since even a small proportion may
-#'   yield enough observations for reliable estimation.
-#' @param force_max_fp_vars For `mfp2.default()`, an optional character
-#'   vector naming predictors for which the most complex FP function allowed by
-#'   `df` should be forced into the model. For the named predictors,
-#'   variable selection and functional-form simplification are bypassed for all
-#'   three criteria. This includes `df = 1`, for which the forced maximum is
-#'   the linear form. For an eligible
-#'   spike-at-zero predictor, forcing applies to the complete maximum SAZ
-#'   representation: the maximum permitted positive-component FP form plus the
-#'   binary zero indicator. SAZ Stage 2 is skipped for forced terms under all
-#'   three criteria because its reduced representations are not allowed to
-#'   replace the requested maximum representation. The default is `NULL`. For
-#'   `mfp2.formula()`, set this option for individual terms using
-#'   `fp(x, force_max_fp = TRUE)`.
-#' @param verbose Logical value indicating whether progress messages are printed.
-#' Default `TRUE`.
-#' @param \dots Additional arguments passed to methods. Variable-specific formula
-#' options should be supplied inside [fp()] or [fp2()].
+#' `mfp2.default()`. Use `acd_vars` in matrix interface.
+#' @param ftest Logical. If `TRUE`, use F-tests for selection in ordinary
+#' Gaussian regression models when `criterion = "pvalue"`. These tests cover
+#' variable selection, functional-form selection, and spike-at-zero testing,
+#' and may improve small-sample behaviour. Default `FALSE`. Not applicable
+#' to GEE or other model families.
+#' @param control Optional named list of model-fitting settings. If `NULL`,
+#' the package uses its default settings for the selected model family.
+#' The available settings depend on the model family: see
+#' [stats::glm.control()] for ordinary GLMs, [survival::coxph.control()] for
+#' Cox and Fine-Gray models, [survival::survreg.control()] for parametric
+#' survival models, and [geepack::geese.control()] for GEE models.
+#' Multinomial models accept `maxit`, `reltol`, `abstol`, `trace`, and
+#' `MaxNWts`; ordinal models accept `maxit`, `eps`, `tol`, and `trace`.
+#' @param zero_vars Names of nonnegative continuous predictors with exact zeros.
+#' Only positive values are transformed; zeros remain zero before centering.
+#' If a predictor is also in `acd_vars`, ACD is fitted using only its positive
+#' values. The shift is fixed at zero. Applies to `mfp2.default()` only; in
+#' formulas, use `fp(x, zero = TRUE)`. Negative values are rejected. See zero
+#' and spike-at-zero modelling section.
+#' @param catzero_vars Names of nonnegative continuous predictors with exact
+#' zeros. Positive values are transformed, and a separate indicator for zero
+#' values is added to the model. This also enables `zero_vars` behavior for
+#' each predictor. Applies to `mfp2.default()` only; in formulas, use
+#' `fp(x, catzero = TRUE)`. Negative values are rejected. See the zero
+#' and spike-at-zero modelling section.
+#' @param spike_vars Names of nonnegative continuous predictors to assess with
+#' spike-at-zero selection. The model may retain the transformed positive
+#' values, an indicator for zeros, or both. Selection uses two-stage tests
+#' when `criterion = "pvalue"` and compares candidate models when using AIC
+#' or BIC. Each group must meet `min_saz_prop`; binary predictors are
+#' ineligible. Ineligible requests are ignored. Applies to `mfp2.default()`
+#' only; in formulas, use `fp(x, spike = TRUE)`.
+#' @param min_saz_prop Minimum proportion of observations required in each
+#' group (`x = 0` and `x > 0`) for spike-at-zero selection. Must be between
+#' 0 and 0.5; default `0.10`. Predictors that do not meet this threshold
+#' are not assessed. In large samples, a lower threshold may still leave
+#' enough observations in each group.
+#' @param force_max_fp_vars Names of predictors whose most complex permitted
+#' form should be kept in the model, regardless of the selection criterion.
+#' The maximum is set by `df`; when `df = 1`, it is a linear form. For an
+#' eligible predictor in `spike_vars`, both the zero indicator and the most
+#' complex permitted function of positive values are kept. Default `NULL`.
+#' Applies to `mfp2.default()` only; in formulas, use
+#' `fp(x, force_max_fp = TRUE)`.
+#' @param verbose Logical. If `TRUE`, print progress messages during model
+#' fitting. Default `TRUE`.
+#' @param \dots Used to pass arguments from `mfp2()` to its fitting method.
+#'   Additional arguments supplied to the fitting method are not used.
 #' @examples
 #'
 #' # Gaussian model: formula interface (recommended for most users)
@@ -2975,6 +2782,28 @@ mfp2.default <- function(x,
     if (!is.null(waves_keep)) waves_keep <- waves_keep[subset]
   }
 
+  # geepack treats a contiguous run of equal IDs as one cluster. Group the
+  # fitted rows once for all candidate models and the retained geeglm fit.
+  # This stable order preserves within-cluster visit order when waves is absent
+  # and keeps x, response, weights, offset, id and waves aligned. It is relative
+  # to the already-subset fitted sample, not to the original full data.
+  gee_input_row_order <- NULL
+  if (identical(family_string, "gee")) {
+    gee_input_row_order <- mfp2_gee_cluster_order(id_keep)
+    if (!identical(gee_input_row_order, seq_len(NROW(y)))) {
+      x <- x[gee_input_row_order, , drop = FALSE]
+      y <- if (is.matrix(y)) {
+        y[gee_input_row_order, , drop = FALSE]
+      } else {
+        y[gee_input_row_order]
+      }
+      if (!is.null(weights)) weights <- weights[gee_input_row_order]
+      if (!is.null(offset)) offset <- offset[gee_input_row_order]
+      id_keep <- id_keep[gee_input_row_order]
+      if (!is.null(waves_keep)) waves_keep <- waves_keep[gee_input_row_order]
+    }
+  }
+
   # Require more fitted observations than predictor columns. For matrix calls,
   # this check runs after `subset` has been applied; formula calls already pass
   # their subset-specific model matrix into this shared path.
@@ -3097,6 +2926,9 @@ mfp2.default <- function(x,
     fit$offset <- offset
   }
   fit$has_offset <- has_offset
+  if (identical(family_string, "gee")) {
+    fit$gee_input_row_order <- gee_input_row_order
+  }
 
   fit
 }
@@ -3141,7 +2973,7 @@ mfp2.formula <- function(formula,
   # then calls mfp2.default() to perform the actual fitting.
 
 
-  # Step 1: Capture the call and resolve multiple-choice arguments --------------
+  # Step 1: Capture the call and resolve multiple-choice arguments -------------
   call <- match.call()
 
   # Match coxph-style formula usage while preserving the released mfp2 API for
@@ -3231,7 +3063,7 @@ mfp2.formula <- function(formula,
 
   # Use this only for internal formula parsing/evaluation. This helps
   # because if a user passes survival::strata() in the formula it can
-  # fail similarly stats:offset() as suggested by Terry
+  # fail similarly stats:offset() as suggested by Terry Therneau
   formula_internal <- normalize_formula_special_namespaces(formula_user)
 
   # Step 3: Validate scalar formula-interface defaults ---------------------------
@@ -3363,6 +3195,7 @@ mfp2.formula <- function(formula,
     enclos = environment(formula_internal)
   )
 
+ # strata required only for survival models
   if (!is.null(strata) && !mfp2_family_is_survival(family_string)) {
     stop(
       "! `strata` is only allowed for survival models.\n",
@@ -3371,6 +3204,7 @@ mfp2.formula <- function(formula,
     )
   }
 
+  # id required only for fine-gray and GEE models
   if (!is.null(id)) {
     if (!family_string %in% c("finegray", "gee")) {
       stop(
@@ -3381,7 +3215,8 @@ mfp2.formula <- function(formula,
     if (!is.atomic(id) || length(id) != n_data || anyNA(id) ||
         is.matrix(id) || !is.null(dim(id))) {
       stop(
-        "! `id` must be an atomic vector or factor with one non-missing value per row of `data`.",
+        "! `id` must be a one-dimensional vector or factor with one value for every row of `data` and no missing values.\n",
+        "i Use the same ID for rows from the same subject or cluster.",
         call. = FALSE
       )
     }
@@ -3393,6 +3228,7 @@ mfp2.formula <- function(formula,
     )
   }
 
+  # waves required only for GEE models
   if (!is.null(waves)) {
     if (!identical(family_string, "gee")) {
       stop("! `waves` is only used with `family = gee_family()`.", call. = FALSE)
@@ -3400,7 +3236,8 @@ mfp2.formula <- function(formula,
     if (!is.atomic(waves) || length(waves) != n_data || anyNA(waves) ||
         is.matrix(waves) || !is.null(dim(waves))) {
       stop(
-        "! `waves` must be an atomic vector with one non-missing value per row of `data`.",
+        "! `waves` must have one non-missing positive integer for every row of `data`.\n",
+        "i Use `waves` to number observations within each `id` cluster; numbers must be unique within a cluster.",
         call. = FALSE
       )
     }
@@ -3411,13 +3248,11 @@ mfp2.formula <- function(formula,
       stop("! `offset` must be numeric.", call. = FALSE)
     }
 
-    # A multinomial offset may be an n x C or n x (C - 1) matrix, so count rows
-    # rather than values. Vectors keep the original message.
-    if (NROW(offset) != n_data) {
+    if (length(offset) != n_data) {
       stop(
         sprintf(
-          "! `offset` must have one value (or matrix row) per row of `data`.\ni `offset` has %d, but `data` has %d rows.",
-          NROW(offset), n_data
+          "! `offset` must have one value per row of `data`.\ni `offset` has length %d, but `data` has %d rows.",
+          length(offset), n_data
         ),
         call. = FALSE
       )
@@ -3496,10 +3331,17 @@ mfp2.formula <- function(formula,
     }
 
     if (strata_n != n_data) {
+      strata_unit <- if (is.vector(strata) || is.factor(strata)) {
+        "values"
+      } else {
+        "rows"
+      }
+
       stop(
         sprintf(
-          "! `strata` must have one value or row per row of `data`.\ni `strata` has %d rows/values, but `data` has %d rows.",
-          strata_n, n_data
+          "! `strata` must provide one value or row for each row of `data`.\n",
+          "i `strata` has %d %s; `data` has %d rows.",
+          strata_n, strata_unit, n_data
         ),
         call. = FALSE
       )
@@ -3602,7 +3444,7 @@ mfp2.formula <- function(formula,
   if (!is.null(attr(terms_formula, "specials")$strata)) {
     if (mfp2_family_is_survival(family_string)) {
 
-      # untangle the terms for strata as in coxph
+      # untangle the terms for strata as in survival::coxph()
       stemp <- survival::untangle.specials(
         terms_formula,
         special = "strata",
@@ -3706,8 +3548,7 @@ mfp2.formula <- function(formula,
       stop("! `offset` must have one value per observation.", call. = FALSE)
     }
     if (identical(family_string, "multinomial")) {
-      # The response is extracted from `mf` only in Step 8, so read it here.
-      c_classes <- mfp2_multinomial_n_classes(stats::model.response(mf))
+      c_classes <- mfp2_multinomial_n_classes(y)
       if (!is.matrix(offset) || !ncol(offset) %in% c(c_classes - 1L, c_classes)) {
         stop(
           "! Multinomial `offset` must be an n x C class matrix or an n x (C - 1) reference-logit matrix.",
@@ -3780,7 +3621,6 @@ mfp2.formula <- function(formula,
   nx <- ncol(x)
   names_x <- colnames(x)
 
-
   # Map conceptual terms to the exact model-matrix columns they generated.
   # Simple factor wrappers use the source variable name as the conceptual term;
   # their low-level design columns retain model.matrix() names such as
@@ -3848,18 +3688,15 @@ mfp2.formula <- function(formula,
     }
     colnames(x_full)[full_fp_pos] <- fp_vars
 
-    # The conceptual lookup is keyed by source-variable name. Replace its raw
-    # formula-generated column with the renamed column without creating a second
-    # conceptual entry for the original fp() label.
+    # The model-matrix column was renamed above (for example, "fp(age)" to
+    # "age"). Update the existing `age` entry in `term_to_columns` to use
+    # the new column name.
     for (i in seq_along(fp_columns)) {
-      fp_column <- fp_columns[[i]]
       fp_var <- fp_vars[[i]]
       if (fp_var %in% names(term_to_columns)) {
-        term_to_columns[[fp_var]] <- ifelse(
-          term_to_columns[[fp_var]] == fp_column,
-          fp_var,
-          term_to_columns[[fp_var]]
-        )
+        columns <- term_to_columns[[fp_var]]
+        columns[columns == fp_columns[[i]]] <- fp_var
+        term_to_columns[[fp_var]] <- columns
       }
     }
   }
@@ -4500,7 +4337,8 @@ residuals.mfp2 <- function(object, ...) {
 #' @keywords internal
 #' @noRd
 mfp2_multinomial_residuals <- function(object, type = "deviance") {
-  probabilities <- as.matrix(stats::predict(object, type = "response"))
+  probabilities <- stats::predict(object, type = "response")
+  probabilities <- as.matrix(probabilities)
 
   # Non-reference logits, in the order carried by the coefficient matrix, so
   # residual columns align with coef(), vcov() blocks, and term predictions.
@@ -4509,42 +4347,25 @@ mfp2_multinomial_residuals <- function(object, type = "deviance") {
     logits <- setdiff(object$class_levels, object$reference_class)
   }
 
-  # Observed class proportions and their binomial totals. Using the prepared
-  # count matrix (one-hot rows for a factor response) makes the residuals work
-  # for every documented response form, including count matrices, and lets
-  # case weights enter exactly as in residuals.glm().
-  prepared <- object$mfp2_family$prepared
-  if (is.null(prepared$y_matrix) || is.null(prepared$row_totals)) {
-    stop("Internal error: multinomial response data are unavailable.", call. = FALSE)
-  }
-  observed <- prepared$y_matrix / prepared$row_totals
-  prior_weights <- prepared$effective_weights
-  if (nrow(observed) != nrow(probabilities)) {
-    stop("Internal error: multinomial residuals do not align with fitted rows.",
-         call. = FALSE)
-  }
-
+  y_labels <- as.character(object$y)
   eps <- .Machine$double.eps
+
   out <- matrix(
     NA_real_, nrow(probabilities), length(logits),
     dimnames = list(rownames(probabilities), logits)
   )
   for (q in logits) {
-    y_q <- observed[, q]
+    y_q <- as.numeric(y_labels == q)
     p_q <- pmin(pmax(probabilities[, q], eps), 1 - eps)
     resid_q <- y_q - p_q
     out[, q] <- switch(
       type,
       response = resid_q,
-      pearson  = resid_q * sqrt(prior_weights) / sqrt(p_q * (1 - p_q)),
+      pearson  = resid_q / sqrt(p_q * (1 - p_q)),
       working  = resid_q / (p_q * (1 - p_q)),
-      deviance = {
-        # Binomial unit deviance, including the saturated term so that
-        # proportions strictly between 0 and 1 are handled correctly.
-        y_log_y <- ifelse(y_q > 0, y_q * log(y_q / p_q), 0)
-        n_log_n <- ifelse(y_q < 1, (1 - y_q) * log((1 - y_q) / (1 - p_q)), 0)
-        sign(resid_q) * sqrt(pmax(2 * prior_weights * (y_log_y + n_log_n), 0))
-      }
+      deviance = sign(resid_q) * sqrt(pmax(
+        -2 * (y_q * log(p_q) + (1 - y_q) * log(1 - p_q)), 0
+      ))
     )
   }
   out

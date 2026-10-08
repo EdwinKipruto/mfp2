@@ -53,6 +53,8 @@
 #'   \item \strong{Model Fit}: full-linear and final-MFP deviances for GLMs,
 #'     or minus twice the fitted likelihood for survival models (partial
 #'     likelihood for Cox and Fine--Gray), with model degrees of freedom.
+#'     GEE models instead show selection scores for AIC/BIC, and omit this
+#'     block for p-value selection.
 #' }
 #'
 #' The joint LRT is a diagnostic: the variable was selected by the MFP
@@ -3367,10 +3369,13 @@ mfp2_summary_model_df <- function(object) {
 #' Assembles the numeric values for the printed Model Fit block from a
 #' fitted `"mfp2"` object. Used by both [print.mfp2()] and
 #' [print.summary.mfp2()] so the two methods display identical
-#' family-specific fit statistics.
+#' family-specific fit statistics. GEE AIC/BIC fits instead return selection
+#' scores; GEE p-value fits return `NULL`.
 #'
-#' The `df` column follows a single convention: the number of regression
-#' coefficients, excluding the intercept. `linear_df` as stored comes from
+#' For non-GEE families, the `df` column counts regression coefficients,
+#' excluding the intercept. For GEE selection scores it includes the intercept
+#' and the FP-power search allowance, matching the score's penalty.
+#' `linear_df` as stored comes from
 #' `fit_model()$df`, which counts the intercept for models that have one
 #' and includes any estimated GLM dispersion, negative-binomial `theta`, or
 #' `survreg` scale parameter; those adjustments are stripped here so the
@@ -3378,7 +3383,8 @@ mfp2_summary_model_df <- function(object) {
 #'
 #' @param object An `"mfp2"` model object.
 #'
-#' @return A data frame with columns `label`, `fit_statistic`, and `df` and
+#' @return `NULL` for GEE p-value fits; otherwise a data frame with columns
+#'   `label`, `fit_statistic`, and `df` and
 #'   rows `"Full linear model"` and `"MFP model"`. Carries a
 #'   `"statistic_label"` attribute (`"Deviance"` for GLMs, `"-2 log L"` for
 #'   survival and multinomial models), and, where applicable, `"n_logits"`
@@ -3388,6 +3394,26 @@ mfp2_summary_model_df <- function(object) {
 #' @noRd
 mfp2_summary_model_fit_values <- function(object) {
   family_string <- object$family_string
+  if (identical(family_string, "gee")) {
+    criterion <- mfp2_summary_criterion_label(object)
+    if (identical(criterion, "p-value")) return(NULL)
+    label <- if (identical(criterion, "AIC")) "Adjusted QICu" else "BIC-like score"
+    values <- data.frame(
+      label = c("Full linear model", "MFP model"),
+      fit_statistic = c(
+        mfp2_summary_num(object$linear_selection_score),
+        mfp2_summary_num(object$mfp_selection_score)
+      ),
+      df = c(
+        mfp2_summary_num(object$linear_df),
+        mfp2_summary_num(object$mfp_selection_df)
+      ),
+      stringsAsFactors = FALSE
+    )
+    attr(values, "statistic_label") <- label
+    attr(values, "heading") <- "Selection Scores"
+    return(values)
+  }
   fit_statistic <- c(
     mfp2_summary_num(object$linear_deviance),
     mfp2_summary_num(object$mfp_deviance)
@@ -3477,7 +3503,9 @@ mfp2_summary_model_fit_values <- function(object) {
 #' @noRd
 mfp2_format_model_fit_block <- function(values, digits, heading_printer,
                                         notes = TRUE) {
-  heading_printer("Model Fit")
+  if (is.null(values)) return(invisible(NULL))
+  heading <- attr(values, "heading", exact = TRUE)
+  heading_printer(if (is.null(heading)) "Model Fit" else heading)
 
   # Model-fit statistics use a fixed number of decimal places. The `digits`
   # argument controls decimal places here, rather than significant digits, so
@@ -3526,6 +3554,11 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer,
   # Note about the df column. Kept identical between print.mfp2() and
   # print.summary.mfp2() so users see one consistent explanation.
   if (isTRUE(notes)) {
+    if (!is.null(heading)) {
+      cat("df counts fitted mean-model coefficients, including the intercept, plus 1 df\n")
+      cat("for each selected FP power. Smaller selection scores are preferred.\n")
+      return(invisible(NULL))
+    }
     n_logits <- attr(values, "n_logits", exact = TRUE)
     n_ordinal_intercepts <- attr(
       values, "n_ordinal_intercepts", exact = TRUE

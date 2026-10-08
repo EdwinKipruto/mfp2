@@ -1031,6 +1031,7 @@ fit_mfp <- function(x,
       mfp_logl        = mfp_logl,
       mfp_df          = mfp_df,
       family_string   = family_string,
+      criterion_mfp   = criterion,
       class_levels = if (identical(family_string, "multinomial")) {
         family_fit$prepared$levels
       } else NULL,
@@ -1091,12 +1092,18 @@ fit_mfp <- function(x,
   fit$term_to_columns <- term_to_columns
   fit$nobs <- NROW(y)
   if (identical(family_string, "gee")) {
+    search_df <- mfp2_fp_search_df(powers_current, searched_fp_current)
+    fit$mfp_selection_df <- mfp_df + search_df
     fit$mfp_selection_score <- gee_final_selection_score(
       modelfit,
       criterion = criterion,
       n_clusters = n_obs,
-      df_additional = mfp2_fp_search_df(powers_current, searched_fp_current)
+      df_additional = search_df
     )
+    if (criterion %in% c("aic", "bic")) {
+      fit$linear_selection_score <- -2 * linear_logl +
+        if (identical(criterion, "aic")) 2 * linear_df else log(n_obs) * linear_df
+    }
   }
   if (identical(family_string, "cox")) {
     fit$nevents <- sum(y[, NCOL(y)] > 0, na.rm = TRUE)

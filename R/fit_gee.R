@@ -44,6 +44,14 @@ mfp2_family_is_gee <- function(family_string) {
   identical(family_string, "gee")
 }
 
+# Keep clusters together without changing the observation order within a
+# cluster. The result indexes the fitted sample in its original row order.
+# geepack requires this grouping for both geese.fit() and geeglm().
+mfp2_gee_cluster_order <- function(id) {
+  cluster <- match(id, unique(id))
+  order(cluster, seq_along(cluster), method = "radix")
+}
+
 #' Robust Wald test for a coefficient block
 #'
 #' Requires full rank in the tested sandwich covariance block. Rank-deficient
@@ -444,17 +452,15 @@ prepare_gee_family <- function(family, y, id, waves = NULL, weights = NULL,
     )
   }
 
-  # geese.fit() derives clusters from *contiguous* runs of equal id values and
-  # does not reorder rows. Detect the common mistake of non-contiguous clusters
-  # rather than silently fitting the wrong correlation structure.
+  # mfp2.default() groups clusters before preparing this family. Preserve this
+  # invariant for direct calls to this internal helper as well.
   id_codes <- if (is.factor(id)) as.integer(id) else as.integer(factor(id, levels = unique(id)))
   run_starts <- c(TRUE, id_codes[-1L] != id_codes[-nobs])
   first_seen <- id_codes[run_starts]
   if (anyDuplicated(first_seen)) {
     stop(
-      "! GEE `id` clusters must be contiguous: all observations from the same ",
-      "cluster must appear in consecutive rows. Sort your data by `id` before ",
-      "fitting.",
+      "Internal error: GEE observations must be grouped by `id` before ",
+      "preparing the family.",
       call. = FALSE
     )
   }

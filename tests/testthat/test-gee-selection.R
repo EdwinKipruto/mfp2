@@ -522,6 +522,12 @@ test_that("all three criteria recover the strong nonlinear and linear signals", 
     # reconstructed here, so only require that it is finite.
     if (crit == "pvalue") {
       expect_true(is.finite(m$mfp_selection_score), info = crit)
+      expect_null(mfp2_summary_model_fit_values(m))
+      for (output in list(capture.output(print(m)),
+                          capture.output(print(summary(m))))) {
+        expect_false(any(trimws(output) == "Model Fit"))
+        expect_false(any(trimws(output) == "Selection Scores"))
+      }
     } else {
       search_df <- mfp2_fp_search_df(m$fp_powers,
                                     stats::setNames(m$fp_terms$searched_fp,
@@ -534,6 +540,20 @@ test_that("all three criteria recover the strong nonlinear and linear signals", 
           (m$mfp_df + search_df)
       )
       expect_equal(m$mfp_selection_score, expected_score, info = crit)
+      values <- mfp2_summary_model_fit_values(m)
+      label <- if (crit == "aic") "Adjusted QICu" else "BIC-like score"
+      penalty <- if (crit == "aic") 2 else log(length(unique(dat$id)))
+      expect_identical(attr(values, "statistic_label"), label)
+      expect_equal(values$fit_statistic,
+                   c(-2 * m$linear_logl + penalty * m$linear_df,
+                     m$mfp_selection_score))
+      expect_equal(values$df, c(m$linear_df, m$mfp_selection_df))
+      for (output in list(capture.output(print(m)),
+                          capture.output(print(summary(m))))) {
+        expect_true(any(grepl("Selection Scores", output, fixed = TRUE)))
+        expect_true(any(grepl(label, output, fixed = TRUE)))
+        expect_false(any(trimws(output) == "Model Fit"))
+      }
     }
   }
 })

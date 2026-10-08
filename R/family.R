@@ -208,7 +208,8 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #'
 #' @details
 #' The cluster identifier is supplied through the top-level `id` argument of
-#' [mfp2()] (one value per observation, with clusters in contiguous rows), and
+#' [mfp2()] (one value per observation; interleaved clusters are grouped
+#' internally without changing their within-cluster order), and
 #' repeated-measure ordering through the optional `waves` argument. These are
 #' aligned per observation and therefore live outside `gee_family()`.
 #'

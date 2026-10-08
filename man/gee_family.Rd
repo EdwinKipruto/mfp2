@@ -34,7 +34,8 @@ with \code{\link[geepack:geeglm]{geepack::geeglm()}}, so the returned object is 
 }
 \details{
 The cluster identifier is supplied through the top-level \code{id} argument of
-\code{\link[=mfp2]{mfp2()}} (one value per observation, with clusters in contiguous rows), and
+\code{\link[=mfp2]{mfp2()}} (one value per observation; interleaved clusters are grouped
+internally without changing their within-cluster order), and
 repeated-measure ordering through the optional \code{waves} argument. These are
 aligned per observation and therefore live outside \code{gee_family()}.
 

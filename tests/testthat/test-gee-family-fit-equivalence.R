@@ -144,7 +144,8 @@ test_that("Reported QICu equals geepack::QIC() for the retained model", {
 
   m2 <- mfp2(y ~ x1 + x2, data = dat,
              family = gee_family(poisson(), corstr = "exchangeable"),
-             id = dat$id, df = 1, select = 1, center = FALSE, verbose = FALSE)
+             id = dat$id, df = 1, select = 1, center = FALSE,
+             reference_dispersion = 1, verbose = FALSE)
 
   # Build the reference geeglm here in the test frame with a literal family and
   # `data = dat`. geepack::QIC() refits an independence model by re-evaluating

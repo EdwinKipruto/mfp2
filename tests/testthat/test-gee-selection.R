@@ -535,8 +535,8 @@ test_that("all three criteria recover the strong nonlinear and linear signals", 
       expect_gt(search_df, 0L)
       expected_score <- switch(
         crit,
-        aic = -2 * m$mfp_logl + 2 * (m$mfp_df + search_df),
-        bic = -2 * m$mfp_logl + log(length(unique(dat$id))) *
+        aic = -2 * m$mfp_logl / m$reference_dispersion + 2 * (m$mfp_df + search_df),
+        bic = -2 * m$mfp_logl / m$reference_dispersion + log(length(unique(dat$id))) *
           (m$mfp_df + search_df)
       )
       expect_equal(m$mfp_selection_score, expected_score, info = crit)
@@ -545,7 +545,7 @@ test_that("all three criteria recover the strong nonlinear and linear signals", 
       penalty <- if (crit == "aic") 2 else log(length(unique(dat$id)))
       expect_identical(attr(values, "statistic_label"), label)
       expect_equal(values$fit_statistic,
-                   c(-2 * m$linear_logl + penalty * m$linear_df,
+                   c(-2 * m$linear_logl / m$reference_dispersion + penalty * m$linear_df,
                      m$mfp_selection_score))
       expect_equal(values$df, c(m$linear_df, m$mfp_selection_df))
       for (output in list(capture.output(print(m)),

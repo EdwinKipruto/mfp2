@@ -590,6 +590,93 @@ NumericMatrix copy_fp_basis_candidate_cpp(NumericMatrix target,
 }
 
 
+/**
+ * Scale columns of a private matrix copy for GEE candidate fitting.
+ *
+ * @param source Unmodified, unscaled numeric matrix.
+ * @param scaled Private clone of source, modified in place.
+ * @param factors Output vector with one strictly positive factor per column.
+ * @param intercept_col Zero-based intercept index, or -1 when absent.
+ *
+ * Each factor is max(abs(column)), matching the former R implementation.
+ * Zero or non-finite maxima use factor 1, leaving those columns unchanged.
+ * The intercept is also assigned factor 1. Reading and scaling require two
+ * linear passes over each column, without creating R's per-column vectors.
+ */
+static void scale_gee_candidate_columns(const NumericMatrix& source,
+                                        NumericMatrix& scaled,
+                                        NumericVector& factors,
+                                        const int intercept_col) {
+  const int n = source.nrow();
+  const int p = source.ncol();
+
+  for (int j = 0; j < p; ++j) {
+    double maximum = 0.0;
+    bool finite = true;
+    if (j != intercept_col) {
+      for (int i = 0; i < n; ++i) {
+        const double value = std::fabs(source(i, j));
+        if (!R_finite(value)) {
+          finite = false;
+          break;
+        }
+        if (value > maximum) maximum = value;
+      }
+    }
+    const double factor = finite && maximum > 0.0 ? maximum : 1.0;
+    factors[j] = factor;
+    if (factor != 1.0) {
+      for (int i = 0; i < n; ++i) {
+        scaled(i, j) = scaled(i, j) / factor;
+      }
+    }
+  }
+}
+
+
+/**
+ * Prepare the scaled GEE design and shared FP/ACD basis once per focal search.
+ *
+ * @param design Candidate design template with intercept, focal placeholders,
+ *   and adjustment columns. Its input data are never modified.
+ * @param basis Shared focal transformations; one column may occur in several
+ *   candidate power combinations. Its input data are never modified.
+ * @param intercept_col One-based intercept position, or 0 if absent/nonunique.
+ * @return List with private scaled copies `design` and `basis`, plus their
+ *   parallel numeric vectors `column_scales` and `basis_scales`. The R wrapper
+ *   restores factor names from the input column names.
+ *
+ * The candidate copier overwrites focal columns of the private design and
+ * assigns their factors from `basis_scales`. Each fit thus sees the same
+ * column-by-column normalization as the former per-candidate R apply/sweep.
+ */
+// [[Rcpp::export]]
+List prepare_gee_candidate_scaling_cpp(const NumericMatrix& design,
+                                       const NumericMatrix& basis,
+                                       const int intercept_col) {
+  if (design.nrow() != basis.nrow()) {
+    stop("Internal error: GEE design and FP basis have different row counts.");
+  }
+  if (intercept_col < 0 || intercept_col > design.ncol()) {
+    stop("Internal error: GEE intercept column is out of range.");
+  }
+
+  NumericMatrix scaled_design = clone(design);
+  NumericMatrix scaled_basis = clone(basis);
+  NumericVector column_scales(design.ncol());
+  NumericVector basis_scales(basis.ncol());
+
+  scale_gee_candidate_columns(design, scaled_design, column_scales,
+                              intercept_col - 1);
+  scale_gee_candidate_columns(basis, scaled_basis, basis_scales, -1);
+
+  return List::create(_["design"] = scaled_design,
+                      _["basis"] = scaled_basis,
+                      _["column_scales"] = column_scales,
+                      _["basis_scales"] = basis_scales);
+}
+
+
 
 /**
  * Populate one MFPI fractional-polynomial candidate in a reusable design matrix.

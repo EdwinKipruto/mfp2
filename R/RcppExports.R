@@ -17,6 +17,10 @@ copy_fp_basis_candidate_cpp <- function(target, basis, source_cols, target_cols)
     .Call(`_mfp2_copy_fp_basis_candidate_cpp`, target, basis, source_cols, target_cols)
 }
 
+prepare_gee_candidate_scaling_cpp <- function(design, basis, intercept_col) {
+    .Call(`_mfp2_prepare_gee_candidate_scaling_cpp`, design, basis, intercept_col)
+}
+
 fill_mfpi_fp_candidate_cpp <- function(target, basis, source_cols, group_idx, n_groups, target_start_col, center, group_center, valid_rows) {
     .Call(`_mfp2_fill_mfpi_fp_candidate_cpp`, target, basis, source_cols, group_idx, n_groups, target_start_col, center, group_center, valid_rows)
 }

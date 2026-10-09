@@ -66,6 +66,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// prepare_gee_candidate_scaling_cpp
+List prepare_gee_candidate_scaling_cpp(const NumericMatrix& design, const NumericMatrix& basis, const int intercept_col);
+RcppExport SEXP _mfp2_prepare_gee_candidate_scaling_cpp(SEXP designSEXP, SEXP basisSEXP, SEXP intercept_colSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type design(designSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type basis(basisSEXP);
+    Rcpp::traits::input_parameter< const int >::type intercept_col(intercept_colSEXP);
+    rcpp_result_gen = Rcpp::wrap(prepare_gee_candidate_scaling_cpp(design, basis, intercept_col));
+    return rcpp_result_gen;
+END_RCPP
+}
 // fill_mfpi_fp_candidate_cpp
 List fill_mfpi_fp_candidate_cpp(NumericMatrix target, const NumericMatrix& basis, const IntegerVector& source_cols, const IntegerVector& group_idx, const int n_groups, const int target_start_col, const bool center, const bool group_center, const LogicalVector& valid_rows);
 RcppExport SEXP _mfp2_fill_mfpi_fp_candidate_cpp(SEXP targetSEXP, SEXP basisSEXP, SEXP source_colsSEXP, SEXP group_idxSEXP, SEXP n_groupsSEXP, SEXP target_start_colSEXP, SEXP centerSEXP, SEXP group_centerSEXP, SEXP valid_rowsSEXP) {
@@ -118,6 +131,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_mfp2_generate_transformations_fp_cpp", (DL_FUNC) &_mfp2_generate_transformations_fp_cpp, 4},
     {"_mfp2_generate_transformations_fp_basis_cpp", (DL_FUNC) &_mfp2_generate_transformations_fp_basis_cpp, 3},
     {"_mfp2_copy_fp_basis_candidate_cpp", (DL_FUNC) &_mfp2_copy_fp_basis_candidate_cpp, 4},
+    {"_mfp2_prepare_gee_candidate_scaling_cpp", (DL_FUNC) &_mfp2_prepare_gee_candidate_scaling_cpp, 3},
     {"_mfp2_fill_mfpi_fp_candidate_cpp", (DL_FUNC) &_mfp2_fill_mfpi_fp_candidate_cpp, 9},
     {"_mfp2_build_adjustment_step_loop_cpp", (DL_FUNC) &_mfp2_build_adjustment_step_loop_cpp, 17},
     {NULL, NULL, 0}

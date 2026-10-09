@@ -41,7 +41,6 @@ validate_mfp_candidate_powers <- function(powers,
   invisible(TRUE)
 }
 
-
 #' Function for fitting a model using the MFP, MFPA or spike-at-zero algorithm
 #'
 #' This internal function implements the Multivariable Fractional Polynomial (MFP),
@@ -331,6 +330,16 @@ fit_mfp <- function(x,
   # internal calls to fit_mfp() avoid repeated stats::gaussian()/binomial()/
   # poisson() construction as well. Cox remains the character string "cox".
   family_fit <- resolve_fit_model_family(family)
+  reference_dispersion <- if (identical(family_string, "gee"))
+    family_fit$reference_dispersion else NULL
+  qbic_penalty <- if (identical(family_string, "gee")) {
+    if (is.null(family_fit$qbic_penalty)) "clusters" else
+      match.arg(family_fit$qbic_penalty, c("clusters", "observations"))
+  } else NULL
+  if (identical(criterion, "pvalue") && !is.null(reference_dispersion)) {
+    stop("`reference_dispersion` requires GEE AIC or BIC selection.",
+         call. = FALSE)
+  }
 
   # Initial df are reported after the reference model and visiting order have
   # been resolved. Before that point, keep all per-variable settings aligned to
@@ -400,7 +409,7 @@ fit_mfp <- function(x,
       spike                  = spike,
       user_catzero           = user_catzero,
       user_zero              = user_zero,
-      min_saz_prop = min_saz_prop
+      min_saz_prop           = min_saz_prop
     )
 
     spike   <- result$spike
@@ -429,7 +438,7 @@ fit_mfp <- function(x,
   # The complete supplied FP1 set, including p = 1, is valid in every path.
   validate_mfp_candidate_powers(
     powers = powers,
-    df = df
+    df     = df
   )
 
   # Step 4: Normalize exact-zero components in x once -------------------------
@@ -573,16 +582,16 @@ fit_mfp <- function(x,
   # Their df was already forced to 4 in Step 2.
   if (any(acdx)) {
     variables_acd <- names(acdx)[acdx]
-    powers_current <- utils::modifyList(
-      powers_current,
-      sapply(variables_acd, function(v) c(1, NA), simplify = FALSE)
+    powers_current[variables_acd] <- rep(
+      list(c(1, NA_real_)),
+      length(variables_acd)
     )
   }
 
   # `keep` forces variables into the final model regardless of their
-  # backfitting significance under the p-value criterion.
+  # backfitting significance level under the p-value criterion.
   if (!is.null(keep)) {
-    select[which(names(select) %in% keep)] <- 1
+    select[names(select) %in% keep] <- 1
   }
 
   if (isTRUE(verbose)) {
@@ -658,6 +667,28 @@ fit_mfp <- function(x,
   })
   names(acd_parameter) <- names(acdx)
 
+  # Reference scale is a property of the full selection problem, not a focal
+  # variable or cycle. The prepared family carries it to every GEE candidate.
+  reference_info <- NULL
+  if (identical(family_string, "gee")) {
+    family_fit$prepared$qbic_n <- if (identical(qbic_penalty, "clusters"))
+      family_fit$prepared$n_clusters else family_fit$prepared$nobs
+    if (criterion %in% c("aic", "bic")) {
+      reference_info <- if (is.null(reference_dispersion)) {
+        estimate_reference_dispersion(
+          x = x, y = y, family = family_fit, df = df, powers = powers,
+          term_to_columns = term_to_columns, center = center, acdx = acdx,
+          zero = zero_x, catzero = catzero, spike = spike,
+          acd_parameter = acd_parameter, center_method = center_method,
+          control = control
+        )
+      } else {
+        list(dispersion = unname(reference_dispersion), powers = NULL)
+      }
+      family_fit$prepared$reference_dispersion <- reference_info$dispersion
+    }
+  }
+
   # Number of target events (Cox/Fine--Gray) or observations (other families),
   # used for AIC/BIC. Fine--Gray counts only the selected endpoint, not every
   # cause present in the original multi-state response.
@@ -675,7 +706,7 @@ fit_mfp <- function(x,
     n_obs <- family_fit$prepared$nevents
     if (!is.finite(n_obs) || n_obs <= 0L) {
       stop(
-        "Fine--Gray selection requires at least one event of the selected type.",
+        "Fine-Gray selection requires at least one event of the selected type.",
         call. = FALSE
       )
     }
@@ -689,7 +720,7 @@ fit_mfp <- function(x,
       stop("GEE selection requires at least two clusters.", call. = FALSE)
     }
   } else {
-    n_obs <- nrow(x)
+    n_obs <- dim(x)[1L]
   }
 
   # Step 9: Run MFP backfitting cycles until convergence ----------------------
@@ -702,15 +733,15 @@ fit_mfp <- function(x,
   prev_adj_params        <- vector("list", length = length(variables_ordered))
   names(prev_adj_params) <- variables_ordered
 
-  # Cache individual transformed adjustment-variable blocks across focal
-  # variables. This is separate from prev_adj_params: the latter is keyed by
-  # focal variable and retains only the metadata/per-variable blocks needed as
-  # a fallback on the next cycle. It deliberately does NOT retain the complete
-  # assembled data_adj matrix, because doing so for every focal variable grows
-  # retained memory approximately as O(n * p^2). transform_cache is keyed by
-  # the variable being transformed and remains the primary reuse mechanism.
-  # The ordinary list is scoped to this fit_mfp() call and threaded explicitly
-  # through the cycle, avoiding global state and environment side effects.
+  # Reuse transformed predictor blocks across backfitting steps. Each
+  # transform_cache[[v]] stores the transformed block for predictor v
+  # and the power setting and spike decision used to create it. A later
+  # step reuses the block if those settings have not changed.
+  #
+  # prev_adj_params is a fallback organized by the predictor currently
+  # being updated. Neither cache saves a complete adjustment matrix for
+  # every predictor; that would use roughly O(n * p^2) memory.
+  # transform_cache is discarded when this fit_mfp() call ends.
   transform_cache <- setNames(
     vector("list", length(variables_ordered)),
     variables_ordered
@@ -786,6 +817,10 @@ fit_mfp <- function(x,
       spike_decision,
       spike_decision_updated
     )
+
+    # Power 1 can come from either the fixed linear candidate or a searched
+    # FP1 candidate. Check this flag too, so a change between those forms
+    # does not count as convergence when the stored powers are unchanged.
     searched_fp_same <- identical(
       searched_fp_current,
       searched_fp_updated
@@ -1092,6 +1127,13 @@ fit_mfp <- function(x,
   fit$term_to_columns <- term_to_columns
   fit$nobs <- NROW(y)
   if (identical(family_string, "gee")) {
+    fit$reference_dispersion <- if (!is.null(reference_info))
+      reference_info$dispersion else NULL
+    fit$reference_dispersion_source <- if (is.null(reference_info)) NULL else
+      if (is.null(reference_dispersion)) "estimated" else "supplied"
+    fit$reference_powers <- if (!is.null(reference_info))
+      reference_info$powers else NULL
+    fit$qbic_penalty <- qbic_penalty
     search_df <- mfp2_fp_search_df(powers_current, searched_fp_current)
     fit$mfp_selection_df <- mfp_df + search_df
     fit$mfp_selection_score <- gee_final_selection_score(
@@ -1101,8 +1143,9 @@ fit_mfp <- function(x,
       df_additional = search_df
     )
     if (criterion %in% c("aic", "bic")) {
-      fit$linear_selection_score <- -2 * linear_logl +
-        if (identical(criterion, "aic")) 2 * linear_df else log(n_obs) * linear_df
+      fit$linear_selection_score <- -2 * linear_logl /
+        reference_info$dispersion + if (identical(criterion, "aic"))
+          2 * linear_df else log(family_fit$prepared$qbic_n) * linear_df
     }
   }
   if (identical(family_string, "cox")) {

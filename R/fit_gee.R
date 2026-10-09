@@ -14,11 +14,11 @@
 #   * criterion = "pvalue": differences of negative overall robust Wald
 #     chi-square values from separate fits, matching the `mfp: xtgee`
 #     selection convention. This is not a single-fit block Wald test.
-#   * criterion = "aic": MFP-adjusted QICu = -2Q + 2p, where p includes the
+#   * criterion = "aic": MFP-adjusted QICu = -2Q/phi + 2p, where p includes the
 #     searched-power degrees of freedom (based on Pan's QICu form, 2001).
-#   * criterion = "bic": QBIC = -2Q + log(K) p with the same MFP-adjusted p,
-#     where K is the number of independent clusters (the effective GEE sample
-#     size).
+#   * criterion = "bic": QBIC = -2Q/phi + log(n) p with the same adjusted p,
+#     where n is the selected cluster or observation count and phi is the
+#     dispersion from a shared full reference model.
 #
 # The quasi-likelihood Q is computed in R directly from the fitted means and
 # effective prior weights.  The weights are essential for ordinary weighted
@@ -184,6 +184,29 @@ gee_control_for_std_err <- function(control, std.err) {
   control$j1s <- as.integer(identical(std.err, "j1s"))
   control$fij <- as.integer(identical(std.err, "fij"))
   control
+}
+
+# Scale the invariant GEE adjustment columns and the shared FP/ACD basis once
+# per focal search. Each basis column represents the same n observations in
+# every candidate that uses it, so its maximum magnitude is invariant too.
+# The candidate loop replaces only the focal columns and their scale factors.
+# This working design is private: the C++ candidate copier modifies it in place.
+prepare_gee_candidate_scaling <- function(design, basis) {
+  intercept <- which(colnames(design) == "(Intercept)")
+  result <- prepare_gee_candidate_scaling_cpp(
+    design, basis,
+    intercept_col = if (length(intercept) == 1L) as.integer(intercept) else 0L
+  )
+  names(result$column_scales) <- colnames(design)
+  names(result$basis_scales) <- colnames(basis)
+  result
+}
+
+gee_design_column_scales <- function(x) {
+  apply(x, 2L, function(col) {
+    s <- max(abs(col))
+    if (!is.finite(s) || s <= 0) 1 else s
+  })
 }
 
 #' Refit a Retained geeglm Object with Exact Integer Wave Distances
@@ -604,6 +627,8 @@ prepare_gee_family <- function(family, y, id, waves = NULL, weights = NULL,
 #'   intercept column.
 #' @param alpha_start Optional starting working-correlation parameter for a
 #'   candidate fit. The correlation is still re-estimated for this model.
+#' @param column_scales Optional per-column factors for a GEE FP/ACD candidate
+#'   whose design is already scaled. Other fits scale their own design.
 #' @param selection_criterion AIC/BIC candidate fits use quasi-likelihood only;
 #'   p-value and retained fits still calculate their covariance and Wald score.
 #' @param allow_failed_candidate Whether an unsuccessful candidate can be
@@ -627,6 +652,7 @@ fit_gee <- function(x,
                     has_offset = FALSE,
                     x_has_intercept = FALSE,
                     alpha_start = NULL,
+                    column_scales = NULL,
                     selection_criterion = NULL,
                     allow_failed_candidate = FALSE,
                     reserved_names = character()) {
@@ -649,6 +675,8 @@ fit_gee <- function(x,
   scale.value     <- prepared$scale.value
   gee_control     <- prepared$control
   nobs            <- prepared$nobs
+  reference_dispersion <- prepared$reference_dispersion
+  qbic_n <- prepared$qbic_n
 
   # AIC/BIC select on quasi-likelihood alone. Their numerous candidate fits
   # need no jackknife, sandwich covariance extraction, or Wald eigendecomposition.
@@ -679,13 +707,20 @@ fit_gee <- function(x,
     # leaves the linear predictor, fitted means, and quasi-likelihood exactly
     # invariant (it is a pure reparametrisation), so we scale each non-intercept
     # column to unit maximum magnitude for the fit and unscale beta afterwards.
-    col_scale <- apply(xx, 2L, function(col) {
-      s <- max(abs(col))
-      if (!is.finite(s) || s <= 0) 1 else s
-    })
-    intercept_col <- which(colnames(xx) == "(Intercept)")
-    if (length(intercept_col) == 1L) col_scale[intercept_col] <- 1
-    xx_scaled <- sweep(xx, 2L, col_scale, "/")
+    pre_scaled <- !is.null(column_scales)
+    if (pre_scaled) {
+      if (!is.numeric(column_scales) || length(column_scales) != ncol(xx) ||
+          any(!is.finite(column_scales)) || any(column_scales <= 0)) {
+        stop("Internal error: invalid pre-scaled GEE column factors.", call. = FALSE)
+      }
+      col_scale <- column_scales
+      xx_scaled <- xx
+    } else {
+      col_scale <- gee_design_column_scales(xx)
+      intercept_col <- which(colnames(xx) == "(Intercept)")
+      if (length(intercept_col) == 1L) col_scale[intercept_col] <- 1
+      xx_scaled <- sweep(xx, 2L, col_scale, "/")
+    }
 
     rank <- ncol(xx)
 
@@ -761,7 +796,11 @@ fit_gee <- function(x,
             )
           }
         }
-        eta <- as.numeric(xx %*% beta) + gee_offset
+        eta <- if (pre_scaled) {
+          as.numeric(xx_scaled %*% ans$beta) + gee_offset
+        } else {
+          as.numeric(xx %*% beta) + gee_offset
+        }
         mu <- response_family$linkinv(eta)
         q <- gee_quasi_likelihood(y_model, mu, inner_string, w_eff)
         if (is.finite(q)) {
@@ -798,6 +837,13 @@ fit_gee <- function(x,
 
     result <- list(
       logl = quasi,
+      # geese.fit() estimates gamma even for lightweight IC candidates. Keep
+      # only this scalar so the full reference can use the same successful
+      # candidate path without requesting a Wald covariance or the full fit.
+      gee_scale = if (!is.null(ans$gamma) && length(ans$gamma) > 0L)
+        unname(ans$gamma[[1L]]) else NA_real_,
+      reference_dispersion = reference_dispersion,
+      qbic_n = qbic_n,
       family_deviance = fam_dev,
       selection_deviance = selection_deviance,
       robust_vcov = robust_vcov,
@@ -975,6 +1021,8 @@ fit_gee <- function(x,
 
   result <- list(
     logl = quasi,
+    reference_dispersion = reference_dispersion,
+    qbic_n = qbic_n,
     family_deviance = fam_dev,
     selection_deviance = selection_deviance,
     robust_vcov = robust_vcov,
@@ -1054,16 +1102,17 @@ gee_null_fitted_mean <- function(y, weights, offset, id_codes, waves_int,
 #' \code{deviance_rs} contains the negative overall robust Wald chi-square
 #' used by \code{mfp: xtgee} for p-value selection; information-criterion
 #' candidate fits omit this Wald calculation. \code{aic} uses the QICu form
-#' \eqn{-2Q + 2p} of Pan (2001) with the package's extra FP-power df charge.
+#' \eqn{-2Q/\phi + 2p} of Pan (2001) with the package's extra FP-power df charge.
 #' \code{bic} is the package's BIC-like quasi-likelihood score
-#' \eqn{-2Q + \log(K)\,p} with \eqn{K} the number of clusters.
+#' \eqn{-2Q/\phi + \log(n)\,p}, where \eqn{\phi} is the shared reference
+#' dispersion and \eqn{n} is the configured number of clusters or observations.
 #'
 #' The p-value statistics are kept separate from \eqn{Q}; information criteria
-#' always use \eqn{-2Q}.
+#' always use \eqn{-2Q/\phi}.
 #'
 #' @param obj A GEE fit-result list from \code{fit_gee()} (\code{is_gee = TRUE}).
-#' @param n_obs Number of independent clusters \eqn{K}, used for the QBIC
-#'   penalty.
+#' @param n_obs Number of independent clusters \eqn{K}, used for residual
+#'   degrees of freedom and as the fallback QBIC penalty count for legacy fits.
 #' @param df_additional Extra degrees of freedom for FP/ACD power searches,
 #'   added once to the parameter count.
 #'
@@ -1081,6 +1130,9 @@ gee_null_fitted_mean <- function(y, weights, offset, id_codes, waves_int,
 calculate_gee_metrics <- function(obj, n_obs, df_additional = 0) {
   quasi <- obj$logl
   df <- obj$df + df_additional
+  dispersion <- if (is.null(obj$reference_dispersion)) 1 else
+    obj$reference_dispersion
+  qbic_n <- if (is.null(obj$qbic_n)) n_obs else obj$qbic_n
 
   fit_rank <- obj$rank
   regression_df <- if (is.numeric(fit_rank) && length(fit_rank) == 1L &&
@@ -1107,9 +1159,9 @@ calculate_gee_metrics <- function(obj, n_obs, df_additional = 0) {
     df = df,
     deviance_rs = dev_rs,
     deviance_gaussian = NA_real_,
-    # QICu and QBIC are defined in terms of -2Q, not D.
-    aic = -2 * quasi + 2 * df,
-    bic = -2 * quasi + log(n_obs) * df,
+    # QICu and QBIC use reference-scaled Q, not the Wald deviance D.
+    aic = -2 * quasi / dispersion + 2 * df,
+    bic = -2 * quasi / dispersion + log(qbic_n) * df,
     df_resid = n_obs - df_for_resid
   )
 }

@@ -3,7 +3,7 @@
 \name{fp}
 \alias{fp}
 \alias{fp2}
-\title{Specify Fractional-Polynomial Options in a Formula}
+\title{Specify a Fractional-Polynomial Term}
 \usage{
 fp(
   x,
@@ -25,148 +25,110 @@ fp(
 fp2(...)
 }
 \arguments{
-\item{x}{A vector representing a continuous variable undergoing
-FP-transformation.}
+\item{x}{Continuous numeric predictor to include in the formula. Do not
+wrap a factor in \code{fp()}.}
 
-\item{df}{Maximum degrees of freedom for this variable's FP function.
-Must be \code{1} (linear) or a positive even integer. Default \code{4} (FP2).
-See \code{\link[=mfp2]{mfp2()}} for the automatic reductions applied to variables with few
-distinct values.}
+\item{df}{Maximum FP complexity: \code{1} for linear only, \code{2} for up to FP1,
+or \code{4} (default) for up to FP2. Higher positive even values permit
+higher FP degrees.}
 
-\item{alpha}{Significance level for the closed test between FP functions of
-different degrees and, when \code{spike = TRUE} with p-value selection, for
-both Stage-2 SAZ component-removal tests. Under p-value selection, reduced
-forms are accepted only when their comparison p-value is strictly greater
-than \code{alpha}; therefore \code{alpha = 1} prevents simplification, including at
-an exact p-value of \code{1}. Default \code{0.05}. This is the sole \code{alpha} for the
-\code{fp()} term: it is fixed at \code{0.05} unless set here and is not inherited from
-the top-level \code{alpha} given to \code{\link[=mfp2]{mfp2()}} (which governs plain, non-\code{fp()}
-terms only).}
+\item{alpha}{Significance level for comparisons between functional forms
+under p-value selection. Default \code{0.05}. For eligible spike-at-zero
+terms, also controls tests that remove components.}
 
-\item{select}{Significance level for backward-elimination variable
-selection. Default \code{0.05}. Set to \code{1} to force this variable into the
-model. This is the sole selection level for the \code{fp()} term: it is fixed at
-\code{0.05} unless set here and is \strong{not} inherited from the top-level \code{select}
-given to \code{\link[=mfp2]{mfp2()}} (which governs plain, non-\code{fp()} terms only).}
+\item{select}{Significance level for variable inclusion under p-value
+selection. Default \code{0.05}; use \code{1} to force inclusion. It does not
+control inclusion under AIC or BIC selection.}
 
-\item{shift}{Numeric shift override for this variable, or \code{NULL} (default)
-to inherit the global setting from \code{\link[=mfp2]{mfp2()}}. See \code{\link[=mfp2]{mfp2()}} for details.}
+\item{shift}{Numeric value added before FP transformation. \code{NULL} (default)
+inherits the setting from \code{mfp2()}; \code{0} disables shifting for this term.}
 
-\item{scale}{Numeric scale override for this variable, or \code{NULL} (default)
-to inherit the global setting from \code{\link[=mfp2]{mfp2()}}. See \code{\link[=mfp2]{mfp2()}} for details.}
+\item{scale}{Positive divisor applied after shifting. \code{NULL} (default)
+inherits the setting from \code{mfp2()}; \code{1} disables scaling for this term.}
 
-\item{center}{Logical centering override for this variable. Default \code{TRUE}.
-See \code{\link[=mfp2]{mfp2()}} for details.}
+\item{center}{Whether to center the fitted terms. Default \code{TRUE}.}
 
-\item{acd}{Logical. If \code{TRUE}, request ACD modelling for this variable.
-Default \code{FALSE}. When combined with \code{zero = TRUE}, ACD is fitted on
-\code{x > 0} only and \code{A(0) = 0}. See the ACD modelling section in \code{\link[=mfp2]{mfp2()}}.}
+\item{acd}{Whether to request approximate cumulative distribution (ACD)
+modelling. Default \code{FALSE}.}
 
-\item{powers}{Numeric vector of candidate powers to be evaluated for \code{x}.
-If \code{NULL} (default), the global candidate set from \code{\link[=mfp2]{mfp2()}} is used,
-which defaults to \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}. When \code{df > 1},
-the candidate set must include at least one power other than \code{1} so the
-algorithm can search over nonlinear forms. Duplicate values are removed
-automatically. Overrides the corresponding entry in the \code{powers} list
-argument of \code{\link[=mfp2]{mfp2()}}.}
+\item{powers}{Numeric vector of candidate FP powers for this predictor.
+\code{NULL} (default) uses the global candidate set. Duplicate candidates
+are removed.}
 
-\item{zero}{Logical. If \code{TRUE}, only values with \code{x > 0} undergo the FP
-function; values with \code{x = 0} contribute zero to the linear predictor.
-This positive-part rule also covers ACD ranking, ACD fitting, FP(A(x)), and
-centering when \code{acd = TRUE}.
-The covariate must be nonnegative. Negative values are rejected and must
-be explicitly recoded if they should represent the zero group.
-Default \code{FALSE}. Equivalent to listing the variable in \code{zero_vars} in
-\code{mfp2.default()}.}
+\item{zero}{If \code{TRUE}, transform only values with \code{x > 0}; exact zeros
+contribute zero to the continuous component. Requires nonnegative \code{x}.
+Default \code{FALSE}.}
 
-\item{catzero}{Logical. If \code{TRUE}, a fixed binary indicator for \code{x = 0}
-values is added alongside the positive-component FP function. Implies
-\code{zero = TRUE}, including its nonnegative domain and negative-value
-rejection. Default \code{FALSE}. Equivalent to listing the variable in
-\code{catzero_vars} in \code{mfp2.default()}.}
+\item{catzero}{If \code{TRUE}, add a binary indicator for \code{x = 0} alongside
+the positive component. Implies \code{zero = TRUE}. Default \code{FALSE}.}
 
-\item{spike}{Logical. If \code{TRUE}, request spike-at-zero (SAZ) selection for
-this variable. P-values use two-stage closed testing; AIC/BIC use one
-joint candidate comparison. While SAZ remains eligible, implies both
-\code{catzero} and \code{zero}, including their nonnegative domain and negative-value
-rejection. Default \code{FALSE}. Equivalent to listing the variable
-in \code{spike_vars} in \code{mfp2.default()}. See the SAZ section in \code{\link[=mfp2]{mfp2()}} for
-eligibility requirements.}
+\item{spike}{If \code{TRUE}, request spike-at-zero (SAZ) model selection,
+subject to eligibility checks. While eligible, it considers a positive
+component and a binary indicator for \code{x = 0}. Requires nonnegative \code{x}.
+Default \code{FALSE}.}
 
-\item{force_max_fp}{Logical. If \code{TRUE}, the most complex functional form
-allowed by \code{df} is forced for this variable, bypassing both variable
-selection and functional-form simplification under all three criteria.
-With \code{df = 1}, the forced maximum form is linear.
-If \code{spike = TRUE} remains eligible, the forced representation includes
-both the maximum permitted positive-component FP form and the binary zero
-indicator, and SAZ Stage 2 is bypassed under all three criteria. Default
-\code{FALSE}. Equivalent to naming the variable in \code{force_max_fp_vars} in
-\code{mfp2.default()}.}
+\item{force_max_fp}{If \code{TRUE}, retain the most complex form permitted by
+\code{df} and bypass variable removal and functional-form simplification.
+For an eligible SAZ term, retain both components. Default \code{FALSE}.}
 
-\item{acdx}{Deprecated compatibility alias for \code{acd}. Use \code{acd} in new
-formula-interface code. Supplying both arguments is an error.}
+\item{acdx}{Deprecated alias for \code{acd}. Use \code{acd}; supplying both
+arguments is an error.}
 
-\item{...}{Not used directly by \code{fp()}. Present so that the \code{fp2()} alias
-can forward all arguments.}
+\item{...}{Arguments passed by \code{fp2()} to \code{fp()}.}
 }
 \value{
-The variable marked with the requested modelling options for use by \code{\link[=mfp2]{mfp2()}}
-or \code{\link[=mfpi]{mfpi()}}. The result is meaningful only inside a model formula; calling
-\code{fp()} outside a formula has no modelling effect.
+The input vector with modelling options attached as attributes.
+The options take effect when the term is used in an \code{\link[=mfp2]{mfp2()}} or
+\code{\link[=mfpi]{mfpi()}} formula.
 }
 \description{
-Marks a continuous variable for fractional-polynomial modelling by
-\code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} and specifies any variable-specific modelling options.
-\code{fp()} is intended for use inside a model formula. It does not transform
-the variable immediately; the transformation is selected and constructed
-during model fitting.
+Use \code{fp()} or \code{fp2()} inside an \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} formula to mark a
+continuous predictor for fractional-polynomial (FP) selection. They
+specify the same model term and record options for fitting; neither
+transforms the values when the formula is created.
 }
 \details{
-By default, the function allows selection among omission, a linear effect,
-FP1, and FP2, subject to the model-selection settings supplied to \code{\link[=mfp2]{mfp2()}}
-or \code{\link[=mfpi]{mfpi()}}.
+\code{fp2()} was introduced to avoid a name conflict with \code{mfp::fp()}.
+That conflict is now resolved: formulas passed to \code{mfp2()} or \code{mfpi()}
+use this package's \code{fp()} even when \code{mfp} is attached.
 
-Variable-specific options can be used to restrict the maximum complexity,
-force the variable into the model, request ACD or spike-at-zero modelling,
-or control how exact-zero values are handled in nonnegative covariates.
+Add categorical predictors to the formula without \code{fp()} or \code{fp2()}.
+Convert numeric category codes with \code{factor()}.
 
-\code{fp()} should normally be applied only to continuous numeric variables.
-Categorical variables should be included directly in the formula as
-factors.
+The default \code{df = 4} permits selection of a linear effect, a first-degree
+FP (FP1), or a second-degree FP (FP2). Selection may also exclude the
+predictor. Use \code{df = 2} to permit at most FP1, or \code{df = 1} for a linear
+effect only. The fitting procedure may reduce the permitted complexity
+when a predictor has few distinct values.
+
+Candidate powers default to \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}. A power
+of zero represents a logarithm. \code{powers} changes the candidates searched;
+it does not specify the powers of the final fitted function.
+
+Options set inside \code{fp()} apply to this term. In particular, \code{alpha} and
+\code{select} default to \code{0.05} here even if different values are supplied to
+the surrounding \code{mfp2()} call. Under p-value selection, \code{select = 1}
+forces inclusion and \code{alpha = 1} prevents simplification of the permitted
+functional form.
 }
-\section{Functions}{
-\itemize{
-\item \code{fp2()}: Alias for \code{fp()} that provides an explicitly distinct name
-when both \code{mfp} and \code{mfp2} are attached.
-
-}}
 \examples{
 data("prostate")
 
-# Allow the default fractional-polynomial search for age.
-fit1 <- mfp2(
-  lpsa ~ fp(age) + svi,
+# Search up to FP1 for age.
+fit_fp <- mfp2(
+  lpsa ~ fp(age, df = 2) + svi,
   data = prostate,
   verbose = FALSE
 )
 
-# Restrict age to at most one degree of freedom.
-fit2 <- mfp2(
-  lpsa ~ fp(age, df = 1) + svi,
+# fp2() accepts the same options and produces the same model specification.
+fit_fp2 <- mfp2(
+  lpsa ~ fp2(age, df = 2) + svi,
   data = prostate,
   verbose = FALSE
 )
-
-\donttest{
-# Request ACD modelling for a continuous predictor.
-fit_acd <- mfp2(
-  lpsa ~ fp(cavol, acd = TRUE) + fp(age) + svi,
-  data = prostate,
-  verbose = FALSE
-)
-}
 
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}, \code{\link[=fp2]{fp2()}}
+\code{\link[=fp2]{fp2()}}, \code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
 }

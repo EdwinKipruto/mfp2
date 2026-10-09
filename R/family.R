@@ -205,6 +205,22 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' @param std.err Type of standard error reported by the retained fit, one of
 #'   `"san.se"` (the robust sandwich estimator, default), `"jack"`, `"j1s"`, or
 #'   `"fij"`.
+#' @param reference_dispersion Optional positive finite dispersion for GEE
+#'   QICu and QBIC comparisons. If `NULL` (default), `mfp2()` estimates one
+#'   dispersion from a full maximum-degree FP reference model before selection;
+#'   powers are chosen deterministically from each term's permitted set,
+#'   preferring powers at least 1 near zero, with 2 for selectable FP1 and
+#'   (1, 2) for FP2 when allowed. Fixed `df = 1` terms remain linear. A failed
+#'   initial fit triggers limited alternative-power
+#'   attempts. Supplying a value skips the
+#'   reference fit. The same value is
+#'   used at every selection step and backfitting cycle. Geepack still estimates
+#'   its own scale for each fitted model and for inference. Only relevant when
+#'   `mfp2(criterion = "aic")` or `mfp2(criterion = "bic")`.
+#' @param qbic_penalty For GEE BIC selection, use `"clusters"` (default) for
+#'   `log(K) * p` or `"observations"` for `log(N) * p`, where `K` is the number
+#'   of independent clusters and `N` is the number of fitted observation rows.
+#'   This setting does not affect QICu or Wald p-value comparisons.
 #'
 #' @details
 #' The cluster identifier is supplied through the top-level `id` argument of
@@ -222,7 +238,7 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' \eqn{K} is the number of independent clusters. That compatibility
 #' calculation is not an additive likelihood-deviance test.
 #' With `criterion = "aic"` and
-#' `criterion = "bic"`, selection uses the quasi-likelihood information
+#' `criterion = "bic"`, selection uses the quasi-likelihood information criteria:
 #' the QICu form of Pan (2001), with extra FP-power degrees of freedom, and
 #' a package-defined BIC-like quasi-likelihood score, respectively. Quasi-likelihood
 #' contributions use the effective prior weights (including grouped-binomial
@@ -241,7 +257,9 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' @export
 gee_family <- function(family = stats::gaussian(),
                        corstr = c("exchangeable", "independence", "ar1"),
-                       std.err = c("san.se", "jack", "j1s", "fij")) {
+                       std.err = c("san.se", "jack", "j1s", "fij"),
+                       reference_dispersion = NULL,
+                       qbic_penalty = c("clusters", "observations")) {
   # Temporary geepack compatibility boundary: geeglm() currently fails to
   # remove an explicitly supplied scale.value from its model.frame() call. The
   # scalar is then compared with observation-length variables and raises
@@ -277,6 +295,14 @@ gee_family <- function(family = stats::gaussian(),
 
   corstr <- match.arg(corstr)
   std.err <- match.arg(std.err)
+  qbic_penalty <- match.arg(qbic_penalty)
+  if (!is.null(reference_dispersion) &&
+      (!is.numeric(reference_dispersion) ||
+       length(reference_dispersion) != 1L ||
+       !is.finite(reference_dispersion) || reference_dispersion <= 0)) {
+    stop("`reference_dispersion` must be NULL or a positive finite number.",
+         call. = FALSE)
+  }
 
   # Keep the complete validation contract in place even while these values are
   # internally fixed. When geepack supports scale.value reliably, promoting
@@ -299,6 +325,9 @@ gee_family <- function(family = stats::gaussian(),
       std.err = std.err,
       scale.fix = scale.fix,
       scale.value = unname(scale.value),
+      reference_dispersion = if (is.null(reference_dispersion)) NULL else
+        unname(reference_dispersion),
+      qbic_penalty = qbic_penalty,
       prepared = NULL
     ),
     class = c("mfp2_gee_family", "mfp2_family")

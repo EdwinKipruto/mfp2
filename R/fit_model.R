@@ -57,6 +57,8 @@
 #' a batch of same-shaped multinomial candidates.
 #' @param gee_alpha_start Optional working-correlation starting value for a
 #' fast GEE candidate fit. Other families and final fits ignore it.
+#' @param gee_column_scales Optional factors for an already-scaled GEE FP/ACD
+#'   candidate design. Other families and ordinary fits ignore it.
 #' @param gee_selection_criterion Selection criterion for a fast GEE candidate;
 #'   AIC/BIC candidates require quasi-likelihood but no Wald covariance.
 #' @param gee_allow_failed_candidate Allow an unsuccessful GEE fit to be
@@ -117,6 +119,7 @@ fit_model <- function(x,
                       keep_coefficients = TRUE,
                       multinomial_optimizer = NULL,
                       gee_alpha_start = NULL,
+                      gee_column_scales = NULL,
                       gee_selection_criterion = NULL,
                       gee_allow_failed_candidate = FALSE,
                       reserved_names = character()) {
@@ -264,6 +267,7 @@ fit_model <- function(x,
       has_offset = has_offset,
       x_has_intercept = x_has_intercept,
       alpha_start = gee_alpha_start,
+      column_scales = gee_column_scales,
       selection_criterion = gee_selection_criterion,
       allow_failed_candidate = gee_allow_failed_candidate,
       reserved_names = reserved_names

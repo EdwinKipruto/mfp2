@@ -709,6 +709,10 @@ mfp2_summary_gee_parameters <- function(object) {
     correlation = alpha,
     correlation_se = alpha_se,
     scale = scale_est,
+    reference_dispersion = object$reference_dispersion,
+    reference_dispersion_source = object$reference_dispersion_source,
+    qbic_penalty = if (identical(object$criterion_mfp, "bic"))
+      object$qbic_penalty else NULL,
     scale_se = scale_se,
     scale_fixed = scale_fixed,
     std_err = std_err,
@@ -812,6 +816,16 @@ mfp2_print_gee_parameters <- function(gee, digits, heading_printer) {
       sprintf("%s (%s)", fmt_g(gee$scale), status)
     }
     line("Scale (dispersion):", scale_txt)
+  }
+  if (!is.null(gee$reference_dispersion)) {
+    line("Selection dispersion:", sprintf(
+      "%s (%s)", fmt_g(gee$reference_dispersion),
+      gee$reference_dispersion_source
+    ))
+  }
+  if (!is.null(gee$qbic_penalty)) {
+    line("QBIC penalty:", if (identical(gee$qbic_penalty, "clusters"))
+      "log(clusters)" else "log(observations)")
   }
 
   line(

@@ -7,7 +7,9 @@
 gee_family(
   family = stats::gaussian(),
   corstr = c("exchangeable", "independence", "ar1"),
-  std.err = c("san.se", "jack", "j1s", "fij")
+  std.err = c("san.se", "jack", "j1s", "fij"),
+  reference_dispersion = NULL,
+  qbic_penalty = c("clusters", "observations")
 )
 }
 \arguments{
@@ -22,6 +24,24 @@ describing the marginal mean and variance. Supported families are
 \item{std.err}{Type of standard error reported by the retained fit, one of
 \code{"san.se"} (the robust sandwich estimator, default), \code{"jack"}, \code{"j1s"}, or
 \code{"fij"}.}
+
+\item{reference_dispersion}{Optional positive finite dispersion for GEE
+QICu and QBIC comparisons. If \code{NULL} (default), \code{mfp2()} estimates one
+dispersion from a full maximum-degree FP reference model before selection;
+powers are chosen deterministically from each term's permitted set,
+preferring powers at least 1 near zero, with 2 for selectable FP1 and
+(1, 2) for FP2 when allowed. Fixed \code{df = 1} terms remain linear. A failed
+initial fit triggers limited alternative-power
+attempts. Supplying a value skips the
+reference fit. The same value is
+used at every selection step and backfitting cycle. Geepack still estimates
+its own scale for each fitted model and for inference. Only relevant when
+\code{mfp2(criterion = "aic")} or \code{mfp2(criterion = "bic")}.}
+
+\item{qbic_penalty}{For GEE BIC selection, use \code{"clusters"} (default) for
+\code{log(K) * p} or \code{"observations"} for \code{log(N) * p}, where \code{K} is the number
+of independent clusters and \code{N} is the number of fitted observation rows.
+This setting does not affect QICu or Wald p-value comparisons.}
 }
 \value{
 An \code{mfp2_gee_family} specification.
@@ -48,7 +68,7 @@ Stata's \eqn{K/(K-1)} finite-cluster sandwich correction is applied, where
 \eqn{K} is the number of independent clusters. That compatibility
 calculation is not an additive likelihood-deviance test.
 With \code{criterion = "aic"} and
-\code{criterion = "bic"}, selection uses the quasi-likelihood information
+\code{criterion = "bic"}, selection uses the quasi-likelihood information criteria:
 the QICu form of Pan (2001), with extra FP-power degrees of freedom, and
 a package-defined BIC-like quasi-likelihood score, respectively. Quasi-likelihood
 contributions use the effective prior weights (including grouped-binomial

@@ -2,48 +2,43 @@
 % Please edit documentation in R/mfp2.R
 \name{residuals.mfp2}
 \alias{residuals.mfp2}
-\title{Residuals from an \code{mfp2} Model}
+\title{Extract Residuals from an \code{mfp2} Model}
 \usage{
 \method{residuals}{mfp2}(object, ...)
 }
 \arguments{
-\item{object}{A fitted \code{\link[=mfp2]{mfp2()}} object.}
+\item{object}{A fitted \code{\link[=mfp2]{mfp2()}} model.}
 
-\item{...}{Passed to the underlying residual method; for GEE and multinomial
-models, \code{type} selects the residual scale.}
+\item{...}{For GEE and multinomial models, use \code{type} to select
+\code{"deviance"} (the default), \code{"pearson"}, \code{"working"}, or \code{"response"}
+residuals. For other models, \code{type} and any other arguments follow
+the residual method for that model's family; see, for example,
+\code{\link[stats:residuals.glm]{stats::residuals.glm()}} for GLM models.}
 }
 \value{
-A numeric vector of residuals for scalar-response families, or an
-\code{n} by \code{Q} matrix of per-logit residuals for multinomial models.
+A numeric vector for GEE and other scalar-response models, or a
+numeric matrix with one row per observation and one column per
+non-reference category for multinomial models.
 }
 \description{
-A method for the generic \code{\link[stats:residuals]{stats::residuals()}}.
+Returns residuals from a fitted \code{\link[=mfp2]{mfp2()}} model. For GEE and multinomial
+models, \code{type} can be \code{"deviance"} (the default), \code{"pearson"},
+\code{"working"}, or \code{"response"}.
 }
 \details{
-For GEE models (\code{gee_family()}), \code{type = "deviance"} (the default, matching
-the GLM convention) returns deviance residuals
-\eqn{\mathrm{sign}(y-\mu)\sqrt{d(y,\mu)}} computed from the GEE marginal
-fitted mean \eqn{\mu} and the response family's deviance function. \code{geepack}
-does not itself provide deviance residuals, but they depend only on
-\eqn{y}, \eqn{\mu}, and prior weights -- not on the working correlation --
-so they are computed directly here. This matches the residual used by
-Stata's \code{fracplot} (after \code{mfp}) for the component-plus-residual plot, where
-the ith plotted point is \eqn{\hat\eta^{*}_i + d_i} with \eqn{d_i} the
-deviance residual. \code{type = "pearson"}, \code{"working"}, and \code{"response"} are
-delegated to \code{geepack} (after restoring the inner response family, which the
-stored \code{mfp2_gee_family} wrapper does not carry).
+For GEE models, residuals are based on the marginal fitted means.
+Deviance residuals are calculated from the response family's deviance
+function and the model's prior weights. Pearson, working, and response
+residuals are obtained from the underlying GEE fit.
 
-For multinomial models (\code{family = "multinomial"}), \code{nnet::multinom} supplies
-no residual method, so each non-reference logit is treated as a binary
-sub-problem and residuals are computed per logit. \code{type = "deviance"} (the
-default) returns binomial deviance residuals from the marginal class
-probabilities, matching the residual used by the component-plus-residual
-plot; \code{"pearson"}, \code{"working"}, and \code{"response"} use the corresponding binary
-definitions. The result is an \code{n} by \code{Q} matrix (one column per
-non-reference logit) rather than a vector.
+For multinomial models, residuals are calculated separately for each
+non-reference category. Each category is treated as a binary outcome,
+using its fitted class probability. The result has one column per
+non-reference category.
 
-All other families defer to the residual method of the underlying fit.
+For other models, residual calculation is passed to the underlying fit,
+including its choice of default residual type.
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=fracplot]{fracplot()}}
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=plot]{plot()}}, \code{\link[stats:residuals]{stats::residuals()}}
 }

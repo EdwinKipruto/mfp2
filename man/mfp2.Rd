@@ -446,6 +446,14 @@ five distinct values, a default or global \code{df} is capped at \code{2}, but
 an explicitly set predictor-specific value is retained. Selection may
 still omit a predictor or choose a simpler form. Predictors in \code{keep}
 cannot be omitted, but their functional forms may still be selected.
+A selected FP1 with power \code{1} has the same fitted basis as the fixed
+linear form, but retains the FP power-search degrees of freedom. The
+\code{fp_terms$searched_fp} column distinguishes these cases: \code{TRUE} means
+the final continuous form came from an FP candidate class; \code{FALSE} means
+it came from the fixed linear candidate or no continuous form was retained.
+The flag identifies the form that won selection, not whether FP candidates
+were considered. For a single-predictor term with power \code{1}, this gives
+\code{df_final = 2} for FP1 and \code{df_final = 1} for the fixed linear form.
 
 With \code{criterion = "pvalue"}, a closed-test-style procedure uses \code{select}
 for predictor inclusion and \code{alpha} for functional-form comparisons.
@@ -524,9 +532,19 @@ covariance uses the finite-cluster correction \eqn{K/(K-1)}, where
 With \code{criterion = "aic"} or \code{"bic"}, selection uses quasi-likelihood
 scores:
 
-\deqn{-2Q + 2p \quad\text{or}\quad -2Q + \log(K)p,}
+\deqn{-2Q/\phi + 2p \quad\text{or}\quad -2Q/\phi + \log(n)p,}
 
-respectively. Here \eqn{Q} is the quasi-likelihood, and \eqn{p} counts
+respectively. Here \eqn{Q} is the quasi-likelihood, \eqn{\phi} is a single
+reference dispersion shared by all comparisons, and \eqn{n} is the number
+of clusters by default (or observations if
+\code{gee_family(qbic_penalty = "observations")}).
+The reference dispersion is estimated once from a full model containing all
+predictors at their maximum allowed FP degrees, unless supplied through
+\code{gee_family(reference_dispersion = ...)}. Reference powers are fixed from
+the permitted sets before the one reference fit. Geepack continues to
+estimate scale for each GEE
+fit; that fitted scale is used for fitting and reporting, not for these
+information-criterion comparisons. \eqn{p} counts
 mean-model coefficients, including the intercept, plus an allowance for
 selecting FP powers. The first is an MFP-adjusted QICu score; the second
 is a package-specific BIC-like score.

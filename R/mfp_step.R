@@ -724,6 +724,17 @@ find_best_fpm_step <- function(x,
     }
   }
 
+  # GEE fits need an additional numerical column scale after the FP transform.
+  # The adjustment columns and every shared basis column remain unchanged
+  # throughout this search, so prepare their scaled copies only once. Linear,
+  # null, and non-compact GEE fits continue using fit_gee()'s ordinary path.
+  gee_scaling <- NULL
+  if (mfp2_family_is_gee(family_string) && use_compact_basis) {
+    gee_scaling <- prepare_gee_candidate_scaling(design_mat, basis)
+    design_mat <- gee_scaling$design
+    basis <- gee_scaling$basis
+  }
+
   # Step 4: Fit one model per candidate FP power set and score it ------------
   metric_names <- c(
     "logl",
@@ -786,7 +797,9 @@ find_best_fpm_step <- function(x,
   for (i in seq_len(n_candidates)) {
     if (i %in% linear_candidate) {
       metrics[i, ] <- mfp2_shift_selection_df(
-        linear_fit$metrics[1L, ], 1, n_obs
+        linear_fit$metrics[1L, ], 1, n_obs,
+        qbic_n = if (mfp2_family_is_gee(family_string))
+          family$prepared$qbic_n else n_obs
       )
       next
     }
@@ -801,6 +814,15 @@ find_best_fpm_step <- function(x,
         target_cols = as.integer(basis_target_cols)
       )
 
+      # Only the focal columns change between candidates. The remaining
+      # factors were computed once along with the scaled adjustment design.
+      gee_column_scales <- NULL
+      if (!is.null(gee_scaling)) {
+        gee_column_scales <- gee_scaling$column_scales
+        gee_column_scales[basis_target_cols] <-
+          gee_scaling$basis_scales[as.integer(candidate_map[i, ])]
+      }
+
       fit <- fit_candidate(
         x               = design_mat,
         y               = y,
@@ -811,6 +833,7 @@ find_best_fpm_step <- function(x,
         keep_coefficients = FALSE,
         multinomial_optimizer = multinomial_optimizer,
         gee_alpha_start = gee_alpha_start,
+        gee_column_scales = gee_column_scales,
         gee_selection_criterion = criterion,
         gee_allow_failed_candidate = mfp2_family_is_gee(family_string),
         ...
@@ -1056,10 +1079,11 @@ fit_null_step <- function(x,
 #' power-1 candidates, including GEE's robust selection deviance.
 #' @keywords internal
 #' @noRd
-mfp2_shift_selection_df <- function(metrics, additional, n_obs) {
+mfp2_shift_selection_df <- function(metrics, additional, n_obs,
+                                    qbic_n = n_obs) {
   metrics["df"] <- metrics["df"] + additional
   metrics["aic"] <- metrics["aic"] + 2 * additional
-  metrics["bic"] <- metrics["bic"] + log(n_obs) * additional
+  metrics["bic"] <- metrics["bic"] + log(qbic_n) * additional
   metrics["df_resid"] <- metrics["df_resid"] - additional
   metrics
 }
@@ -1139,7 +1163,9 @@ fit_linear_step <- function(x,
   }
   if (length(fp1_row) == 1L) {
     metrics <- rbind(linear = mfp2_shift_selection_df(
-      fp1_fit$metrics[fp1_row, ], -1, n_obs
+      fp1_fit$metrics[fp1_row, ], -1, n_obs,
+      qbic_n = if (mfp2_family_is_gee(family_string))
+        family$prepared$qbic_n else n_obs
     ))
     if (isTRUE(acdx[[xi]])) rownames(metrics) <- "linear(., A(x))"
     return(list(

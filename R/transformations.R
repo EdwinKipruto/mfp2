@@ -286,7 +286,8 @@ transform_vector_acd <- function(x,
                                  scale = 1,
                                  acd_parameter = NULL,
                                  name = NULL,
-                                 zero = FALSE) {
+                                 zero = FALSE,
+                                 check_binary = TRUE) {
 
   if (length(power) != 2)
     stop("! power must have length two.",
@@ -327,8 +328,12 @@ transform_vector_acd <- function(x,
     structural_zero_rows = structural_zero_rows,
     check_binary = FALSE
   )
+  # Prediction calls pass check_binary = FALSE: a single prediction row, or
+  # rows with two distinct values, must still receive the fitted FP power
+  # rather than being passed through as if the predictor were binary.
   x_fp <- transform_vector_fp(x = x, power = power[1], scale = scale,
-                              shift = shift, name = name, zero = zero)
+                              shift = shift, name = name, zero = zero,
+                              check_binary = check_binary)
 
   list(
     acd = cbind(x_fp, x_acd),
@@ -1329,7 +1334,8 @@ build_fp_acd_columns <- function(x, names_vars, power_list, acdx, zero,
         power = power_list[[name]],
         acd_parameter = acd_parameter_name,
         name = name,
-        zero = zero[[name]]
+        zero = zero[[name]],
+        check_binary = check_binary
       )
 
       x_trafo[[name]] <- acd$acd

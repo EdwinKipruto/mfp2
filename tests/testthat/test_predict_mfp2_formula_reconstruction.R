@@ -237,7 +237,8 @@ test_that("predict.mfp2() intercept-only models accept zero-column newdata", {
       type = "terms",
       terms = "group"
     ),
-    "All the terms supplied are not in the final model"
+    "predict(): requested term(s) not retained in the final model: `group`.",
+    fixed = TRUE
   )
   expect_identical(omitted_terms, list())
 })

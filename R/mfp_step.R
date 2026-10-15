@@ -26,187 +26,119 @@ mfp_pvalue_exceeds <- function(pvalue, threshold) {
     pvalue > threshold
 }
 
-
-#' Function to estimate the best FP functions for a single variable
+#' Select the best FP function for one variable
 #'
-#' See \code{mfp2()} for a brief summary on the notation used here and
-#' \code{fit_mfp()} for an overview of the fitting procedure.
+#' See \code{mfp2()} for the notation used here and \code{fit_mfp()} for the
+#' overall fitting procedure.
 #'
-#' @param x Numeric design matrix with one row per observation and raw columns
-#'   already expanded as needed. It excludes the intercept and is assumed to be
-#'   shifted and scaled.
-#' @param y a vector for the response variable or a `Surv` object.
-#' @param xi Character scalar naming the current conceptual term. For a
-#'   singleton continuous term its FP form is assessed; for a multi-column term
-#'   the complete fixed linear block is assessed jointly.
-#' @param term_to_columns Named list mapping each conceptual term to the raw
-#'   design-matrix columns that represent it. Multi-column entries are treated
-#'   as fixed linear blocks and tested jointly. The lookup is threaded
-#'   explicitly through every selection routine so grouped adjustment
-#'   terms are available during both linear and FP model searches.
-#' @param weights a vector of observation weights of length nobs.
-#' @param offset a vector of length nobs of offsets.
-#' @param df a numeric vector indicating the maximum degrees of freedom for the
-#' variable of interest `xi`.
-#' @param powers_current Named list with one selected-power state per
-#'   conceptual term, used for all adjustment terms in the current step.
-#' @param family A resolved likelihood-GLM, negative-binomial, Cox, parametric
-#'   survival, or Fine--Gray family specification supplied by the calling MFP
-#'   engine.
-#' @param family_string A character string representing the selected family,
-#'   e.g., "gaussian".
-#' @param criterion a character string defining the criterion used to select
-#' variables and FP models of different degrees.
-#' @param select Numeric scalar giving the nominal significance level used to
-#'   decide whether the current term `xi` is retained during MFP backfitting.
-#'   For a grouped categorical term, this value applies to the joint test of
-#'   its complete design-matrix block. A value of 1 forces the term to remain.
-#' @param alpha Numeric significance level for tests between FP models of
-#'   different degrees for `xi` and, for an eligible spike-at-zero term, for
-#'   the Stage-2 component-removal tests.
-#' @param keep a character vector with names of variables to be kept
-#' in the model.
-#' @param powers a named list of numeric values that sets the permitted FP
-#' powers for each covariate.
-#' @param method a character string specifying the method for tie handling in
-#' Cox regression.
-#' @param strata a factor of all possible combinations of stratification
-#' variables. Returned from [survival::strata()].
-#' @param nocenter a numeric vector with a list of values for fitting Cox
-#' models. See [survival::coxph()] for details.
-#' @param acdx Named logical vector with one value per conceptual term;
-#'   multi-column terms must be \code{FALSE}.
-#' @param ftest a logical indicating the use of the F-test for Gaussian models.
-#' @param control a list with parameters for model fit.
-#' @param rownames a parameter for Cox models.
-#' @param catzero A named list of exact-zero indicators. Each element is either
-#' `NULL` or an n x 1 integer/numeric matrix containing `I(x == 0)`. Non-NULL
-#' elements indicate variables for which that binary column is available.
-#' @param zero Named logical vector with one value per conceptual term,
-#'   indicating exact-zero handling for nonnegative singleton terms. Negative
-#'   values are rejected before this function is called.
-#' @param spike Named logical vector with one value per conceptual term,
-#'   indicating spike-at-zero handling for nonnegative singleton terms, with
-#'   `x == 0` defining the zero component and `x > 0` the positive component.
-#' @param acd_parameter Named list of ACD parameters produced by \code{fit_acd()},
-#' with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
-#' if an element is \code{NULL}, the variable was not specified in the
-#' \code{acdx} argument of \code{fit_mfp}.
-#' @param spike_decision Named vector indicating how spike-at-zero (SAZ)
-#' variables are handled. Each element corresponds to a variable and encodes
-#' the selected strategy: `1` = include FP for positive values plus binary SAZ,
-#' `2` = treat as continuous FP only, `3` = include binary SAZ only.
-#' @param prev_adj_params Named list storing adjustment metadata and reusable
-#' per-variable transformed blocks from previous steps for each focal variable.
-#' Complete assembled adjustment matrices are not retained between cycles.
-#' @param transform_cache Named list keyed by variable name. Each populated
-#'   entry stores that variable's normalized power key, spike decision, and
-#'   transformed adjustment block so it can be reused across focal variables
-#'   within one fit_mfp() call.
-#' @param force_max_fp A logical vector of length \code{nvars}, named by
-#'   variable name. If \code{TRUE} for a non-linear variable \code{xi},
-#'   \code{select_force_max_fp()} fits only the most complex functional form
-#'   allowed by \code{df}: the highest-likelihood FP model at the requested
-#'   degree for ordinary FP variables, or \code{FP1(x, A(x))} for ACD
-#'   variables. Null, linear, and lower-degree alternatives are not fitted
-#'   because variable selection and functional-form simplification are
-#'   explicitly bypassed for forced terms under p-value, AIC, and BIC
-#'   selection. For an eligible spike-at-zero term, forcing applies to the
-#'   complete maximum SAZ representation: the maximum continuous component
-#'   plus its binary zero indicator. SAZ stage 2 is therefore skipped because
-#'   its only purpose is to compare reduced component representations. The best
-#'   power combination within the forced form is still determined by
-#'   \code{find_best_fpm_step()}.
-#' @param has_offset logical indicating whether an offset was specified before
-#' missing offsets were replaced by zeros internally.
-#' @param n_obs Numeric; number of observations (or observed events, for Cox
-#' models), used for AIC/BIC-based selection and small-sample F-tests.
-#' @param precomputed_adj Optional internal adjustment object returned by
-#' \code{build_adjustment_step()}. When supplied, adjustment-variable
-#' transformations are reused and only current-variable candidate
-#' transformations are generated. \code{find_best_fp_step()} itself does not
-#' take this argument; it is documented here because several sibling
-#' functions below (\code{find_best_fpm_step()}, \code{fit_null_step()},
-#' \code{fit_linear_step()}, \code{select_linear()}, \code{select_ra2()},
-#' \code{select_ra2_acd()}, \code{select_force_max_fp()}, \code{select_ic()},
-#' \code{select_ic_acd()}) use
-#' \code{@@inheritParams find_best_fp_step} and rely on this entry.
-#' @param focal_basis_cache Optional selector-scoped numerical basis for the
-#' focal variable. Information-criterion selectors build this once at their
-#' maximum required degree and pass it to lower-degree searches. Candidate
-#' powers/order are still generated separately for each degree; only the
-#' n-length transformed basis columns are reused. This cache is internal and
-#' must refer to the same training observations, structural-zero handling, and
-#' variable-specific allowed powers as the current focal term.
-#' @param verbose a logical; run in verbose mode.
+#' @param x Numeric design matrix with one row per observation and expanded
+#'   columns, excluding the intercept. Ordinary FP variables have been shifted
+#'   and scaled; active ACD variables are shifted but use scale 1.
+#' @param y Response vector or \code{Surv} object.
+#' @param xi Name of the term being assessed. A continuous term may take an FP
+#'   form; a term represented by several columns is assessed as one fixed
+#'   linear group.
+#' @param term_to_columns Named list identifying the columns belonging to each
+#'   term. Grouped terms are tested jointly.
+#' @param weights Observation weights.
+#' @param offset Observation offsets.
+#' @param df Numeric scalar giving the maximum selection degrees of freedom
+#'   for \code{xi}. A value of 1 restricts the term to a linear form.
+#' @param powers_current Named list containing the current form of each term.
+#'   The forms of other terms are used when assessing \code{xi}.
+#' @param family Resolved model family supplied by the fitting procedure.
+#' @param family_string Name of the selected family, such as
+#'   \code{"gaussian"}.
+#' @param criterion Selection criterion: \code{"pvalue"}, \code{"aic"}, or
+#'   \code{"bic"}.
+#' @param select Significance level for retaining \code{xi} when using
+#'   \code{"pvalue"}. A grouped term is tested as a whole. A value of 1
+#'   forces the term to remain.
+#' @param alpha Significance level for choosing among forms when using
+#'   \code{"pvalue"}. For an eligible spike-at-zero term, it also applies
+#'   to the Stage-2 tests of its separate components.
+#' @param keep Names of terms that must remain in the model.
+#' @param powers Named list of permitted FP powers for each variable.
+#' @param method Method for handling tied event times in Cox regression.
+#' @param strata Factor identifying combinations of stratification variables.
+#' @param nocenter Values exempted from centering in Cox models; see
+#'   \code{survival::coxph()}.
+#' @param acdx Named logical vector indicating which terms use ACD.
+#'   Terms represented by several columns must have value \code{FALSE}.
+#' @param ftest Whether to use F-tests for Gaussian models.
+#' @param control Model-fitting controls.
+#' @param rownames Row names used when fitting Cox models.
+#' @param catzero Named list of exact-zero indicators. Each entry is
+#'   \code{NULL} or a one-column matrix indicating which values equal zero.
+#' @param zero Named logical vector indicating exact-zero handling for
+#'   eligible nonnegative terms.
+#' @param spike Named logical vector indicating spike-at-zero handling for
+#'   eligible nonnegative terms. Zero and positive values form the two parts.
+#' @param acd_parameter Named list of ACD parameters, with one entry per term.
+#'   An entry is \code{NULL} when ACD is not active for that term.
+#' @param spike_decision Named vector describing the selected form for each
+#'   spike-at-zero term: \code{1} retains both the positive-value effect and
+#'   the zero indicator; \code{2} retains the positive-value effect only; and
+#'   \code{3} retains the zero indicator only.
+#' @param prev_adj_params Information from earlier steps that can be reused
+#'   when assessing other terms.
+#' @param transform_cache Previously prepared forms of individual terms that
+#'   can be reused during the current fit.
+#' @param force_max_fp Named logical vector indicating terms that must use
+#'   their fullest permitted form. A term restricted to \code{df = 1} remains
+#'   linear. For other terms, the permitted powers are searched within the
+#'   maximum form, without comparing that form with simpler alternatives.
+#'   An eligible spike-at-zero term retains both its positive-value effect
+#'   and zero indicator.
+#' @param has_offset Whether an offset was supplied before missing offsets
+#'   were replaced with zeros internally.
+#' @param n_obs Size used for model comparisons. This is usually the number
+#'   of observations. It is the number of observed events for Cox models,
+#'   selected events for Fine--Gray models, effective observations for
+#'   multinomial models, and independent groups for GEE models.
+#' @param fitter Model-fitting method supplied by the calling procedure.
+#' @param precomputed_adj Previously prepared information about the other
+#'   terms, used by lower-level fitting functions. This is not an argument
+#'   to \code{find_best_fp_step()} itself.
+#' @param focal_basis_cache Previously prepared values for the term being
+#'   assessed, used by lower-level searches. They must correspond to the
+#'   current observations, zero handling, and permitted powers.
+#' @param verbose Whether to print details of the selection step.
 #'
 #' @details
-#' The function selection procedure (FSP) is used if the p-value criterion is
-#' chosen, whereas the criteria AIC and BIC select the model with the smallest
-#' AIC and BIC, respectively.
+#' Each term is assessed while accounting for the current forms of the other
+#' terms. Terms are reconsidered in later cycles, so a term removed in one
+#' cycle may be selected again. Each term starts with a linear form, but its
+#' configured maximum \code{df} is available from the first cycle.
 #'
-#' It uses transformations for all other variables to assess the FP form of
-#' the current variable of interest. This function covers three main use cases:
+#' With \code{criterion = "pvalue"}, the function selection procedure tests
+#' whether to retain a term and whether its form can be simplified. A term
+#' restricted to \code{df = 1} is assessed by comparing its linear form with
+#' its exclusion. The columns of a grouped term are assessed together.
 #'
-#' * the linear case (`df = 1`) to test between null and linear models (see
-#' \code{select_linear()}). This step differs from the mfp case because
-#' linear models only use 1 df, while estimation of (every) fp power adds
-#' another df. This is also the case applied for categorical variables for
-#' which `df` are set to 1.
-#' * the case that an acd transformation is requested (`acdx` is `TRUE`
-#' for `xi`) for the variable of interest (see \code{find_best_fpm_step()}).
-#' * the (usual) case of the normal mfp algorithm to assess non-linear
-#' functional forms (see \code{find_best_fpm_step()}).
+#' With \code{"aic"} or \code{"bic"}, eligible forms are compared using the
+#' chosen criterion. Eligible spike-at-zero terms are assessed by comparing
+#' their available combinations of positive-value and zero-indicator effects.
+#' Under \code{"pvalue"}, a selected, non-forced spike-at-zero term instead
+#' has a second stage of tests for those effects.
 #'
-#' Note that these cases do not encompass the setting that a variable is not
-#' selected, because the evaluation is done for each variable in each cycle.
-#' A variable which was de-selected in earlier cycles may be added to the
-#' working model again. Also see \code{find_best_fp_cycle()}.
+#' A term marked by \code{force_max_fp} keeps its fullest permitted form under
+#' any criterion. The permitted powers within that form are still searched.
 #'
-#' The adjustment in each step uses the current fp powers given in
-#' `powers_current` for all other variables to determine the adjustment set
-#' and transformations in the  working model.
-#'
-#' Note that the algorithm starts by setting all `df = 1`, and higher fps
-#' are evaluated in turn starting from the first step in the first cycle.
-#'
-#' @section Functional form selection:
-#' There are 3 criteria to decide for the current best functional form of a
-#' continuous variable.
-#'
-#' The first option for `criterion = "pvalue"` is the function selection
-#' procedure as outlined in e.g. Chapters 4 and 6 of Royston and
-#' Sauerbrei (2008), also abbreviated as "RA2".
-#' It is a closed testing procedure and is implemented in \code{select_ra2()} and
-#' extended for ACD transformation in \code{select_ra2_acd()} according to
-#' Royston and Sauerbrei (2016).
-#'
-#' For the other criteria `aic` and `bic`, ordinary selection fits FP models
-#' up to the desired degree and chooses the model with the lowest information
-#' criterion via \code{select_ic()} (or \code{select_ic_acd()} for ACD).
-#' Across all three criteria, `force_max_fp` is handled before the ordinary
-#' selectors are dispatched: \code{select_force_max_fp()} fits only the
-#' predetermined maximum functional form and therefore avoids model fits that
-#' cannot affect the result. For an eligible spike-at-zero variable, the forced
-#' result is the complete maximum SAZ representation (maximum continuous form
-#' plus binary zero indicator), so the reduced-component comparisons of SAZ
-#' stage 2 are also bypassed.
-#'
-#' @return
-#' A numeric vector indicating the best powers for `xi`. Entries can be
-#' `NA` if variable is to be removed from the working model. Note that this
-#' vector may include up to two `NA` entries when ACD transformation is
-#' requested, but otherwise is either a vector with all numeric entries, or a
-#' single `NA`.
+#' @return A list containing \code{power_best}, \code{searched_fp},
+#'   \code{spike_decision}, \code{current_adj_params}, and
+#'   \code{transform_cache}. A missing value in \code{power_best} may mean
+#'   that the term was removed or that only its zero indicator was retained.
+#'   Consult \code{spike_decision} to distinguish these cases.
 #'
 #' @references
-#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
-#' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
-#' for Modelling Continuous Variables. John Wiley & Sons.}\cr
+#' Royston, P. and Sauerbrei, W. (2008). \emph{Multivariable Model-Building:
+#' A Pragmatic Approach to Regression Analysis Based on Fractional
+#' Polynomials for Modelling Continuous Variables}. John Wiley & Sons.
 #'
-#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
-#' ACD covariate transformation for enhanced parametric multivariable modeling.
-#' The Stata Journal, 16(1), pp.72-87.}
+#' Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD
+#' covariate transformation for enhanced parametric multivariable modeling.
+#' \emph{The Stata Journal}, 16(1), 72--87.
 #' @keywords internal
 #' @noRd
 find_best_fp_step <- function(x,
@@ -242,7 +174,8 @@ find_best_fp_step <- function(x,
                               n_obs,
                               verbose,
                               term_to_columns,
-                              fitter = "base") {
+                              fitter = "base",
+                              step_memo = NULL) {
 
   # `fit_mfp()` constructs the complete conceptual-term lookup once and the
   # backfitting cycle passes it explicitly through every selection routine.
@@ -350,7 +283,39 @@ find_best_fp_step <- function(x,
     select_fct <- if (criterion_lower == "pvalue") select_ra2 else select_ic
   }
 
-  fit1 <- do.call(select_fct, selector_args)
+  # Reuse the previous search for xi when nothing that defines its adjustment
+  # model has changed since then (see fit_mfp()). The search depends only on
+  # run-constant inputs plus the current forms of the other terms and the SAZ
+  # decisions, so the selector result is identical. SAZ terms are excluded
+  # because their stage 2 needs the uncompacted adjustment matrices.
+  fit1 <- NULL
+  memo_key <- NULL
+  if (is.environment(step_memo) && !isTRUE(spike[[xi]])) {
+    other_powers <- powers_current
+    other_powers[[xi]] <- NULL
+    memo_key <- list(
+      df = df,
+      powers = lapply(other_powers, unname),
+      spike_decision = spike_decision
+    )
+    cached <- step_memo[[xi]]
+    if (!is.null(cached) && identical(cached$key, memo_key)) {
+      fit1 <- cached$fit1
+      fit1$transform_cache <- transform_cache
+    }
+  }
+  if (is.null(fit1)) {
+    fit1 <- do.call(select_fct, selector_args)
+    if (!is.null(memo_key)) {
+      stored <- fit1
+      stored$transform_cache <- NULL
+      if (!is.null(stored$current_adj_params[[xi]])) {
+        stored$current_adj_params[[xi]] <-
+          compact_prev_adj_cache_entry(stored$current_adj_params[[xi]])
+      }
+      assign(xi, list(key = memo_key, fit1 = stored), envir = step_memo)
+    }
+  }
 
   if (verbose) {
     print_mfp_step(xi = xi, criterion = criterion, fit = fit1)
@@ -510,52 +475,64 @@ selected_step_is_searched_fp <- function(fit) {
 
 #' Find the best FP function of a given degree for one variable
 #'
-#' Handles FP1 and higher-order FP candidates. For parameter definitions, see
+#' Searches FP1 or higher-degree FP candidates. For parameter definitions, see
 #' \code{find_best_fp_step()}.
 #'
 #' @details
-#' All power combinations considered within one FP degree have the same MFP
-#' selection degrees of freedom. Likelihood-based models therefore select the
-#' combination with the largest log-likelihood. GEE models normally select the
-#' combination with the largest quasi-likelihood \eqn{Q}; this is also
-#' equivalent to minimizing QICu or QBIC within a fixed degree because their
-#' penalty is constant. Stata-compatible GEE p-value selection is the explicit
-#' exception: it selects the smallest negative overall robust Wald chi-square,
-#' matching Stata \code{mfp: xtgee}.
+#' Within a given FP degree, the candidate power combinations have the same
+#' selection degrees of freedom. Likelihood-based models therefore choose the
+#' candidate with the largest log-likelihood. For GEE models selected by AIC or
+#' BIC, the function chooses the largest quasi-likelihood \eqn{Q}. Within a
+#' fixed degree, this also minimizes QICu or QBIC because the penalty is
+#' constant. Stata-compatible GEE p-value selection is the exception: it
+#' chooses the smallest negative overall robust Wald chi-square.
 #'
-#' Estimating each FP power is assigned an additional selection degree of
-#' freedom. Thus FP1 is treated as having 2 df, FP2 as having 4 df, and,
-#' generally, FPm as having 2m df.
+#' Each selected FP power adds one selection degree of freedom beyond its
+#' fitted coefficient. The FP part of FP1 therefore has 2 selection degrees
+#' of freedom, FP2 has 4, and FPm has \eqn{2m}. A separate zero indicator,
+#' when included, adds its own fitted coefficient.
 #'
-#' When `degree = 1`, the complete supplied power set is searched, including
-#' power 1. The separately fitted linear model and searched FP1(power 1) have
-#' the same fitted mean function but different selection roles: linear is fixed
-#' at 1 df, while FP1 is assigned 2 df because its power was selected from the
-#' candidate set. This convention is applied consistently under p-value and
-#' information-criterion selection, GEE, ACD, SAZ, forced FP fits, and MFPI.
+#' When \code{degree = 1}, the function searches every power in the supplied
+#' set. Power 1 is included only if that set contains it. A fixed linear
+#' model and a searched FP1 model with power 1 have the same fitted mean
+#' function, but different selection degrees of freedom: the fixed linear
+#' form has 1, while the searched FP1 form has 2. If a matching linear fit is
+#' supplied, its fitted-model results can be reused with the additional FP
+#' selection degree of freedom. This distinction also applies when the
+#' function is used in GEE, ACD, spike-at-zero, forced-FP, or MFPI selection.
+#'
+#' Candidates that cannot be fitted are skipped. Selection is made among the
+#' candidates with valid results.
 #'
 #' @section ACD transformation:
-#' This function also handles ACD transformations when `acdx` is `TRUE` for
-#' `xi`. With `degree = 1`, 8 models are assessed; with `degree = 2`, 64 models
-#' are assessed, compared with 36 degree-2 models without ACD. Other FP degrees
-#' are not currently supported with ACD transformations.
+#' The function also searches ACD forms when \code{acdx} is \code{TRUE} for
+#' \code{xi}. With the default set of eight powers, degree 1 generates 8
+#' candidates and degree 2 generates 64 candidates. Without ACD, the same
+#' default set generates 36 degree-2 candidates. A restricted power set
+#' changes these counts. ACD degrees above 2 are not supported.
 #'
 #' @return A list containing:
-#' * `acd`: whether an ACD transformation was applied.
-#' * `powers`: FP powers investigated in the step.
-#' * `power_best`: numeric vector containing the selected power or powers.
-#' * `metrics`: performance indices for all investigated models.
-#' * `model_best`: row index of the selected model in `metrics`.
-#' * `zero`: whether the zero transformation was applied.
-#' * `catzero`: whether a zero indicator was included with the transformation.
-#' * `current_adj_params`: cached selected focal and adjustment transformations.
+#' \itemize{
+#'   \item \code{acd}: whether ACD was active for the variable.
+#'   \item \code{powers}: a matrix of the candidate power combinations.
+#'   \item \code{power_best}: the selected power or powers.
+#'   \item \code{metrics}: a matrix of results for the candidates; entries
+#'     for candidates that could not be fitted remain missing.
+#'   \item \code{model_best}: the row number of the selected candidate in
+#'     \code{metrics}.
+#'   \item \code{zero}: whether exact-zero handling was active.
+#'   \item \code{catzero}: whether a zero indicator was included.
+#'   \item \code{current_adj_params}: information about the selected term
+#'     and adjustment terms that can be reused in later steps.
+#' }
 #'
 #' @inheritParams find_best_fp_step
-#' @param degree FP degree `m`, equal to the number of transformed power terms.
-#' @param linear_fit An already fitted linear step for the same focal variable
-#'   and adjustment set, if available. Its power-1 metrics are reused with the
-#'   extra FP selection degree of freedom.
-#' @param ... Parameters passed to `fit_model()`.
+#' @param degree FP degree \code{m}, equal to the number of transformed power
+#'   terms.
+#' @param linear_fit An existing linear fit for the same variable and
+#'   adjustment terms, if available. Its results are reused for the power-1
+#'   candidate when that candidate is present.
+#' @param ... Arguments passed to \code{fit_model()}.
 #' @keywords internal
 #' @noRd
 find_best_fpm_step <- function(x,
@@ -582,21 +559,21 @@ find_best_fpm_step <- function(x,
                                linear_fit = NULL,
                                ...
 ) {
-  # The conceptual-term lookup is normalized once in fit_mfp() and passed
-  # explicitly so every FP candidate uses the same focal and adjustment
-  # raw-column blocks.
-  # n_obs (number of observations, or target events for PH models) is computed once
-  # in fit_mfp() and passed down as a parameter, rather than recomputed here.
+  # fit_mfp() prepares the mapping from terms to design-matrix columns and
+  # passes it through the selection steps. This keeps grouped terms together
+  # when fitting the focal term and the adjustment terms.
+  #
+  # fit_mfp() also calculates n_obs once. It is usually the number of
+  # observations, but may be an event count, an effective observation count,
+  # or a cluster count, depending on the model.
 
-  # Step 1: Use the complete supplied degree-1 candidate set for xi ----------
-  # In particular, p = 1 remains a searched FP1 candidate. It is not inserted
-  # when absent from a restricted user-supplied set.
+  # Search the powers supplied for xi. A degree-1 search includes power 1
+  # only when it is present in that set; it is not added automatically.
 
-  # Step 2: Generate candidate FP/ACD transformations for xi and the current
-  # adjustment set (or reuse precomputed_adj if the caller already built it).
-  # Both ordinary FP and ACD searches now use compact shared bases. Only the
-  # winning candidate is materialized after the search for downstream SAZ/cache
-  # consumers that genuinely need a complete focal matrix.
+  # Prepare candidate transformations for xi and the current adjustment
+  # terms. Reuse precomputed adjustment data when available. Ordinary FP
+  # and ACD searches normally share a compact basis across candidates;
+  # the selected candidate is assembled in full after the search.
   x_transformed <- transform_data_step(
     x = x, xi = xi, df = 2 * degree, powers_current = powers_current,
     powers = powers, acdx = acdx, zero = zero, catzero = catzero,
@@ -614,6 +591,10 @@ find_best_fpm_step <- function(x,
   # `data_adj = NULL` beside `data_adj_list`, and partial `$` matching must
   # never substitute the per-variable list for the assembled numeric matrix.
   data_adj <- x_transformed[["data_adj", exact = TRUE]]
+  # data_fp is NULL by design during an FP or ACD search. find_best_fpm_step()
+  # requests a compact representation, so transform_data_step() puts the
+  # candidates in fp_basis or acd_basis instead of building a separate full
+  # matrix for every candidate.
   data_fp <- x_transformed$data_fp
   fp_basis <- x_transformed$fp_basis
   acd_basis <- x_transformed$acd_basis
@@ -654,7 +635,7 @@ find_best_fpm_step <- function(x,
   x_has_intercept <- mfp2_candidate_matrix_has_intercept(family_string)
 
 
-  # Step 3: Build a reusable design-matrix template ---------------------------
+  # Build a reusable design-matrix template ---------------------------
   # Compact FP and ACD candidates no longer exist as lists of complete n x
   # degree matrices. All unique transformed terms live in one shared basis, and
   # each candidate is represented by one row of a small integer candidate_map.
@@ -969,24 +950,25 @@ find_best_fpm_step <- function(x,
   )
 }
 
-#' Function to fit a null model excluding variable of interest
+#' Fit a model without the current term
 #'
-#' "Null" model here refers to a model which does not include the variable
-#' of interest `xi`.
-#' For parameter definitions, see \code{find_best_fp_step()}. All parameters
-#' captured by `...` are passed on to \code{fit_model()}.
+#' Fits a model using the current adjustment terms while excluding \code{xi}
+#' and any columns belonging to it. The adjustment data are built from the
+#' current forms of the other terms, or reused when already available.
 #'
-#' @return
-#' A list with three entries:
-#'
-#' * `powers`: FP power(s) of `xi` in fitted model - in this case `NA`.
-#' * `metrics`: A matrix with performance indices for fitted model.
-#' * `current_adj_params`: Adjustment-variable transformations for `xi`,
-#'   cached for reuse in later steps (see \code{prev_adj_params} in
-#'   \code{find_best_fp_step()}).
+#' @return A list with three entries:
+#' \itemize{
+#'   \item \code{powers}: \code{NA}, indicating that \code{xi} is absent.
+#'   \item \code{metrics}: a one-row matrix, labelled \code{null}, containing
+#'     the fitted model's performance measures.
+#'   \item \code{current_adj_params}: adjustment-term powers, spike decisions,
+#'     and transformed data, stored under \code{xi} for reuse in later steps.
+#' }
 #'
 #' @inheritParams find_best_fp_step
-#' @param ... Parameters passed to `fit_model()`.
+#' @param precomputed_adj Previously prepared adjustment data. If \code{NULL},
+#'   the function builds the adjustment data for this step.
+#' @param ... Additional arguments passed to \code{fit_model()}.
 #' @keywords internal
 #' @noRd
 fit_null_step <- function(x,
@@ -1056,7 +1038,7 @@ fit_null_step <- function(x,
 
   # fit null model
   # i.e. a model that does not contain xi but only adjustment variables
-  # In addition, adjustment model can be NULL, so we have intercept only
+  # In addition, adjustment model can be NULL, so we have an intercept only
   model_null <- fit_model(x = x_tran,
                           y = y,
                           family = family,
@@ -1074,9 +1056,32 @@ fit_null_step <- function(x,
   )
 }
 
-#' Adjust only the selection degrees of freedom of an already fitted model.
-#' The fit likelihood, deviance, and rank are shared by the linear and FP1
-#' power-1 candidates, including GEE's robust selection deviance.
+#' Change the selection degrees of freedom without refitting a model
+#'
+#' A fixed linear term and a searched FP1 term with power 1 produce the same
+#' fitted model, but the FP1 term receives one additional selection degree of
+#' freedom because its power was chosen from a candidate set. This function
+#' adjusts the scores for that difference while leaving the fitted likelihood
+#' and deviance unchanged. It can also reverse the adjustment.
+#'
+#' The same calculation applies to GEE scores. Its robust Wald selection
+#' deviance is left unchanged; only the degree-of-freedom count and associated
+#' penalties are adjusted.
+#'
+#' @param metrics Named numeric vector of model scores, including \code{df},
+#'   \code{aic}, \code{bic}, and \code{df_resid}.
+#' @param additional Number of selection degrees of freedom to add. Use
+#'   \code{1} to change a fixed linear score to a searched FP1 score, or
+#'   \code{-1} for the reverse change.
+#' @param n_obs Sample size used as the default BIC penalty count when
+#'   \code{qbic_n} is not supplied.
+#' @param qbic_n Count used in the BIC penalty. This may differ from
+#'   \code{n_obs} for GEE.
+#'
+#' @return The updated named score vector. \code{df} increases by
+#'   \code{additional}, \code{df_resid} decreases by the same amount,
+#'   \code{aic} changes by twice that amount, and \code{bic} changes by
+#'   \code{log(qbic_n)} times that amount. Other entries are unchanged.
 #' @keywords internal
 #' @noRd
 mfp2_shift_selection_df <- function(metrics, additional, n_obs,
@@ -1088,31 +1093,36 @@ mfp2_shift_selection_df <- function(metrics, additional, n_obs,
   metrics
 }
 
-
-#' Function to fit linear model for variable of interest
+#' Fit the current term in its fixed linear form
 #'
-#' "Linear" model here refers to a model that includes the variable
-#' of interest \code{xi} with an FP (fractional polynomial) power of 1.
-#' Note that \code{xi} may be ACD-transformed if indicated by \code{acdx[xi]}.
-#' If the variable was passed through the \code{catzero} argument in \code{mfp2()},
-#' both the continuous variable and its corresponding binary indicator
-#' will be included in the model as linear terms.
-#' For parameter definitions, see \code{find_best_fp_step}.
-#' All parameters captured by \code{...} are passed to \code{fit_model}.
+#' Fits \code{xi} alongside the current adjustment terms. An ordinary numeric
+#' term enters with power 1. When ACD is active, the linear form uses
+#' \code{A(x)}. A grouped term enters as its complete fixed linear block.
+#' If an exact-zero indicator is active for \code{xi}, that indicator is
+#' included alongside the term.
 #'
-#' @return
-#' A list with three entries:
+#' If a supplied FP1 search already fitted the matching power-1 candidate,
+#' its results are reused. The FP1 selection degree of freedom is removed
+#' from the reported scores because this function represents a fixed form.
+#' Otherwise, the function fits and scores the linear model directly.
 #'
-#' * `powers`: FP power(s) of `xi` (or its ACD transformation) in fitted model.
-#' * `metrics`: A matrix with performance indices for fitted model.
-#' * `current_adj_params`: Adjustment-variable transformations for `xi`,
-#'   cached for reuse in later steps (see \code{prev_adj_params} in
-#'   \code{find_best_fp_step()}).
+#' @return A list with three entries:
+#' \itemize{
+#'   \item \code{powers}: a matrix describing the fixed form of \code{xi}.
+#'   \item \code{metrics}: a one-row matrix of model scores.
+#'   \item \code{current_adj_params}: the transformed focal and adjustment
+#'     data and related information for reuse in later steps.
+#' }
+#'
 #' @inheritParams find_best_fp_step
-#' @param ... Parameters passed to `fit_model()`.
+#' @param precomputed_adj Previously prepared adjustment data. If \code{NULL},
+#'   the adjustment data are prepared during this step.
+#' @param fp1_fit Results from an FP1 search for the same term and adjustment
+#'   set. Its power-1 candidate is reused when present.
+#' @param ... Additional arguments passed to \code{fit_model()} when a new
+#'   model fit is needed.
 #' @keywords internal
 #' @noRd
-#' @param fp1_fit An already searched FP1 step whose power-1 fit can be reused.
 fit_linear_step <- function(x,
                             xi,
                             y,
@@ -1129,10 +1139,11 @@ fit_linear_step <- function(x,
                             prev_adj_params,
                             has_offset,
                             n_obs,
-                            ...,
                             precomputed_adj = NULL,
                             fp1_fit = NULL,
-                            term_to_columns) {
+                            term_to_columns,
+                            ...
+                            ) {
   # n_obs (number of observations, or target events for PH models) is computed once
   # in fit_mfp() and passed down as a parameter, rather than recomputed here.
 
@@ -1147,6 +1158,7 @@ fit_linear_step <- function(x,
     precomputed_adj = precomputed_adj,
     term_to_columns = term_to_columns
   )
+
   x_transformed$current_params[[xi]]$data_xi <- x_transformed$data_fp[[1]]
 
   # An FP1 search may have preceded this rung (the df = 2 closed test).
@@ -1219,8 +1231,9 @@ fit_linear_step <- function(x,
     )
   )
 
-  if (acdx[xi])
+  if (acdx[xi]) {
     rownames(metrics) <- "linear(., A(x))"
+  }
 
   list(
     powers = x_transformed$powers_fp,
@@ -1229,56 +1242,52 @@ fit_linear_step <- function(x,
   )
 }
 
-#' Helper function to select between null and linear term for a single variable
+#' Choose between excluding a term and fitting its fixed linear form
 #'
-#' To be used in \code{find_best_fp_step()}. Only used if `df = 1` for a variable.
-#' Handles all criteria for selection.
-#' For parameter explanations, see \code{find_best_fp_step()}. All parameters
-#' captured by `...` are passed to \code{fit_model()}.
+#' Used when \code{xi} is restricted to a linear form. The function fits two
+#' models with the same adjustment terms: one excludes \code{xi}, and the
+#' other includes it. A term represented by several columns is included or
+#' excluded as a whole. If an exact-zero indicator is active for \code{xi},
+#' the included model contains both the term and that indicator.
+#'
+#' The adjustment terms are prepared once and shared by both fits. The
+#' function also supports a fixed linear ACD form.
 #'
 #' @details
-#' This function assesses a single variable of interest `xi` regarding its
-#' functional form in the current working model as indicated by
-#' `powers_current`, with the choice between excluding `xi` ("null model") and
-#' including a linear term ("linear fp") for `xi`.
+#' If \code{xi} is in \code{keep}, the included model is selected. Otherwise,
+#' \code{"pvalue"} selection uses the null-versus-linear test and
+#' \code{select}; \code{"aic"} and \code{"bic"} select the model with the
+#' smaller corresponding score. The test statistic and p-value are calculated
+#' for all three criteria, but do not determine AIC or BIC selection.
 #'
-#' Note that this function handles an ACD transformation for `xi` as well.
+#' @return A list containing:
+#' \itemize{
+#'   \item \code{keep}: whether \code{xi} is in \code{keep}.
+#'   \item \code{acd}: whether ACD is active for \code{xi}.
+#'   \item \code{powers}: a two-row matrix describing the excluded and
+#'     included models.
+#'   \item \code{power_best}: the powers in the selected row. An entirely
+#'     missing result indicates exclusion; an ACD form may contain a missing
+#'     entry for an unused component.
+#'   \item \code{metrics}: a two-row matrix of model scores, in the same
+#'     order as \code{powers}.
+#'   \item \code{model_best}: the row number of the selected model.
+#'   \item \code{pvalue} and \code{statistic}: results of the
+#'     null-versus-linear comparison.
+#'   \item \code{is_gee}: whether the model uses GEE.
+#'   \item \code{zero}, \code{catzero}, and \code{spike}: the settings for
+#'     exact-zero handling and spike-at-zero treatment.
+#'   \item \code{current_adj_params}: information from the selected fit
+#'     that can be reused in later steps.
+#'   \item \code{transform_cache}: reusable transformed adjustment terms.
+#' }
 #'
-#' When a variable is forced into the model by including it in `keep`, then
-#' this function will not exclude it from the model (by setting its power to
-#' `NA`), but will only choose the linear model.
-#'
-#' @return
-#' A list with several components:
-#'
-#' * `keep`: logical indicating if `xi` is forced into model.
-#' * `acd`: logical indicating if an ACD transformation was applied for `xi`.
-#' * `powers`: fp powers investigated in step, indexing `metrics`.
-#' * `power_best`: a numeric vector with the best power found. The returned
-#' best power may be `NA`, indicating the variable has been removed from the
-#' model.
-#' * `metrics`: a matrix with performance indices for all models investigated.
-#' Same number of rows as, and indexed by, `powers`.
-#' * `model_best`: row index of best model in `metrics`.
-#' * `pvalue`: p-value for comparison of linear and null model.
-#' * `statistic`: test statistic used, depends on `ftest`.
-#' * `zero`: Logical indicating whether a zero transformation was applied to \code{xi}.
-#'   In this case, exact-zero values of \code{xi} remain zero before transformation,
-#'   and only positive values were transformed.
-#' * `catzero`: Logical indicating whether a combination of a zero transformation
-#'   and a binary indicator variable was applied to \code{xi}. This means that
-#'   exact-zero values of \code{xi} remain zero, only positive values are
-#'   transformed, and an additional binary variable was created to indicate
-#'   whether \code{xi} was exactly zero or positive.
-#' * `spike`: Logical; whether `xi` is (still) treated as a spike-at-zero
-#'   variable, carried through from the `spike` argument.
-#' * `current_adj_params`: Adjustment-variable transformations for `xi` from
-#'   whichever of the null/linear models was selected, cached for reuse in
-#'   later steps (see \code{prev_adj_params} in \code{find_best_fp_step()}).
-#' @param degree not used.
-#' @param force_max_fp not used
-#' @param ... passed to fitting functions.
 #' @inheritParams find_best_fp_step
+#' @param degree Not used; the included form is fixed as linear.
+#' @param force_max_fp Not used directly. The caller handles this setting
+#'   before invoking this function.
+#' @param ... Additional arguments passed through the two fitting helpers
+#'   to \code{fit_model()}.
 #' @keywords internal
 #' @noRd
 select_linear <- function(x,
@@ -1354,10 +1363,11 @@ select_linear <- function(x,
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y,
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family, family_string = family_string, zero = zero, catzero = catzero,
-    spike_decision = spike_decision, has_offset = has_offset, spike = spike,
-    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params,
-    precomputed_adj = precomputed_adj, n_obs = n_obs, term_to_columns = term_to_columns, ...
+    family = family, family_string = family_string, zero = zero,
+    catzero = catzero, spike_decision = spike_decision, has_offset = has_offset,
+    spike = spike, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, precomputed_adj = precomputed_adj,
+    n_obs = n_obs, term_to_columns = term_to_columns, ...
   )
 
   # Model 2: Linear model (xi included with FP power fixed at 1).
@@ -1461,82 +1471,75 @@ select_linear <- function(x,
   )
 }
 
-#' Function selection procedure based on closed testing procedure
+#' Select a fractional-polynomial form using closed tests
 #'
-#' Used in \code{find_best_fp_step()} when `criterion = "pvalue"`.
-#' For parameter explanations, see \code{find_best_fp_step()}. All parameters
-#' captured by `...` are passed to \code{fit_model()}.
+#' Used by \code{find_best_fp_step()} for a non-ACD term when
+#' \code{criterion = "pvalue"}. The function compares the best FP model at
+#' the requested maximum degree with successively simpler forms.
 #'
 #' @details
-#' In case `criterion = "pvalue"` the function selection procedure as outlined
-#' in Chapters 4 and 6 of Royston and Sauerbrei (2008) is used.
+#' The adjustment terms keep their current forms throughout these comparisons.
+#' Within each FP degree, \code{find_best_fpm_step()} first selects the best
+#' permitted power combination. For GEE p-value selection, that search uses
+#' the robust Wald score; other supported models use likelihood.
 #'
-#' * \emph{Step 1}: Test the best FP\emph{m} function against a null model at the
-#' significance level specified by \code{select}, using 2\emph{m} degrees of freedom.
-#' If the test is not significant, the variable is excluded. Otherwise, proceed
-#' to Step 2.
-#' * \emph{Step 2}: Test the best FP\emph{m} function against a linear model at
-#' the significance level specified by \code{alpha}, using 2\emph{m}-1 degrees
-#' of freedom. If the test is not significant, select the linear model.
-#' Otherwise, proceed to Step 3.
-#' * \emph{Step 3}: Test the best FP\emph{m} function against the best FP1 model
-#' at the significance level specified by \code{alpha}, using 2\emph{m}-2 degrees
-#' of freedom. If the test is not significant, retain the best FP1 model. Otherwise,
-#' repeat this step by comparing FP\emph{m} to all remaining lower-order FP models,
-#' down to \eqn{\mathrm{FP}_{m-1}}, which is tested with 2 degrees of freedom.
-#' If the final test is not significant, retain the best \eqn{\mathrm{FP}_{m-1}}
-#' model; otherwise, retain the best FP\emph{m} model.
+#' The procedure tests models in this order:
+#' \enumerate{
+#'   \item Compare the best FP model at the maximum degree with a model that
+#'     excludes \code{xi}. If the comparison p-value is greater than
+#'     \code{select}, exclude \code{xi}, unless it is in \code{keep}.
+#'   \item Compare the maximum-degree FP model with a fixed linear form.
+#'     If the p-value is greater than \code{alpha}, select the linear form.
+#'   \item If the maximum degree exceeds 1, compare it with the best FP1,
+#'     FP2, and subsequent lower-degree models in that order. Select the
+#'     first lower-degree model whose comparison p-value is greater than
+#'     \code{alpha}. If none qualifies, retain the maximum-degree model.
+#' }
 #'
-#' MFP uses a strict boundary when deciding that a simpler model is adequate:
-#' simplification/removal occurs only when the comparison p-value is strictly
-#' greater than the relevant threshold. Consequently, `select = 1` forces
-#' inclusion and `alpha = 1` prevents functional-form simplification, including
-#' the exact boundary case where a comparison yields `p = 1`.
+#' A simpler form is selected only when its comparison p-value is strictly
+#' greater than the relevant threshold. Thus \code{select = 1} prevents
+#' exclusion, and \code{alpha = 1} prevents simplification, even when a
+#' comparison p-value equals 1. Putting \code{xi} in \code{keep} prevents
+#' exclusion but still allows selection of a simpler form.
 #'
-#' Note that the "best" FP\emph{x} model used in each step refers to the model
-#' that applies an FP\emph{x} transformation to the variable of interest and
-#' achieves the highest likelihood among all such models, given the current
-#' power transformations for all other variables. This procedure is described
-#' in Section 4.8 of Royston and Sauerbrei (2008). The best FP\emph{x} models
-#' are computed by \code{find_best_fpm_step}.
+#' For an eligible spike-at-zero term, these comparisons form the first
+#' selection stage. The calling function handles any subsequent choice
+#' between its continuous and zero-indicator components.
 #'
-#' When a variable is forced into the model by including it in the \code{keep}
-#' argument of \code{mfp2()}, this function will not exclude it (i.e., will not
-#' set its power to \code{NA}), but will instead select its functional form.
+#' @return A list containing:
+#' \itemize{
+#'   \item \code{keep}: whether \code{xi} is in \code{keep}.
+#'   \item \code{acd}: \code{FALSE}.
+#'   \item \code{powers}: a matrix of powers for the candidate models reached
+#'     before selection stops. Its rows begin with the maximum-degree FP
+#'     model and the null model, followed when needed by the linear form
+#'     and lower-degree FP models.
+#'   \item \code{power_best}: the selected powers, or \code{NA} if
+#'     \code{xi} was excluded.
+#'   \item \code{metrics}: model scores in the same row order as
+#'     \code{powers}.
+#'   \item \code{model_best}: the selected row of \code{metrics}.
+#'   \item \code{pvalue} and \code{statistic}: named results for each
+#'     comparison performed before selection stopped.
+#'   \item \code{is_gee}: whether the model uses GEE.
+#'   \item \code{spike}: whether \code{xi} is being treated as a
+#'     spike-at-zero term.
+#'   \item \code{current_adj_params}: information from the selected fit
+#'     for reuse in later steps.
+#'   \item \code{transform_cache}: reusable transformed adjustment terms.
+#' }
 #'
-#' @return
-#' A list with several components:
-#'
-#' * `keep`: logical indicating if `xi` is forced into model.
-#' * `acd`: logical indicating if an ACD transformation was applied for `xi`,
-#' i.e. `FALSE` in this case.
-#' * `powers`: (best) fp powers investigated in step, indexing `metrics`.
-#' Always starts with highest power, then null, then linear, then FP in
-#' increasing degree (e.g. FP2, null, linear, FP1).
-#' * `power_best`: a numeric vector with the best power found. The returned
-#' best power may be `NA`, indicating the variable has been removed from the
-#' model.
-#' * `metrics`: a matrix with performance indices for all models investigated.
-#' Same number of rows as, and indexed by, `powers`.
-#' * `model_best`: row index of best model in `metrics`.
-#' * `pvalue`: p-value for comparison of linear and null model.
-#' * `statistic`: test statistic used, depends on `ftest`.
-#' * `spike`: Logical; whether `xi` is (still) treated as a spike-at-zero
-#'   variable, carried through from the `spike` argument.
-#' * `current_adj_params`: Adjustment-variable transformations for `xi` from
-#'   the selected model, cached for reuse in later steps (see
-#'   \code{prev_adj_params} in \code{find_best_fp_step()}).
-#' @references
-#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
-#' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
-#' for Modelling Continuous Variables. John Wiley & Sons.}
-#'
-#' @seealso
-#' \code{select_ra2_acd()}
-#'
-#' @param degree integer > 0 giving the degree for the FP transformation.
-#' @param ... passed to fitting functions \code{fit_model()}.
+#' @param degree Maximum FP degree considered for \code{xi}.
+#' @param ... Additional arguments passed through the fitting helpers to
+#'   \code{fit_model()}.
 #' @inheritParams find_best_fp_step
+#'
+#' @references
+#' Royston, P. and Sauerbrei, W. (2008). \emph{Multivariable Model-Building:
+#' A Pragmatic Approach to Regression Analysis Based on Fractional
+#' Polynomials for Modelling Continuous Variables}. John Wiley & Sons.
+#'
+#' @seealso \code{select_ra2_acd()}
 #' @keywords internal
 #' @noRd
 select_ra2 <- function(x,
@@ -1857,57 +1860,77 @@ select_ra2 <- function(x,
   res
 }
 
-#' Function selection procedure for ACD based on closed testing procedure
+#' Select an ACD form using closed tests
 #'
-#' Used in \code{find_best_fp_step()} when `criterion = "pvalue"` and an
-#' ACD transformation is requested for `xi`.
-#' For parameter explanations, see \code{find_best_fp_step()}. All parameters
-#' captured by `...` are passed on to \code{fit_model()}.
+#' Used by \code{find_best_fp_step()} when \code{criterion = "pvalue"}
+#' and ACD is active for \code{xi}. The procedure compares the full
+#' \code{FP1(x, A(x))} form with simpler forms of \code{x} or \code{A(x)}.
 #'
 #' @details
-#' This function extends the algorithm used in \code{select_ra2()} to allow the
-#' usage of ACD transformations. The implementation follows the description
-#' in Royston and Sauerbrei (2016). The procedure is outlined in detail in
-#' the corresponding section in the documentation of \code{mfp2()}.
+#' The function prepares the adjustment terms once and keeps their current
+#' forms throughout the comparisons. It performs up to five tests, stopping
+#' when a form is selected:
+#' \enumerate{
+#'   \item Compare the full form with a model that excludes \code{xi}.
+#'     Exclude \code{xi} if the p-value exceeds \code{select}, unless
+#'     \code{xi} is in \code{keep}.
+#'   \item Compare the full form with a fixed linear effect of \code{x}.
+#'     Select the linear effect if the p-value exceeds \code{alpha}.
+#'   \item Compare the full form with \code{FP1(x, .)}. Select that form
+#'     if the p-value exceeds \code{alpha}.
+#'   \item Compare the full form with \code{FP1(., A(x))}. Retain the
+#'     full form unless the p-value exceeds \code{alpha}.
+#'   \item If \code{FP1(., A(x))} remains eligible, compare it with a
+#'     fixed linear effect of \code{A(x)}. Select the linear effect if
+#'     the p-value exceeds \code{alpha}; otherwise select
+#'     \code{FP1(., A(x))}.
+#' }
 #'
-#' When a variable is forced into the model by including it in `keep`, then
-#' this function will not exclude it from the model (by setting its power to
-#' `NA`), but will only choose its functional form.
+#' Exclusion or simplification requires a valid p-value strictly greater
+#' than the relevant threshold. Thus \code{select = 1} prevents exclusion
+#' and \code{alpha = 1} prevents simplification, including when a p-value
+#' equals 1. Putting \code{xi} in \code{keep} prevents exclusion but still
+#' allows a simpler form to be selected.
 #'
-#' @return
-#' A list with several components:
+#' For an eligible spike-at-zero term, this is the first selection stage.
+#' The calling function handles any later choice between its continuous
+#' and zero-indicator components.
 #'
-#' * `keep`: logical indicating if `xi` is forced into model.
-#' * `acd`: logical indicating if an ACD transformation was applied for `xi`,
-#' i.e. `FALSE` in this case.
-#' * `powers`: (best) fp powers investigated in step, indexing `metrics`.
-#' Ordering: FP1(x, A(x)), null, linear, FP1(x, .), linear(., A(x)),
-#' FP1(., A(x)).
-#' * `power_best`: a numeric vector with the best power found. The returned
-#' best power may be `NA`, indicating the variable has been removed from the
-#' model.
-#' * `metrics`: a matrix with performance indices for all models investigated.
-#' Same number of rows as, and indexed by, `powers`.
-#' * `model_best`: row index of best model in `metrics`.
-#' * `pvalue`: p-value for comparison of linear and null model.
-#' * `statistic`: test statistic used, depends on `ftest`.
-#' * `spike`: Logical; whether `xi` is (still) treated as a spike-at-zero
-#'   variable, carried through from the `spike` argument.
-#' * `current_adj_params`: Adjustment-variable transformations for `xi` from
-#'   the selected model, cached for reuse in later steps (see
-#'   \code{prev_adj_params} in \code{find_best_fp_step()}).
+#' @return A list containing:
+#' \itemize{
+#'   \item \code{keep}: whether \code{xi} is in \code{keep}.
+#'   \item \code{acd}: \code{TRUE}, indicating that ACD forms were assessed.
+#'     The selected form need not contain an ACD component.
+#'   \item \code{powers}: a two-column matrix describing the models reached
+#'     before selection stops. Rows are added in this order:
+#'     \code{FP1(x, A(x))}, null, linear \code{x}, \code{FP1(x, .)},
+#'     \code{FP1(., A(x))}, and linear \code{A(x)}.
+#'   \item \code{power_best}: the selected pair of powers. A missing entry
+#'     can mark an unused component; two missing entries indicate exclusion.
+#'   \item \code{metrics}: model scores in the same row order as
+#'     \code{powers}.
+#'   \item \code{model_best}: the selected row of \code{metrics}.
+#'   \item \code{pvalue} and \code{statistic}: named results for each test
+#'     performed before selection stopped.
+#'   \item \code{is_gee}: whether the model uses GEE.
+#'   \item \code{spike}: whether \code{xi} is treated as a spike-at-zero term.
+#'   \item \code{current_adj_params}: information from the selected fit
+#'     for reuse in later steps.
+#'   \item \code{transform_cache}: reusable transformed adjustment terms.
+#' }
+#'
+#' @param degree Not used directly. This procedure searches the fixed ACD
+#'   forms described above.
+#' @param ... Additional arguments passed through the fitting helpers to
+#'   \code{fit_model()}.
+#' @inheritParams find_best_fp_step
 #'
 #' @references
-#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
-#' ACD covariate transformation for enhanced parametric multivariable modeling.
-#' The Stata Journal, 16(1), pp.72-87.}
+#' Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the
+#' ACD covariate transformation for enhanced parametric multivariable
+#' modeling. \emph{The Stata Journal}, 16(1), 72--87.
 #'
-#' @seealso
-#' \code{select_ra2()}
-#'
-#' @param degree integer > 0 giving the degree for the FP transformation.
-#' @param ... passed to fitting functions.
-#' @inheritParams find_best_fp_step
+#' @seealso \code{select_ra2()}
 #' @keywords internal
 #' @noRd
 select_ra2_acd <- function(x,
@@ -2286,29 +2309,50 @@ select_ra2_acd <- function(x,
 
 #' Select a forced maximum FP form
 #'
-#' Internal selector used when `force_max_fp` is active for a non-linear term
-#' under p-value, AIC, or BIC selection. Because the public option explicitly
-#' bypasses variable selection and functional-form simplification, the maximum
-#' functional form is predetermined. Fitting the null, linear, lower-degree FP,
-#' or reduced ACD alternatives therefore cannot change the result. This helper
-#' builds the adjustment set once and fits only the required maximum form.
+#' Used when \code{force_max_fp} is active for a term whose permitted form
+#' is more complex than linear. The term must remain in the model at its
+#' maximum permitted form under p-value, AIC, or BIC selection.
 #'
-#' For an ordinary FP term, the required model is the best FP of the requested
-#' `degree`.  For an ACD term, the required model is the full
-#' `FP1(x, A(x))` form, represented internally by the degree-2 ACD search.
-#' The best power combination within that fixed form is still chosen by
-#' `find_best_fpm_step()`.
+#' @details
+#' For an ordinary FP term, the function searches power combinations at the
+#' requested \code{degree}. For an ACD term, it searches the full
+#' \code{FP1(x, A(x))} form, represented internally by an ACD degree-2 search.
+#' It fits the permitted power combinations within that form and selects the
+#' best one. It does not fit null, linear, lower-degree FP, or reduced ACD
+#' alternatives.
 #'
-#' The returned object deliberately has the same shape as the other selectors,
-#' but `metrics` and `powers` contain only the single model that was actually
-#' fitted. This is sufficient for verbose printing. When the forced term is an
-#' eligible spike-at-zero variable, \code{find_best_fp_step()} retains this full
-#' continuous-plus-binary representation directly and skips SAZ stage 2 because
-#' no reduced component representation is permitted to replace it.
+#' The adjustment terms are prepared once and reused throughout the power
+#' search. The returned \code{powers} and \code{metrics} each contain only
+#' the winning candidate, even though multiple power combinations may have
+#' been fitted.
+#'
+#' When an eligible spike-at-zero term is forced, the selected form retains
+#' both its continuous effect and zero indicator. The caller therefore skips
+#' the later comparisons that could remove either component.
+#'
+#' @return A list containing:
+#' \itemize{
+#'   \item \code{keep}: whether \code{xi} is also in \code{keep}.
+#'   \item \code{acd}: whether ACD is active for \code{xi}.
+#'   \item \code{powers} and \code{metrics}: one-row matrices for the
+#'     winning power combination.
+#'   \item \code{power_best}: the winning power or powers.
+#'   \item \code{model_best}: \code{1}, the only returned row.
+#'   \item \code{statistic} and \code{pvalue}: empty numeric vectors under
+#'     p-value selection, or \code{NA} under AIC or BIC. No comparison
+#'     with a simpler form is performed.
+#'   \item \code{is_gee}: whether the model uses GEE.
+#'   \item \code{spike}: whether \code{xi} is treated as a spike-at-zero term.
+#'   \item \code{current_adj_params}: information from the winning fit
+#'     for reuse in later steps.
+#'   \item \code{transform_cache}: reusable transformed adjustment terms.
+#' }
 #'
 #' @inheritParams find_best_fp_step
-#' @param degree integer > 0 giving the requested ordinary FP degree.
-#' @param ... passed to fitting functions.
+#' @param degree Requested ordinary FP degree. An ACD term instead uses
+#'   its fixed maximum form.
+#' @param ... Additional arguments passed through the fitting helper to
+#'   \code{fit_model()}.
 #' @keywords internal
 #' @noRd
 select_force_max_fp <- function(x,
@@ -2419,71 +2463,51 @@ select_force_max_fp <- function(x,
   )
 }
 
-#' Function selection procedure based on information criteria
+#' Select an ordinary FP model using AIC or BIC
 #'
-#' Used in \code{find_best_fp_step()} when `criterion = "aic"` or `"bic"`.
-#' For parameter explanations, see \code{find_best_fp_step()}. All parameters
-#' captured by `...` are passed on to \code{fit_model()}.
+#' Used by \code{find_best_fp_step()} when \code{criterion = "aic"} or
+#' \code{"bic"} for a non-ACD term. Forced terms and eligible spike-at-zero
+#' terms are handled by separate selectors.
 #'
 #' @details
-#' In case an information criterion is used to select the best model the
-#' selection procedure simply fits all relevant models and selects the best
-#' one according to the given criterion.
+#' The function compares a model excluding \code{xi}, a fixed linear model,
+#' and the best FP model at each degree from 1 through \code{degree}. The
+#' adjustment terms keep their current forms throughout these comparisons.
 #'
-#' "Relevant" models for a given degree are the null model excluding the
-#' variable of interest, the linear model and all best FP models up to the
-#' specified degree.
+#' \code{find_best_fpm_step()} searches the permitted power combinations
+#' within each FP degree. Because combinations at the same degree have the
+#' same selection penalty, it chooses the one with the highest likelihood,
+#' or highest quasi-likelihood for GEE. This function then selects the form
+#' with the lowest AIC or BIC. It does not use \code{select} or \code{alpha}.
 #'
-#' In case an ACD transformation is requested, then the models assessed
-#' are the null model, the linear model in x and A(x), the best FP1 models in
-#' x and A(x), and the best FP1(x, A(x)) model.
+#' If \code{xi} is in \code{keep}, the null model is excluded from the final
+#' comparison; the linear and FP forms remain eligible.
 #'
-#' Note that the "best" FPx model used in this function are given by the models
-#' using a FPx transformation for the variable of interest and having the
-#' highest likelihood of all such models given the current powers for all other
-#' variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
-#' These best FPx models are computed in \code{find_best_fpm_step()}.
-#' Keep in mind that for a fixed number of degrees of freedom (i.e. fixed m),
-#' the model with the highest likelihood is the same as the model with the best
-#' information criterion of any kind since all the models share the same
-#' penalty term.
+#' @return A list containing:
+#' \itemize{
+#'   \item \code{keep}: whether \code{xi} is in \code{keep}.
+#'   \item \code{acd}: \code{FALSE}.
+#'   \item \code{powers}: a matrix describing the compared models, ordered
+#'     null, linear, FP1, FP2, and so on through the requested degree.
+#'   \item \code{power_best}: the selected row of \code{powers}. Its power
+#'     is missing when the null model is selected.
+#'   \item \code{metrics}: model scores in the same row order as
+#'     \code{powers}.
+#'   \item \code{model_best}: the selected row of \code{metrics}.
+#'   \item \code{pvalue} and \code{statistic}: \code{NA}, because selection
+#'     is based on AIC or BIC rather than a significance test.
+#'   \item \code{is_gee}: whether the model uses GEE.
+#'   \item \code{spike}: whether \code{xi} is marked as a spike-at-zero term.
+#'   \item \code{current_adj_params}: information from the selected fit
+#'     for reuse in later steps.
+#'   \item \code{transform_cache}: reusable transformed adjustment terms.
+#' }
 #'
-#' When a variable is forced into the model by including it in `keep`, then
-#' this function will not exclude it from the model (by setting its power to
-#' `NA`), but will only choose its functional form.
-#'
-#' @return
-#' A list with several components:
-#'
-#' * `keep`: logical indicating if `xi` is forced into model.
-#' * `acd`: logical indicating if an ACD transformation was applied for `xi`,
-#' i.e. `FALSE` in this case.
-#' * `powers`: (best) fp powers investigated in step, indexing `metrics`.
-#' Ordered by increasing complexity, i.e. null, linear, FP1, FP2 and so on.
-#' For ACD transformation, it is null, linear, linear(., A(x)), FP1(x, .),
-#' FP1(., A(x)) and FP1(x, A(x)).
-#' * `power_best`: a numeric vector with the best power found. The returned
-#' best power may be `NA`, indicating the variable has been removed from the
-#' model.
-#' * `metrics`: a matrix with performance indices for all best models
-#' investigated. Same number of rows as, and indexed by, `powers`.
-#' * `model_best`: row index of best model in `metrics`.
-#' * `pvalue`: p-value for comparison of linear and null model, `NA` in this
-#' case..
-#' * `statistic`: test statistic used, depends on `ftest`, `NA` in this
-#' case.
-#' * `spike`: Logical; whether `xi` is (still) treated as a spike-at-zero
-#'   variable, carried through from the `spike` argument.
-#' * `current_adj_params`: Adjustment-variable transformations for `xi` from
-#'   the selected model, cached for reuse in later steps (see
-#'   \code{prev_adj_params} in \code{find_best_fp_step()}).
-#'
-#' @seealso
-#' \code{select_ra2()}
-#'
-#' @param degree integer > 0 giving the degree for the FP transformation.
-#' @param ... passed to fitting functions.
+#' @param degree Maximum FP degree considered for \code{xi}.
+#' @param ... Additional arguments passed through the fitting helpers to
+#'   \code{fit_model()}.
 #' @inheritParams find_best_fp_step
+#' @seealso \code{select_ra2()}, \code{select_ic_acd()}
 #' @keywords internal
 #' @noRd
 select_ic <- function(x,
@@ -2732,7 +2756,48 @@ select_ic <- function(x,
   res
 }
 
-#' @describeIn select_ic Function to select ACD based transformation.
+#' Select an ACD model using AIC or BIC
+#'
+#' Used by \code{find_best_fp_step()} when ACD is active for \code{xi}
+#' and \code{criterion = "aic"} or \code{"bic"}.
+#'
+#' @details
+#' The function compares six forms: null, linear \code{x}, linear
+#' \code{A(x)}, \code{FP1(x, .)}, \code{FP1(., A(x))}, and
+#' \code{FP1(x, A(x))}. For each FP form, it first searches the permitted
+#' power combinations. It then selects the form with the lowest AIC or BIC.
+#' The adjustment terms keep their current forms throughout the search.
+#'
+#' If \code{xi} is in \code{keep}, the null form is excluded from the final
+#' comparison. The function does not use \code{select} or \code{alpha}.
+#'
+#' @return A list containing:
+#' \itemize{
+#'   \item \code{keep}: whether \code{xi} is in \code{keep}.
+#'   \item \code{acd}: \code{TRUE}, indicating that ACD forms were assessed;
+#'     the selected form need not contain an ACD component.
+#'   \item \code{powers}: a two-column matrix describing the six forms in
+#'     the order listed above.
+#'   \item \code{power_best}: the selected row of \code{powers}. Missing
+#'     entries mark components absent from that form.
+#'   \item \code{metrics}: model scores in the same row order as
+#'     \code{powers}.
+#'   \item \code{model_best}: the selected row of \code{metrics}.
+#'   \item \code{pvalue} and \code{statistic}: \code{NA}, because selection
+#'     is based on AIC or BIC.
+#'   \item \code{is_gee}: whether the model uses GEE.
+#'   \item \code{spike}: whether \code{xi} is marked as a spike-at-zero term.
+#'   \item \code{current_adj_params}: information from the selected fit
+#'     for reuse in later steps.
+#'   \item \code{transform_cache}: reusable transformed adjustment terms.
+#' }
+#'
+#' @param degree Not used directly; the function compares its six fixed
+#'   candidate forms.
+#' @param ... Additional arguments passed through the fitting helpers to
+#'   \code{fit_model()}.
+#' @inheritParams find_best_fp_step
+#' @seealso \code{select_ic()}
 #' @keywords internal
 #' @noRd
 select_ic_acd <- function(x,
@@ -3021,45 +3086,54 @@ select_ic_acd <- function(x,
   res
 }
 
-#' Build Adjustment-Step Matrices Using the C++ Hot Loop
+#' Build adjustment data for single-column terms in C++
 #'
-#' Prepares aligned inputs for `build_adjustment_step_loop_cpp()` and calls the
-#' C++ implementation of the per-variable adjustment loop used inside
-#' `build_adjustment_step()`.
+#' Prepares aligned inputs for \code{build_adjustment_step_loop_cpp()}.
+#' Within \code{build_adjustment_step()}, this path handles adjustment terms
+#' that each map to one column with the same name. Terms mapped to different
+#' column names or to several columns are assembled separately.
 #'
-#' This helper is intentionally scoped to the MFP adjustment-step path. It does
-#' not estimate ACD parameters. ACD adjustment variables are expected to have
-#' stored `acd_parameter` values already; the C++ code applies those stored
-#' parameters when recomputing ACD adjustment columns.
+#' The C++ function reuses valid transformed blocks where possible. Otherwise,
+#' it transforms the current term, applies any stored ACD parameters, and
+#' includes a zero indicator when required. It does not estimate or refit
+#' ACD parameters.
 #'
-#' @param x Numeric matrix or numeric data frame containing the original
-#'   predictors.
-#' @param vars_adj Character vector of adjustment-variable names.
-#' @param powers_adj Named list of current selected powers for `vars_adj`.
-#' @param acdx_adj Named logical vector/list indicating ACD variables.
-#' @param zero_adj Named logical vector/list indicating zero handling.
-#' @param catzero Named list of structural-zero indicator matrices. Elements
-#'   are either `NULL` or `nrow(x) x 1` matrices.
-#' @param spike_adj Named logical vector/list indicating spike-at-zero variables.
-#' @param spike_decision_int_adj Named integer vector of spike decisions.
-#' @param acd_parameter_adj Named list of stored ACD parameters for `vars_adj`.
-#' @param eliminated Named logical vector indicating variables with all-NA powers.
-#' @param spike_binary_only_flags Named logical vector indicating
-#'   `spike_decision == 3`.
-#' @param current_power_keys_adj Named list of normalized current power keys.
-#' @param prev_power_keys_adj Named list of normalized previous power keys, or
-#'   `NULL` if there is no previous cache.
-#' @param prev_xi Previous per-variable cache object containing aligned
-#'   transformed blocks and spike decisions, or `NULL`. Historically this was
-#'   the cache for the current focal variable; it may now be a shared cache.
-#' @param has_prev Logical scalar; whether `prev_xi` is available.
+#' @param x Numeric working design matrix, or a numeric data frame that can
+#'   be converted to a matrix. Its columns must include \code{vars_adj}.
+#' @param vars_adj Names of the adjustment terms, in the order used for the
+#'   returned data.
+#' @param powers_adj Named list of current selected powers for those terms.
+#' @param acdx_adj Named logical vector or list indicating active ACD terms.
+#' @param zero_adj Named logical vector or list indicating exact-zero handling.
+#' @param catzero Named list of zero-indicator matrices. Each relevant entry
+#'   is \code{NULL} or a one-column matrix with \code{nrow(x)} rows.
+#' @param spike_adj Named logical vector or list indicating spike-at-zero terms.
+#' @param spike_decision_int_adj Named integer vector of current spike decisions.
+#' @param acd_parameter_adj Named list of stored ACD parameters. An active
+#'   ACD adjustment term must have a non-\code{NULL} entry.
+#' @param eliminated Named logical vector indicating terms whose current
+#'   powers are all missing.
+#' @param spike_binary_only_flags Named logical vector identifying spike terms
+#'   represented only by their zero indicator. Such terms are handled before
+#'   the ordinary eliminated-term check.
+#' @param current_power_keys_adj Named list of normalized current power keys
+#'   used to check whether stored transformations can be reused.
+#' @param prev_power_keys_adj Named list of stored power keys, or \code{NULL}
+#'   when no previous keys are available.
+#' @param prev_xi Previous cache data containing transformed blocks and spike
+#'   decisions, or \code{NULL}. This may come from the focal term's earlier
+#'   step or from the shared per-term cache.
+#' @param has_prev Whether \code{prev_xi} contains cache data to check.
 #'
-#' @return A list with:
-#' \describe{
-#'   \item{data_adj_list}{Named list of per-variable adjustment matrices.}
-#'   \item{data_adj}{The final column-bound adjustment matrix.}
+#' @return A list containing:
+#' \itemize{
+#'   \item \code{data_adj_list}: a named list with one transformed matrix per
+#'     adjustment term. A term contributing no columns has a matrix with
+#'     zero columns.
+#'   \item \code{data_adj}: those matrices joined by columns. It is
+#'     \code{NULL} when there are no adjustment terms, or a matrix with
+#'     zero columns when terms exist but none contributes columns.
 #' }
-#'
 #' @keywords internal
 #' @noRd
 mfp2_build_adjustment_step_loop <- function(x,
@@ -3210,24 +3284,40 @@ mfp2_build_adjustment_step_loop <- function(x,
 
 #' Build transformed adjustment data for one MFP step
 #'
-#' Internal helper used by transform_data_step() and selection functions to
-#' avoid recomputing the adjustment matrix repeatedly for the same focal
-#' variable, powers_current, and spike_decision state.
+#' Builds the adjustment data used when assessing the focal term \code{xi}.
+#' The adjustment terms are all current terms other than \code{xi}; each uses
+#' its current powers and spike-at-zero decision.
+#'
+#' @details
+#' The function can reuse an unchanged transformed block from the shared
+#' \code{transform_cache} or from an earlier step for the same focal term.
+#' It rebuilds blocks whose powers or spike decisions have changed, then
+#' joins the blocks into the adjustment matrix for this step. The complete
+#' adjustment matrix is assembled for the current step rather than retained
+#' in the cache between cycles.
+#'
+#' Terms mapped to one column with the same name use the C++ adjustment
+#' helper. Terms represented by a mapped column or a group of columns are
+#' handled as fixed linear blocks.
+#'
+#' @return A list containing:
+#' \itemize{
+#'   \item \code{powers_adj}: named list of current powers for adjustment
+#'     terms, or \code{NULL} if there are no adjustment terms.
+#'   \item \code{spike_decision_adj}: named vector of their current spike
+#'     decisions, or \code{NULL} if there are no adjustment terms.
+#'   \item \code{data_adj_list}: named list with one transformed matrix per
+#'     adjustment term, or an empty list if there are none. A term that
+#'     contributes no columns has a matrix with zero columns.
+#'   \item \code{data_adj}: the matrices in \code{data_adj_list} joined by
+#'     columns. It is \code{NULL} if there are no adjustment terms, or an
+#'     \code{n}-row matrix with zero columns if terms exist but none
+#'     contributes columns.
+#'   \item \code{transform_cache}: updated shared cache of transformed
+#'     blocks for reuse in later steps.
+#' }
+#'
 #' @inheritParams transform_data_step
-#' @return
-#' A list with five entries:
-#' * `powers_adj`: named list of FP powers used for each adjustment variable
-#'   (i.e. \code{powers_current} restricted to variables other than `xi`), or
-#'   `NULL` if there are no adjustment variables.
-#' * `spike_decision_adj`: named vector of spike-at-zero decisions for each
-#'   adjustment variable, or `NULL` if there are no adjustment variables.
-#' * `data_adj_list`: named list of per-adjustment-variable transformed
-#'   matrices (used as a cache for the next call), or an empty list if there
-#'   are no adjustment variables.
-#' * `data_adj`: the column-bound adjustment design matrix, `NULL` if there are
-#'   no adjustment variables, or an `n x 0` matrix if adjustment variables
-#'   exist but all currently contribute zero columns (e.g. all eliminated).
-#' * `transform_cache`: updated run-scoped per-variable transformation cache.
 #' @keywords internal
 #' @noRd
 build_adjustment_step <- function(x,
@@ -3599,99 +3689,82 @@ build_adjustment_step <- function(x,
     transform_cache = transform_cache
   )
 }
-#' Function to extract and transform adjustment variables
+
+#' Prepare candidate forms for a term and its adjustment terms
 #'
-#' This function prepares transformed data for a focal predictor `xi` and its
-#' adjustment variables. Adjustment variables are transformed using either
-#' fractional polynomials or acd transformations, depending on their assigned
-#' powers and parameters. Spike-at-zero effects can be incorporated using
-#' binary indicators. Previously computed adjustment variables can be reused
-#' if their parameters have not changed.
-#' @param x a matrix of predictors that includes the variable of interest `xi`.
-#' It is assumed that continuous variables have already been shifted and scaled.
-#' @param xi Name of the conceptual term being assessed. It may be a
-#'   singleton FP-eligible predictor or a fixed multi-column linear block. All
-#'   other conceptual terms are adjustment terms.
-#' @param powers_current a named list of FP powers of all variables of interest,
-#' including `xi`. Note that these powers are updated during backfitting or MFP
-#' cycles.
-#' @param df a numeric vector of degrees of freedom for `xi`.
-#' @param powers a set of allowed FP powers.
-#' @param acdx a logical vector indicating the use of acd transformation.
-#' @param zero named logical vector of length ncol(x)
-#' @param spike A logical vector indicating which columns of \code{x} contain
-#' a spike at zero. The length and order of \code{spike} must match those of
-#' the columns in \code{x}.
-#' @param catzero A named list of binary indicator variables of length \code{ncol(x)}
-#' for exact-zero values, created when specific variables are passed to the
-#' \code{catzero} argument of \code{fit_mfp}. If an element of the list is
-#' \code{NULL}, it indicates that the corresponding variable was not specified by
-#' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
-#' is a list of binary variables, not a named logical vector as in \code{fit_mfp}.
-#' @param acd_parameter Named list of ACD parameters produced by \code{fit_acd()},
-#' with length equal to \code{ncol(x)}.
-#' @param spike_decision a named numeric vector with the same names as the
-#' `x` matrix. Each element controls how the corresponding adjustment
-#' variable contributes to the adjustment matrix:
+#' Prepares the candidate forms of the focal term \code{xi} and the current
+#' forms of all other terms. Adjustment terms may use FP or ACD
+#' transformations, fixed linear blocks, or zero indicators. Unchanged
+#' adjustment-term blocks can be reused from earlier steps.
 #'
-#' * `1`: combine both the transformed adjustment variable and its binary
-#'   indicator (`catzero`).
-#' * `2`: include only the transformed adjustment variable.
-#' * `3`: include only the binary indicator (`catzero`).
-#' This applies only to adjustment variables, not the focal predictor `xi`.
-#' @param prev_adj_params Named list containing results from a previous call to
-#' this function. Used to avoid recomputing adjustment variables if both powers
-#' and `spike_decision` remain unchanged for a certain variable.
-#' @param precomputed_adj Optional internal adjustment object returned by
-#' \code{build_adjustment_step()}. When supplied, adjustment-variable
-#' transformations are reused and only current-variable candidate
-#' transformations are generated.
-#' @param compact_fp Logical; use the shared-basis representation for ordinary
-#'   FP candidates instead of materializing every candidate matrix.
-#' @param compact_acd Logical; use the shared-basis representation for ACD
-#'   candidates instead of materializing every candidate matrix.
+#' @param x Working design matrix containing the columns needed for the
+#'   focal and adjustment terms. Ordinary FP variables have already been
+#'   shifted and scaled; active ACD variables use scale 1.
+#' @param xi Name of the focal conceptual term.
+#' @param powers_current Named list of current powers for all conceptual terms.
+#' @param df Numeric scalar controlling the candidate form of \code{xi}.
+#'   A value of 1 requests its fixed linear form; FP searches use twice
+#'   the requested FP degree.
+#' @param powers Named list of permitted FP powers for each term.
+#' @param acdx Named logical vector indicating active ACD terms.
+#' @param zero Named logical vector indicating exact-zero handling.
+#' @param catzero Named list of exact-zero indicator matrices. Each entry
+#'   is \code{NULL} or a one-column matrix with \code{nrow(x)} rows.
+#' @param spike Named logical vector indicating spike-at-zero terms.
+#' @param spike_decision Named vector of spike-at-zero decisions for the
+#'   conceptual terms. For an adjustment term, \code{1} includes its
+#'   transformed and zero-indicator components, \code{2} includes only
+#'   its transformed component, and \code{3} includes only its indicator.
+#' @param acd_parameter Named list of stored ACD parameters, with one
+#'   entry per conceptual term.
+#' @param prev_adj_params Earlier adjustment information that may allow
+#'   unchanged transformed blocks to be reused.
+#' @param precomputed_adj Optional adjustment data from
+#'   \code{build_adjustment_step()}. If supplied, the function reuses it
+#'   instead of building the adjustment data again.
+#' @param focal_basis_cache Optional shared numerical basis for \code{xi},
+#'   used to prepare candidates at the requested degree without repeating
+#'   the same transformations.
+#' @param term_to_columns Named list mapping each conceptual term to its
+#'   column or columns in \code{x}.
+#' @param compact_fp Whether to represent ordinary FP candidates with
+#'   a shared basis and candidate map instead of separate full matrices.
+#' @param compact_acd Whether to use the corresponding compact
+#'   representation for ACD candidates.
+#'
 #' @details
-#' This function extracts the adjustment variables and applies the corresponding
-#' FP or ACD transformations based on `powers_current`. When evaluating the variable
-#' of interest `xi`, it is necessary to account for other variables in the model,
-#' which may be transformed or untransformed depending on their individual powers.
-#' Some powers may be `NA`, indicating that the corresponding variable has been
-#' excluded from the adjustment set.
+#' The function first builds or reuses the adjustment data, then prepares
+#' the candidates for \code{xi}. Terms represented by several columns and
+#' variables with at most three distinct values use a fixed, materialized
+#' form. For an eligible numeric FP or ACD search, compact mode stores
+#' shared transformed columns and a map describing each candidate.
 #'
-#' To improve efficiency, the function avoids recomputing adjustment variables if
-#' their parameters (`powers` and `spike_decision`) have not changed from a
-#' previous step, as provided in `prev_adj_params`.
+#' In compact mode, \code{data_fp} is \code{NULL}; the candidates are
+#' represented by \code{fp_basis} or \code{acd_basis}. Otherwise,
+#' \code{data_fp} contains a list of candidate matrices.
 #'
-#' The role of `spike_decision` is to determine how each adjustment variable is
-#' represented in the presence of potential spike-at-zero effects. For every
-#' adjustment variable, the function can include the transformed variable, the
-#' binary indicator for exact-zero values (`catzero`), or both. This makes it
-#' possible to model spike-at-zero behavior directly in the adjustment matrix,
-#' while preserving flexibility in how variables are included.
+#' With \code{df = 1}, an ordinary numeric term uses its fixed linear form.
+#' For an active ACD term, the fixed form uses \code{A(x)}.
 #'
-#' The function also returns candidate information for predictor `xi`. In the
-#' historical materialized mode, `data_fp` contains one matrix per candidate.
-#' In compact mode, candidate values are represented by a shared basis plus a
-#' small integer map. For default ACD degree 2 this means 16 unique basis
-#' columns plus a 64 x 2 map instead of 64 separate n x 2 matrices.
-#'
-#' When `df = 1`, this function returns data unchanged, i.e. a "linear"
-#' transformation with power equal to 1. In case `acdx[xi] = TRUE`, the
-#' acd transformation is applied.
-#'
-#' @return
-#' A list containing `power_best` (numeric vector of best FP powers for `xi`,
-#' possibly including `NA`), `spike_decision` (updated spike-at-zero strategy),
-#' and `current_adj_params` (adjustment variable transformations used in this step).
-#' \item{powers_fp}{Numeric vector of FP powers used for `xi`.}
-#' \item{data_fp}{List of transformed data for `xi`, or `NULL` in compact mode.}
-#' \item{fp_basis}{Compact ordinary-FP basis, or `NULL`.}
-#' \item{acd_basis}{Compact ACD basis, or `NULL`.}
-#' \item{powers_adj}{Named list of FP powers used for adjustment variables.}
-#' \item{data_adj}{Matrix of transformed adjustment variables, or `NULL` if none.}
-#' \item{current_params}{Named list containing adjustment variable parameters
-#'  for reuse in later steps, including \code{powers_adj},
-#'   \code{spike_decision_adj}, \code{data_adj_list}, and \code{data_adj}.}
+#' @return A list containing:
+#' \itemize{
+#'   \item \code{powers_fp}: a matrix describing the candidate powers
+#'     for \code{xi}.
+#'   \item \code{data_fp}: a list of candidate matrices for \code{xi},
+#'     or \code{NULL} when a compact basis is used.
+#'   \item \code{fp_basis}: the compact ordinary-FP basis and candidate
+#'     map, or \code{NULL}.
+#'   \item \code{acd_basis}: the compact ACD basis and candidate map,
+#'     or \code{NULL}.
+#'   \item \code{powers_adj}: named list of current powers for adjustment
+#'     terms, or \code{NULL} if there are none.
+#'   \item \code{data_adj}: assembled adjustment matrix; \code{NULL} if
+#'     there are no adjustment terms. It may have zero columns if
+#'     adjustment terms exist but none contributes a column.
+#'   \item \code{current_params}: information stored under \code{xi}
+#'     for reuse, including adjustment powers, spike decisions,
+#'     per-term transformed blocks, and the assembled adjustment matrix.
+#' }
 #' @keywords internal
 #' @noRd
 transform_data_step <- function(x,

@@ -1,46 +1,3 @@
-#' Validate MFP Candidate Powers Against Closed-Test Requirements
-#'
-#' Checks candidate power sets against the FP selection requirements. Power
-#' \code{1} is valid by itself for any requested FP degree: it remains in the
-#' searched FP1 class, while repeated powers such as \code{c(1, 1)} remain
-#' available to higher-degree models.
-#'
-#' Repeated selected powers remain valid for FP2 and higher-degree models. For
-#' example, \code{c(1, 1)} is a valid selected FP2 power vector, corresponding
-#' to the basis \eqn{x} and \eqn{x \log(x)}. This helper does not reject repeated
-#' selected powers.
-#'
-#' @param powers Named list of numeric candidate-power vectors, one element per
-#'   variable. Each element is treated as a candidate set: values are coerced to
-#'   numeric, deduplicated, sorted, and checked after removing missing and
-#'   non-finite values.
-#' @param df Named numeric or integer vector of degrees of freedom, one value
-#'   per variable. Values greater than \code{1} indicate that FP model selection
-#'   may require degree-1 candidate fitting.
-#' @param allow_linear_only_fp1 Deprecated internal compatibility argument.
-#'   Power \code{1} is retained in every FP1 search, so all variables are
-#'   treated as allowed regardless of this value.
-#'
-#' @return Invisibly returns \code{TRUE} if all candidate-power sets are
-#'   compatible with the requested selection procedure.
-#'
-#' @details
-#' This is an internal selection-engine validation. It should be called after
-#' \code{powers} and \code{df} have been normalized to named per-variable
-#' objects and before calls to \code{select_ra2()}, \code{select_ic()}, or
-#' \code{find_best_fpm_step()}.
-#'
-#' @keywords internal
-#' @noRd
-validate_mfp_candidate_powers <- function(powers,
-                                          df,
-                                          allow_linear_only_fp1 = NULL) {
-  # Candidate-vector content and finiteness are validated upstream. This helper
-  # remains as a stable internal hook; there is no longer a special rejection
-  # for the singleton set p = 1.
-  invisible(TRUE)
-}
-
 #' Function for fitting a model using the MFP, MFPA or spike-at-zero algorithm
 #'
 #' This internal function implements the Multivariable Fractional Polynomial (MFP),
@@ -434,13 +391,6 @@ fit_mfp <- function(x,
     spike = spike
   )
 
-  # Validate candidate powers after ACD forcing and SAZ-specific df capping.
-  # The complete supplied FP1 set, including p = 1, is valid in every path.
-  validate_mfp_candidate_powers(
-    powers = powers,
-    df     = df
-  )
-
   # Step 4: Normalize exact-zero components in x once -------------------------
   # Apply the final zero flags after cascade/reset. The same nonnegative x is used
   # by the full linear reference, variable ordering, and all backfitting cycles;
@@ -747,6 +697,19 @@ fit_mfp <- function(x,
     variables_ordered
   )
 
+  # GEE fits are expensive and deterministic. When a later cycle revisits a
+  # term with exactly the same adjustment state as its previous visit, the
+  # whole FP search would be repeated with identical inputs and results.
+  # find_best_fp_step() reuses the previous selector result in that case.
+  # Restricted to GEE: some other fitters (e.g. nnet for multinomial models)
+  # consume random numbers, so skipping a refit could change later results.
+  step_memo <- if (mfp2_family_is_gee(family_string) &&
+                   isTRUE(getOption("mfp2.gee_step_memo", TRUE))) {
+    new.env(parent = emptyenv())
+  } else {
+    NULL
+  }
+
   while (!converged && j <= cycles) {
     if (verbose) {
       message(sprintf(
@@ -786,6 +749,7 @@ fit_mfp <- function(x,
       acd_parameter   = acd_parameter,
       prev_adj_params = prev_adj_params,
       transform_cache = transform_cache,
+      step_memo       = step_memo,
       force_max_fp    = force_max_fp,
       has_offset      = has_offset,
       n_obs           = n_obs,
@@ -1048,78 +1012,84 @@ fit_mfp <- function(x,
   # fit_model() and layer on MFP-specific metadata (selected powers, shift/
   # scale/center, zero/catzero/spike status, convergence, etc.) expected by
   # print.mfp2()/summary.mfp2()/predict.mfp2().
-  fit <- utils::modifyList(
-    modelfit$fit,
-    list(
-      centers         = data_transformed$centers,
-      acd_parameter   = data_transformed$acd_parameter,
-      convergence_mfp = converged,
-      null_deviance   = null_deviance,
-      linear_deviance = linear_deviance,
-      mfp_deviance    = mfp_deviance,
-      # Likelihood-scale quantities retained for inference and compatibility.
-      # GLM Model Fit reporting uses the deviance fields above; Cox reporting
-      # uses the equivalent -2 partial-log-likelihood deviances.
-      null_logl       = null_logl,
-      linear_logl     = linear_logl,
-      linear_df       = linear_df,
-      mfp_logl        = mfp_logl,
-      mfp_df          = mfp_df,
-      family_string   = family_string,
-      criterion_mfp   = criterion,
-      class_levels = if (identical(family_string, "multinomial")) {
-        family_fit$prepared$levels
-      } else NULL,
-      reference_class = if (identical(family_string, "multinomial")) {
-        family_fit$prepared$reference
-      } else NULL,
-      n_logits = mfp2_family_n_logits(family_fit, family_string),
-      x_original = if (has_mapped_terms) {
-        selected_terms <- names(powers_current)[
-          !vapply(powers_current, function(p) all(is.na(p)), logical(1L)) |
-            (spike & spike_decision == saz_decision_codes[["binary_only"]])
-        ]
-        x[, unlist(term_to_columns[selected_terms], use.names = FALSE), drop = FALSE]
-      } else {
-        x[, names(powers_current[
+  metadata <- list(
+    centers         = data_transformed$centers,
+    acd_parameter   = data_transformed$acd_parameter,
+    convergence_mfp = converged,
+    null_deviance   = null_deviance,
+    linear_deviance = linear_deviance,
+    mfp_deviance    = mfp_deviance,
+    null_logl       = null_logl,
+    linear_logl     = linear_logl,
+    linear_df       = linear_df,
+    mfp_logl        = mfp_logl,
+    mfp_df          = mfp_df,
+    family_string   = family_string,
+    criterion_mfp   = criterion,
+    class_levels = if (identical(family_string, "multinomial")) {
+      family_fit$prepared$levels
+    } else NULL,
+    reference_class = if (identical(family_string, "multinomial")) {
+      family_fit$prepared$reference
+    } else NULL,
+    n_logits = mfp2_family_n_logits(family_fit, family_string),
+    x_original = if (has_mapped_terms) {
+      selected_terms <- names(powers_current)[
+        !vapply(powers_current, function(p) all(is.na(p)), logical(1L)) |
+          (spike & spike_decision == saz_decision_codes[["binary_only"]])
+      ]
+      x[
+        , unlist(term_to_columns[selected_terms], use.names = FALSE),
+        drop = FALSE
+      ]
+    } else {
+      x[
+        , names(powers_current[
           !sapply(powers_current, function(p) all(is.na(p))) |
             (spike & spike_decision == saz_decision_codes[["binary_only"]])
-        ]), drop = FALSE]
-      },
-      y_original = y,
-      fp_terms        = create_fp_terms(
-        powers_current, acdx, df, select, alpha, criterion, zero,
-        catzero_effective, spike, spike_decision,
-        searched_fp = searched_fp_current,
-        prop_zero = prop_zero,
-        term_to_columns = term_to_columns,
-        transformed_to_model_columns = transformed_to_model_columns,
-        coefficients = modelfit$fit$coefficients,
-        n_logits = mfp2_family_n_logits(family_fit, family_string)
-      ),
-      transformations = data.frame(shift = shift, scale = scale, center = center),
-      fp_powers       = powers_current,
-      acd             = acdx,
-      zero            = zero,
-      catzero         = catzero_effective,
-      catzero_list = catzero_mat_list,
-      spike              = spike,
-      spike_dec       = spike_decision,
+        ]),
+        drop = FALSE
+      ]
+    },
+    y_original = y,
+    fp_terms = create_fp_terms(
+      powers_current, acdx, df, select, alpha, criterion, zero,
+      catzero_effective, spike, spike_decision,
+      searched_fp = searched_fp_current,
+      prop_zero = prop_zero,
+      term_to_columns = term_to_columns,
       transformed_to_model_columns = transformed_to_model_columns,
-      transformed_column_to_source = data_transformed$transformed_column_to_source,
-      transformed_column_component = data_transformed$transformed_column_component,
-      transformed_column_zero_handled =
-        data_transformed$transformed_column_zero_handled,
-      transformed_column_centered = data_transformed$transformed_column_centered,
-      cox_offset_reference = cox_offset_reference,
-      fitter          = fitter,
-      # Summary reduced-model refits must use the same numerical settings as
-      # selection. Wrap nocenter so an explicitly supplied NULL remains
-      # distinguishable from metadata absent in an older fitted object.
-      mfp2_control    = control,
-      mfp2_nocenter   = list(value = nocenter)
-    )
+      coefficients = modelfit$fit$coefficients,
+      n_logits = mfp2_family_n_logits(family_fit, family_string)
+    ),
+    transformations = data.frame(
+      shift = shift, scale = scale, center = center
+    ),
+    fp_powers       = powers_current,
+    acd             = acdx,
+    zero            = zero,
+    catzero         = catzero_effective,
+    catzero_list    = catzero_mat_list,
+    spike           = spike,
+    spike_dec       = spike_decision,
+    transformed_to_model_columns =
+      transformed_to_model_columns,
+    transformed_column_to_source =
+      data_transformed$transformed_column_to_source,
+    transformed_column_component =
+      data_transformed$transformed_column_component,
+    transformed_column_zero_handled =
+      data_transformed$transformed_column_zero_handled,
+    transformed_column_centered =
+      data_transformed$transformed_column_centered,
+    cox_offset_reference = cox_offset_reference,
+    fitter          = fitter,
+    mfp2_control    = control,
+    mfp2_nocenter   = list(value = nocenter)
   )
+
+  fit <- modelfit$fit
+  fit[names(metadata)] <- metadata
 
   # Store the complete conceptual-term lookup for every fit. Identity mappings
   # are required by prediction just as explicit categorical mappings are, and
@@ -1158,96 +1128,44 @@ fit_mfp <- function(x,
   fit
 }
 
-#' Helper to run cycles of the mfp algorithm
+#' Run one MFP cycle
 #'
-#' This function estimates the best FP functions for all predictors in the
-#' current cycle. To be used in \code{fit_mfp()}.
+#' Visits each term once. A term may use one or more columns of `x`.
 #'
 #' @details
-#' A cycle is defined as a complete pass through all the predictors in the input
-#' matrix `x`, while a step is defined as the assessment of a single predictor.
-#' This algorithm is described in Sauerbrei et al. (2006) and given in detail
-#' in Royston and Sauerbrei (2008), in particular chapter 6.
+#' Each step selects a form for one term while adjusting for the current forms
+#' of the other terms. The selected form is updated right away, so later steps
+#' use it. Terms removed in an earlier cycle are checked again.
 #'
-#' Briefly, a cycle works as follows: it takes as input the data matrix along with
-#' a set of current best fp powers for each variable. In each step, the fp
-#' powers of a single covariate are assessed, while adjusting for other
-#' covariates. Adjustment variables are transformed using their current
-#' fp powers (this is done in \code{transform_data_step()} and the fp powers
-#' of the variable of interest are tested using the closed test procedure
-#' (conducted in \code{find_best_fp_step()}).
-#' Some of the adjustment variables may have their fp power set to `NA`,
-#' which means they were not selected from the working model and are not used
-#' in that step. The results from all steps are returned, completing a cycle.
+#' The selection method depends on `criterion` and `force_max_fp`. P-value
+#' selection can use closed tests; AIC and BIC compare model scores.
 #'
-#' Note that in each cycle every variable is evaluated.This includes variables
-#' that may have been eliminated in previous cycles. They will re-enter each
-#' new cycle for potential inclusion in the working model or to be re-evaluated
-#' for elimination.
-#'
-#' The current adjustment set is always given through the current fp powers,
-#' which are updated in each step (denoted as `powers_current`).
-#'
-#' If \code{catzero} variables are supplied, the algorithm will automatically create
-#' the corresponding binary variables and include them in the model. Additionally,
-#' each binary variable and its associated continuous variable will be treated as
-#' one predictor, and they will be tested jointly for inclusion in the model.
-#'
-#'
-#' @references
-#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
-#' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
-#' for Modelling Continuous Variables. John Wiley & Sons.}\cr
-#' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.
-#' \emph{Multivariable regression model building by using fractional
-#' polynomials: Description of SAS, STATA and R programs.
-#' Comput Stat Data Anal, 50(12): 3464-85.}
-#' Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic
-#' and diagnostic models: transformation of the predictors by using fractional
-#' polynomials. J Roy Stat Soc a Sta, 162:71-94.}
+#' `fit_mfp()` creates exact-zero indicators before the cycle. A `catzero` term
+#' is assessed with its continuous component and indicator together.
+#' Spike-at-zero selection may keep either component or both.
 #'
 #' @inheritParams fit_mfp
-#' @param powers_current a list of length equal to the number of variables,
-#' indicating the fp powers to be used in the current step for all variables
-#' (except `xi`).
-#' @param searched_fp_current Named logical vector recording whether each
-#'   current form came from an FP candidate search rather than the fixed-linear
-#'   row. This keeps searched FP1(power 1) distinct from prespecified linearity
-#'   without attaching metadata to the public numeric power vectors.
-#' @param catzero A named list of binary indicator variables of length \code{ncol(x)}
-#' for exact-zero values, created when specific variables are passed to the
-#' \code{catzero} argument of \code{fit_mfp}. If an element of the list is
-#' \code{NULL}, it indicates that the corresponding variable was not specified by
-#' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
-#' is a list of binary variables, not a named logical vector as in \code{fit_mfp}.
-#' @param acd_parameter Named list of ACD parameters produced by `fit_acd()`,
-#' with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
-#' if an element is \code{NULL}, the variable was not specified in the
-#' \code{acdx} argument of \code{fit_mfp}.
-#' @param spike_decision Named vector indicating how spike-at-zero (SAZ)
-#' variables are handled. Each element corresponds to a variable and encodes
-#' the selected strategy: `1` = include FP for positive values plus binary SAZ,
-#' `2` = treat as continuous FP only, `3` = include binary SAZ only.
-#' @param rownames passed to \code{survival::coxph.fit()}.
-#' @param prev_adj_params Named focal-variable cache of previously computed
-#' adjustment metadata and per-variable transformed blocks. Complete assembled
-#' adjustment matrices are deliberately excluded to limit retained memory. The
-#' cache is updated at each step and reused in the next cycle.
-#' @param transform_cache Named run-scoped list of individual transformed
-#'   variable blocks, shared across focal-variable evaluations and updated
-#'   explicitly as the MFP cycle proceeds.
-#' @param has_offset logical indicating whether an offset was specified before
-#' missing offsets were replaced by zeros internally.
-#' @param n_obs Numeric; number of observations (or observed events, for Cox
-#' models), used for AIC/BIC-based selection and small-sample F-tests. Computed
-#' once in \code{fit_mfp()} and passed through unchanged across cycles.
+#' @param powers_current Named list of current power states for all terms,
+#'   including the term being assessed. Updated after each step.
+#' @param searched_fp_current Named logical vector showing whether each form
+#'   came from an FP search rather than the fixed linear candidate.
+#' @param catzero Named list with one entry per term. Each entry is an
+#'   exact-zero indicator matrix or `NULL`.
+#' @param acd_parameter Named list of ACD parameters. Terms without an ACD
+#'   transformation have `NULL` entries.
+#' @param spike_decision Named vector giving each term's spike-at-zero choice:
+#'   `1` keeps both components, `2` keeps the continuous component, and
+#'   `3` keeps the binary indicator.
+#' @param rownames Row names passed to model fitting when needed.
+#' @param prev_adj_params Cache of adjustment data from earlier steps.
+#' @param transform_cache Cache of transformed term data shared across steps.
+#' @param has_offset Whether the caller supplied an offset.
+#' @param n_obs Sample size used for selection. This is usually the number of
+#'   rows; it is the event count for Cox and Fine-Gray models, the effective
+#'   observation count for multinomial models, and the cluster count for GEE.
 #'
-#' @return
-#' A list with updated components `powers_current` (current FP powers for all
-#' variables), `searched_fp_current` (whether each selected form came from an
-#' FP search), `spike_decision` (updated spike-at-zero decisions), and
-#' `prev_adj_params` (adjustment variable transformations to be used in the next
-#' cycle).
+#' @return A list with updated `powers_current`, `searched_fp_current`,
+#'   `spike_decision`, `prev_adj_params`, and `transform_cache`.
 #' @keywords internal
 #' @noRd
 find_best_fp_cycle <- function(x,
@@ -1278,11 +1196,9 @@ find_best_fp_cycle <- function(x,
                                acdx,
                                prev_adj_params,
                                transform_cache = NULL,
+                               step_memo = NULL,
                                force_max_fp,
-                               searched_fp_current = stats::setNames(
-                                 rep(FALSE, length(powers_current)),
-                                 names(powers_current)
-                               ),
+                               searched_fp_current,
                                has_offset,
                                n_obs,
                                term_to_columns = NULL,
@@ -1293,20 +1209,17 @@ find_best_fp_cycle <- function(x,
     term_to_columns <- stats::setNames(as.list(colnames(x)), colnames(x))
   }
 
-  # Variable visiting order within the cycle is fixed by the names of
-  # powers_current (set once in fit_mfp() according to `xorder`); it does not
-  # change from cycle to cycle.
-  names_x <- names(powers_current)
+  # Visit terms in the order of names(powers_current). fit_mfp() sets this
+  # order from xorder, and it stays the same across cycles.
+  x_names <- names(powers_current)
 
-  # Step through every variable once, updating its FP power/spike decision in
-  # turn while adjusting for the *current* powers of all other variables.
-  # Because powers_current is updated in place after each step, later
-  # variables in this same pass are adjusted using already-updated powers of
-  # earlier variables (Gauss-Seidel-style backfitting, not Jacobi-style).
-  for (xi in names_x) {
-    # Assess xi's best FP form (NA / linear / FP1 / FP2 / ...) via the closed
-    # test procedure, holding the other variables' current powers fixed as
-    # the adjustment set.
+  # Visit each term once, adjusting for the current forms of all other terms.
+  # After each step, update its selected powers and spike decision. Later steps
+  # in this cycle therefore use the new results from earlier terms
+  # (Gauss–Seidel backfitting).
+  for (xi in x_names) {
+    # Select xi's form using the chosen criterion, while adjusting for the
+    # current forms of all other terms. Their forms stay fixed during this step.
     fit_best_fp_step <- find_best_fp_step(
       x = x, # raw columns are resolved through term_to_columns
       term_to_columns = term_to_columns,
@@ -1338,6 +1251,7 @@ find_best_fp_cycle <- function(x,
       acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params,
       transform_cache = transform_cache,
+      step_memo = step_memo,
       force_max_fp = force_max_fp,
       has_offset   = has_offset,
       n_obs        = n_obs,
@@ -1416,29 +1330,23 @@ compact_prev_adj_cache_entry <- function(params_xi) {
   params_xi
 }
 
-#' Normalize selected powers before checking convergence
+#' Normalize selected powers for comparison
 #'
-#' Helper used during the MFP backfitting cycle to compare selected powers
-#' between successive cycles. For spike-at-zero variables selected as
-#' binary-only (`spike_decision = 3`), the stored continuous power is ignored
-#' because it does not affect the fitted adjustment matrix. Such powers are
-#' normalized to `NA` before comparison.
+#' `fit_mfp()` uses this function to check convergence between cycles.
+#' `build_adjustment_step()` uses it to decide whether cached transformations
+#' can be reused.
 #'
-#' This function is only for convergence checking. It should not be used to
-#' mutate `powers_current` during the fitting cycle, because cycle-time
-#' transformation code may still require the stored stage-1 power to route
-#' binary-only spike variables correctly.
+#' When a spike-at-zero term uses only its binary indicator
+#' (`spike_decision = 3`), its continuous power does not affect the model.
+#' This function replaces that power with `NA_real_` for comparison. It also
+#' removes names from individual power vectors so they do not affect
+#' `identical()`. The original `powers` list is unchanged.
 #'
-#' @param powers Named list of selected power vectors, keyed by parent variable
-#'   name.
-#' @param spike_decision Named integer vector/list of spike-at-zero decisions,
-#'   using the same variable namespace as `powers`. Decision `3` means
-#'   binary-only spike.
-#'
-#' @return Named list with the same names as `powers`, where powers for
-#'   `spike_decision = 3` variables are replaced by `NA_real_`, and all other
-#'   power vectors are unnamed.
-#'
+#' @param powers Named list of selected powers, keyed by term.
+#' @param spike_decision Named vector or list of spike-at-zero decisions,
+#'   keyed by term.
+#' @return Named list with binary-only powers replaced by `NA_real_`
+#'   and names removed from all other power vectors.
 #' @keywords internal
 #' @noRd
 normalize_powers_for_convergence <- function(powers, spike_decision) {
@@ -1465,29 +1373,30 @@ normalize_powers_for_convergence <- function(powers, spike_decision) {
   out
 }
 
-#' Count Degrees of Freedom for Selected FP Power Searches
+#' Count Extra Degrees of Freedom for FP Searches
 #'
-#' Counts one additional degree of freedom per retained FP power selected from
-#' a searched candidate class. A searched FP1 with power 1 still incurs the
-#' charge; a fixed linear term, an excluded term, and a binary-only spike term
-#' do not. Missing power slots in ACD terms are not counted. The result is the
-#' extra penalty needed in the final GEE information-criterion score, beyond
-#' the fitted mean-model coefficient count.
+#' `fit_mfp()` uses this function when calculating the final GEE selection
+#' score and storing `mfp_selection_df`.
 #'
-#' @param powers Named list of selected power vectors, one per conceptual term.
-#' @param searched_fp Named logical vector marking terms selected from an FP
-#'   candidate class rather than from the fixed-linear row.
+#' Counts one extra degree of freedom for each non-missing power in a term
+#' selected from an FP search. This includes a searched FP1 with power 1.
+#' Fixed linear and excluded terms add nothing. Binary-only spike terms
+#' also add nothing because the caller marks them `searched_fp = FALSE`.
 #'
-#' @return A single non-negative integer giving the additional search degrees
-#'   of freedom for the retained model.
+#' @param powers Named list of selected powers, one entry per term.
+#' @param searched_fp Named logical vector indicating which terms were
+#'   selected from an FP search. Binary-only spike terms must be `FALSE`.
+#' @return A single non-negative integer: the extra search degrees of freedom.
 #' @keywords internal
 #' @noRd
 mfp2_fp_search_df <- function(powers, searched_fp) {
   if (is.null(names(powers)) || is.null(names(searched_fp)) ||
       anyDuplicated(names(powers)) || anyDuplicated(names(searched_fp)) ||
       !setequal(names(powers), names(searched_fp))) {
-    stop("FP powers and search indicators must name the same terms.",
-         call. = FALSE)
+    stop(
+      "Internal error: FP powers and search indicators must name the same terms.",
+      call. = FALSE
+    )
   }
 
   sum(vapply(names(powers), function(term) {
@@ -1496,59 +1405,47 @@ mfp2_fp_search_df <- function(powers, searched_fp) {
   }, integer(1L)))
 }
 
-#' Calculate degrees of freedom for a transformed variable
+#' Calculate Degrees of Freedom for a Selected Term
 #'
-#' Helper function used in `fit_mfp()` to determine the final number of
-#' degrees of freedom (df) contributed by a variable, depending on its selected
-#' powers, final/effective catzero status, and spike-at-zero decision.
+#' `create_fp_terms()` uses this function to calculate each term's final
+#' degrees of freedom (df). It later replaces the result for selected
+#' multi-column terms with their fitted coefficient count.
 #'
-#' @param powers Numeric vector of selected powers for the variable. Can
-#' contain `NA` values, for example for inactive ACD components. If all values
-#' are `NA`, the continuous transformed component is inactive.
-#' @param spike_decision Integer scalar (1, 2, or 3) specifying spike-at-zero
-#'   handling:
-#'   * `1` - include both the continuous transformed term(s) and the binary
-#'   * `2` - include only the continuous transformed term(s).
-#'   * `3` - include only the binary spike-at-zero indicator.
-#' @param catzero Logical scalar indicating whether the final/effective
-#'   catzero binary indicator is included for this variable. This should be the
-#'   final metadata after applying spike-at-zero decisions, not the cycle-time
-#'   `catzero` list of binary vectors.
-#' @param n_logits Positive integer number of outcome logits. The default `1`
-#'   gives the scalar-response convention. For multinomial models, regression
-#'   coefficient df are multiplied by `n_logits`, while selected FP powers are
-#'   counted once because their transformations are shared across logits.
-#' @param searched_fp Logical scalar indicating that the form was selected from
-#'   an FP candidate class rather than from the fixed-linear row.
+#' @param powers Numeric vector of selected powers. `NA` entries are ignored.
+#' @param spike_decision One of `1` (continuous and binary), `2` (continuous
+#'   only), or `3` (binary only).
+#' @param catzero Whether a binary exact-zero indicator is included in the
+#'   final term.
+#' @param n_logits Number of outcome logits. Defaults to `1`.
+#' @param searched_fp Whether the term came from an FP candidate search
+#'   rather than the fixed linear candidate.
 #'
 #' @details
-#' The package uses the following df convention when `n_logits = 1`:
-#' * If `spike_decision = 3`, df = 1 because the variable contributes only the
-#'   binary spike-at-zero indicator.
-#' * Otherwise, if all entries in `powers` are `NA`, df = 0 because the variable
-#'   contributes no continuous component and no binary-only spike component.
-#' * If the fixed-linear row is selected, exactly `powers = 1`, df = 1.
-#'   If power 1 was selected from the FP1 class, df = 2.
-#' * Otherwise, for fractional polynomials of degree *m*, where *m* is the
-#'   number of non-`NA` powers, df = 2 * m.
-#' * If `catzero = TRUE`, one additional df is added for the binary catzero
-#'   indicator. This covers both ordinary non-spike catzero variables and
-#'   spike-at-zero variables with `spike_decision = 1`. Binary-only spike
-#'   variables are handled by the first rule and are not double-counted.
+#' A binary-only term contributes `n_logits` df. Otherwise, a term with no
+#' selected powers contributes zero df. A fixed linear term with power 1
+#' contributes `n_logits` df.
 #'
-#' Examples: if `powers = c(1, 2)` and `spike_decision = 2`, then df = 4.
-#' If `powers = NA` and `spike_decision = 2`, then df = 0. If
-#' `spike_decision = 3`, then df = 1.
+#' For other selected forms, each non-missing power contributes `n_logits`
+#' coefficient df plus one search df. If `catzero` is `TRUE`, add `n_logits`
+#' df for the binary indicator.
 #'
-#' @return Integer scalar giving the degrees of freedom for the variable.
+#' @return A single non-negative integer giving the term's df.
 #'
 #' @examples
 #' \dontrun{
-#' calculate_df(c(1, 2), 2, FALSE)  # df = 4
-#' calculate_df(1, 1, TRUE)         # df = 2: linear + binary indicator
-#' calculate_df(c(NA, NA), 2, FALSE)# df = 0: unselected variable
-#' calculate_df(2, 3, TRUE)         # df = 1: binary spike only
-#' calculate_df(0.5, 2, TRUE)       # df = 3: nonlinear FP1 + catzero
+#' calculate_df(c(1, 2), 2, FALSE)              # 4: two FP powers
+#' calculate_df(1, 1, TRUE)                     # 2: linear + indicator
+#' calculate_df(c(NA, NA), 2, FALSE)            # 0: excluded term
+#' calculate_df(2, 3, TRUE)                     # 1: binary only
+#' calculate_df(0.5, 2, TRUE)                   # 3: FP1 + indicator
+#'
+#' calculate_df(1, 2, FALSE, n_logits = 3)      # 3: fixed linear
+#' calculate_df(1, 2, FALSE, n_logits = 3,
+#'              searched_fp = TRUE)             # 4: searched FP1
+#' calculate_df(c(1, 2), 2, FALSE,
+#'              n_logits = 3, searched_fp = TRUE)# 8: 6 coefficients + 2 searches
+#' calculate_df(1, 1, TRUE, n_logits = 3)       # 6: linear + indicator
+#' calculate_df(2, 3, TRUE, n_logits = 3)       # 3: binary only
 #' }
 #' @keywords internal
 #' @noRd
@@ -1609,128 +1506,86 @@ calculate_df <- function(powers, spike_decision, catzero = FALSE,
   df
 }
 
-#' Helper to convert a nested list with same or different length into a matrix
+#' Put Selected Powers into a Matrix
 #'
-#' Converts the per-variable list of selected FP powers (which may have a
-#' different length for each variable, e.g. 1 power for FP1, 2 for FP2) into a
-#' single rectangular matrix suitable for use as columns in
-#' \code{create_fp_terms()}'s output data frame.
+#' `create_fp_terms()` uses this function to add `power1`, `power2`, and
+#' later power columns to the final term table built by `fit_mfp()`.
 #'
-#' To be used in \code{fit_mfp()}.
-#'
-#' @param power_list Named list of numeric power vectors, one element per
-#'   variable, as stored in \code{fit_mfp()}'s \code{powers_current}. Elements
-#'   may have different lengths (e.g. length 1 for a linear/FP1 variable,
-#'   length 2 for FP2).
-#'
-#' @return
-#' A numeric matrix with one row per variable (in the order of
-#' \code{power_list}, row names taken from its names) and one column per power
-#' slot up to the largest FP degree present (columns named \code{"power1"},
-#' \code{"power2"}, ...). For variables whose selected FP degree is lower than
-#' the matrix's number of columns, the extra entries are \code{NA}.
+#' @param power_list Named list of non-empty numeric power vectors, one per
+#'   term. Terms may have different numbers of powers; an excluded term can
+#'   contain `NA_real_`.
+#' @return Numeric matrix with one row per term, in the input order, and one
+#'   column per power slot up to the longest vector. Shorter vectors are
+#'   padded with `NA`. Row names come from `power_list`; columns are named
+#'   `power1`, `power2`, and so on.
 #' @keywords internal
 #' @noRd
 convert_powers_list_to_matrix <- function(power_list) {
-  # This helper is called only after per-variable powers have been assembled.
-  # An empty list or zero-length power vector indicates an inconsistent
-  # internal state; fail explicitly rather than letting 1:maxp create a
-  # descending or otherwise unintended sequence.
   if (!is.list(power_list) || length(power_list) == 0L) {
-    stop(
-      "Internal error: `power_list` must contain at least one variable.",
-      call. = FALSE
-    )
+    stop("Internal error: `power_list` must contain at least one variable.",
+         call. = FALSE)
   }
 
-  # Step 1: Determine how many power columns are needed, i.e. the largest
-  # number of selected powers across all variables (FP2 has 2, FP1 has 1).
-  psize <- vapply(power_list, length, integer(1L))
-  if (any(psize == 0L)) {
-    stop(
-      "Internal error: every element of `power_list` must contain at least one power.",
-      call. = FALSE
-    )
-  }
-  maxp <- max(psize)
-
-  # Step 2: For each power slot i = 1..maxp, extract the i-th power of every
-  # variable. `seq_len()` is intentional here: unlike `1:maxp`, it remains
-  # empty when its upper bound is zero and therefore cannot create 1, 0.
-  # Indexing past a shorter vector's length yields NA automatically, which is
-  # exactly the desired padding for lower-degree variables.
-  new_list_powers <- vector(mode = "list", length = maxp)
-  for (i in seq_len(maxp)) {
-    new_list_powers[[i]] <- sapply(power_list, function(x) x[i])
+  sizes <- lengths(power_list)
+  if (any(sizes == 0L)) {
+    stop("Internal error: every element of `power_list` must contain at least one power.",
+         call. = FALSE)
   }
 
-  # Step 3: Column-bind the per-slot vectors into a matrix and label the
-  # columns power1, power2, ... .
-  matp           <- do.call(cbind, new_list_powers)
-  colnames(matp) <- paste0("power", seq_len(maxp))
+  maxp <- max(sizes)
+  result <- matrix(
+    NA_real_, length(power_list), maxp,
+    dimnames = list(names(power_list), paste0("power", seq_len(maxp)))
+  )
 
-  matp
+  for (i in seq_along(power_list)) {
+    result[i, seq_len(sizes[[i]])] <- power_list[[i]]
+  }
+  result
 }
 
-#' Helper to create overview table of fp terms
+#' Build the Final MFP Term Table
 #'
-#' To be used in \code{fit_mfp()}.
-#'
-#' @param spike_decision Integer vector indicating the modeling decision for
-#' spike-at-zero variables.
-#'
-#' @return
-#' Dataframe with overview of all fp terms. Each row represents a variable,
-#' with rownames giving the name of the variable. Variables with acd
-#' transformation are prefixed by `A_` by the `print` and `summary` methods.
-#' The dataframe comprises the following columns:
-#'
-#' * `df_setting`: MFP complexity setting supplied to the selection algorithm.
-#'   For explicitly mapped grouped terms, `1` denotes a fixed linear block.
-#' * `df_initial`: degrees of freedom represented by the term in the initial
-#'   MFP model. For grouped terms this is the number of member design columns,
-#'   rather than the fixed-linear `df_setting` value. For an eligible SAZ term,
-#'   this also includes the one-df structural-zero binary indicator.
-#' * `select`: significance level used for backward elimination (or criterion name if not "pvalue").
-#' * `alpha`: significance level for FP terms (or criterion name if not "pvalue").
-#' * `acd`: logical, whether an ACD transformation was applied.
-#' * `zero`: logical, indicates whether only the positive values of the variable
-#'  are transformed (i.e., whether the FP function is applied exclusively to
-#'  values greater than zero).
-#' * `catzero`: logical, whether a binary variable for zero values was created.
-#' * `spike`: logical, indicates presence of a spike-at-zero variable.
-#' * `prop_zero`: proportion of finite fitting-sample observations in the
-#'   structural-zero component for retained SAZ terms; `NA` otherwise.
-#' * `spike_decision`: integer code describing how the spike-at-zero variable is modeled.
-#' * `selected`: logical, whether the FP term is included in the final model.
-#' * `searched_fp`: logical, whether the final continuous form was selected
-#'   from an FP candidate class rather than fitted as the fixed-linear row.
-#' * `df_final`: final estimated degrees of freedom for the variable.
-#' * `power1, power2, ...`: final estimated FP powers (as many columns as needed).
+#' `fit_mfp()` calls this function to build `fit$fp_terms`, with one row per
+#' conceptual term.
 #'
 #' @inheritParams fit_mfp
-#' @param fp_powers Named list of final selected FP powers, one numeric vector
-#' per variable (as stored in \code{fit_mfp()}'s \code{powers_current}). An
-#' all-\code{NA} vector means the variable was not selected into the final
-#' model. Used both to derive the \code{selected}/\code{df_final} columns and,
-#' via \code{convert_powers_list_to_matrix()}, the \code{power1, power2, ...}
-#' columns.
-#' @param prop_zero Optional named numeric vector containing the structural-zero
-#'   proportion for each retained SAZ term. Missing or non-SAZ terms are stored
-#'   as `NA_real_`.
-#' @param searched_fp Optional named logical vector identifying terms whose
-#'   final continuous form came from a searched FP class.
-#' @param term_to_columns Optional complete conceptual-term-to-raw-column
-#'   mapping. When supplied, explicitly mapped retained terms report their
-#'   fitted rank contribution rather than one df per stored linear power.
-#' @param transformed_to_model_columns Optional named mapping from final
-#'   transformed design columns to exact fitted coefficient names.
-#' @param coefficients Optional named coefficient vector, or multinomial
-#'   coefficient matrix, from the final fitted model. Missing coefficients are
-#'   treated as non-estimable and do not contribute to a grouped term's final
-#'   df.
-#' @param n_logits Positive integer number of outcome logits. FP powers are
-#'   shared across logits; regression-coefficient contributions are not.
+#' @param fp_powers Named list of final power vectors. An all-`NA` vector
+#'   usually means the term was excluded, but a binary-only spike term can
+#'   still be selected.
+#' @param catzero Named logical vector showing which exact-zero indicators
+#'   are included in the final model, after spike-at-zero selection.
+#' @param spike_decision Named vector of final spike-at-zero decisions:
+#'   `1` for continuous and binary, `2` for continuous only, and `3` for
+#'   binary only.
+#' @param prop_zero Optional named vector of zero proportions for eligible
+#'   spike-at-zero terms. Other terms have `NA`.
+#' @param searched_fp Optional named logical vector showing which final
+#'   continuous forms came from an FP search.
+#' @param term_to_columns Optional mapping from conceptual terms to raw
+#'   design columns.
+#' @param transformed_to_model_columns Optional mapping from transformed
+#'   columns to fitted coefficient names.
+#' @param coefficients Optional fitted coefficients, used to count estimable
+#'   coefficients for selected multi-column terms.
+#' @param n_logits Number of outcome logits. Powers are shared across logits;
+#'   coefficient df are counted for each logit.
+#'
+#' @return A data frame with one row per term and these columns:
+#' * `df_setting`: complexity setting used for selection.
+#' * `df_initial`: df derived from that setting, with the width of mapped
+#'   terms and eligible spike indicators added where applicable.
+#' * `select`, `alpha`: selection thresholds for p-value selection, or the
+#'   criterion name for AIC/BIC selection.
+#' * `acd`, `zero`, `catzero`, `spike`: term settings and final indicator status.
+#' * `prop_zero`: zero proportion for eligible spike terms, or `NA`.
+#' * `spike_dec`: final spike-at-zero decision code.
+#' * `selected`: whether the final model includes the continuous term or
+#'   its binary-only spike indicator.
+#' * `searched_fp`: whether the final continuous form came from an FP search.
+#' * `df_final`: final MFP df; selected multi-column terms instead use their
+#'   estimable coefficient count.
+#' * `power1`, `power2`, ...: selected powers, padded with `NA` as needed.
 #' @keywords internal
 #' @noRd
 create_fp_terms <- function(fp_powers,
@@ -1963,56 +1818,42 @@ create_fp_terms <- function(fp_powers,
   fp_terms
 }
 
-
-#' Backscale Columns of a Matrix (Internal)
+#' Backscale Design-Matrix Columns
 #'
-#' Multiplies each column of a numeric matrix by a corresponding scalar value
-#' from a named vector. Typically used to reverse prior scaling (i.e., backscaling).
-#' This is an internal helper function and not intended for direct use by package
-#' users.
+#' `fit_mfp()` calls this once after selection, before fitting the final
+#' transformed model. It reverses the temporary division by each column's
+#' scale factor.
 #'
-#' @param x A numeric matrix with column names, or `NULL`.
-#' @param scalex A named numeric vector. Each name must match a column name of `x`.
-#'
-#' @return A matrix with backscaled columns, or `NULL` if `x` is `NULL`.
+#' @param x Numeric matrix with column names, or `NULL`.
+#' @param scalex Named numeric vector of scale factors. It must contain a
+#'   value for every column of `x`; its order need not match `x`.
+#' @return A matrix with each column multiplied by its matching scale factor,
+#'   preserving row and column names. Returns `NULL` when `x` is `NULL`.
 #' @keywords internal
 #' @noRd
 backscale_matrix <- function(x, scalex) {
-  # Step 1: Validate inputs (NULL passthrough, matrix/numeric/names checks).
-  # If x is NULL, return NULL
-  if (is.null(x)) {
-    return(NULL)
-  }
+  if (is.null(x)) return(NULL)
+  if (!is.matrix(x)) stop("`x` must be a matrix.", call. = FALSE)
+  if (!is.numeric(x)) stop("`x` must be a numeric matrix.", call. = FALSE)
 
-  # Check: x must be a matrix
-  if (!is.matrix(x)) {
-    stop("`x` must be a matrix.")
-  }
-
-  # Check: x must be numeric
-  if (!is.numeric(x)) {
-    stop("`x` must be a numeric matrix.")
-  }
-
-  # Check: column names must be present
   vnames <- colnames(x)
-  if (is.null(vnames)) {
-    stop("`x` must have column names.")
-  }
-
-  # Check: scalex must be a named numeric vector
+  if (is.null(vnames)) stop("`x` must have column names.", call. = FALSE)
   if (!is.numeric(scalex) || is.null(names(scalex))) {
-    stop("`scalex` must be a named numeric vector.")
+    stop("`scalex` must be a named numeric vector.", call. = FALSE)
   }
 
-  # Check: all columns in x must have matching names in scalex
-  missing_cols <- setdiff(vnames, names(scalex))
-  if (length(missing_cols) > 0) {
-    stop("Missing scaling values for column(s): ", paste(missing_cols, collapse = ", "))
+  scale_index <- match(vnames, names(scalex))
+  if (anyNA(scale_index)) {
+    stop(
+      "Missing scaling values for column(s): ",
+      paste(unique(vnames[is.na(scale_index)]), collapse = ", "),
+      call. = FALSE
+    )
   }
+  if (nrow(x) == 0L || ncol(x) == 0L) return(x)
 
-  # Step 2: Backscale, i.e. undo `x / scale` (applied upstream before FP power
-  # selection) by multiplying each column back by its scale factor.
-  unscale_x <- sweep(x, 2, scalex[vnames], FUN = "*")
-  return(unscale_x)
+  #unscale_x <- sweep(x, 2, scalex[vnames], FUN = "*")
+
+  # Matrix columns are contiguous; repeat each factor once per row.
+  x * rep(unname(scalex[scale_index]), each = nrow(x))
 }

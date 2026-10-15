@@ -206,6 +206,9 @@ test_that("multinomial spike plots keep zero components separate in every logit"
       dimnames = list(logits, "x")),
     x_original = matrix(c(0, 1, 2), ncol = 1,
       dimnames = list(NULL, "x")),
+    # Plotting checks retained terms before calling the mocked predict().
+    fp_terms = matrix(c(TRUE, FALSE), nrow = 1,
+      dimnames = list("x", c("selected", "acd"))),
     fp_powers = list(x = 1), spike = c(x = TRUE),
     spike_dec = c(x = saz_decision_codes[["binary_only"]])
   ), class = "mfp2")
@@ -232,8 +235,7 @@ test_that("multinomial spike plots keep zero components separate in every logit"
   expect_no_error(ggplot2::ggplot_build(p))
 
   mock$spike_dec <- c(x = saz_decision_codes[["cont_binary"]])
-  mock$fp_terms <- matrix(TRUE, 1, 1,
-                          dimnames = list("x", "acd"))
+  mock$fp_terms["x", "acd"] <- TRUE
   predicted <- make_predictions(c(0, 0.5, 1))
   p <- plot(mock, terms = "x", partial_only = TRUE,
             color_line_spike = "orange")$x

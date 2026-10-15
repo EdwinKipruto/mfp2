@@ -1,37 +1,32 @@
-#' Survival Family Specifications
+#' Survival Model Families
 #'
-#' `survreg_family()` specifies a parametric accelerated failure-time or
-#' location-scale model. `finegray_family()` specifies a proportional
-#' subdistribution-hazards model for competing risks.
+#' Use \code{survreg_family()} to choose a parametric survival model and its
+#' distribution. Use \code{finegray_family()} to study a particular event
+#' when other event types may occur first.
 #'
-#' For parametric survival models, repeated candidate models are fitted with
-#' [survival::survreg.fit()], and the selected model is refitted with
-#' [survival::survreg()].
-#' For log-time distributions, an interval-censored observation with lower
-#' boundary zero is converted to the mathematically equivalent left-censored
-#' observation at its finite upper boundary before applying the logarithmic
-#' time transformation. This includes the log-logistic distribution.
+#' Supply the resulting specification as the \code{family} argument to
+#' \code{mfp2()}. \code{survreg_family()} can also be used with
+#' \code{mfpi()}; Fine-Gray models cannot.
 #'
-#' For Fine--Gray models, [survival::finegray()] expands the multi-state
-#' response once. Repeated candidate models then use
-#' [survival::agreg.fit()], while the selected model is returned as a weighted
-#' robust `coxph` fit. The public model interface remains
-#' `family = finegray_family(etype = ...)`. An `id` argument is required by
-#' [mfp2()] only for a start--stop multi-state response. Fine--Gray models are
-#' not supported by [mfpi()].
+#' Both functions require a survival response. For Fine-Gray models, the
+#' response must identify the possible event types. Supply an \code{id}
+#' to \code{mfp2()} when observations use start and stop times.
 #'
-#' @param dist A distribution accepted by [survival::survreg()].
-#' @param scale Fixed scale. The default, zero, estimates the scale.
-#' @param parms Optional distribution parameters accepted by
-#'   [survival::survreg()].
-#' @param etype Endpoint of interest, using the same interpretation as the
-#'   `etype` argument of [survival::finegray()]. `NULL` uses the first event
-#'   state, matching `finegray()`.
-#' @param timefix Logical; pass event times through survival's round-off check.
+#' @param dist Survival-time distribution accepted by
+#'   [survival::survreg()]. The default is \code{"weibull"}.
+#' @param scale Scale of the chosen distribution. The default, \code{0},
+#'   estimates it from the data; a positive value fixes it.
+#' @param parms Optional parameters for the chosen distribution, as accepted
+#'   by [survival::survreg()].
+#' @param etype Event type of interest in a Fine-Gray model. If \code{NULL},
+#'   the first event type is used.
+#' @param timefix Whether to correct small differences in event times caused
+#'   by rounding. The default is \code{TRUE}.
 #'
-#' @return An `mfp2_survreg_family` specification for the `family` argument of
-#'   [mfp2()] or [mfpi()], or an `mfp2_finegray_family` specification for
-#'   [mfp2()].
+#' @return A family specification for the \code{family} argument of
+#'   [mfp2()]. The specification from \code{survreg_family()} can also be
+#'   used with [mfpi()].
+#'
 #' @examples
 #' survreg_spec <- survreg_family(dist = "weibull")
 #' finegray_spec <- finegray_family(etype = "cause1")
@@ -79,7 +74,7 @@
 #'   verbose = FALSE
 #' )
 #' }
-#' @seealso [survival::survreg()], [survival::finegray()], [mfp2()], [mfpi()]
+#' @seealso [survival::survreg()], [mfp2()], [mfpi()]
 #' @rdname survival_families
 #' @export
 survreg_family <- function(dist = "weibull", scale = 0, parms = NULL) {
@@ -135,26 +130,20 @@ survreg_family <- function(dist = "weibull", scale = 0, parms = NULL) {
   )
 }
 
-
-#' @param strata_action A character string controlling how `strata()` terms in
-#'   the model formula are used in Fine--Gray models. Three options are
-#'   available, following Zhou et al. (2011, *Biometrics*):
+#' @param strata_action How \code{strata()} terms in the model formula affect
+#'   a Fine--Gray model:
 #'   \describe{
-#'     \item{`"both"`}{(default) Strata stratify **both** the censoring
-#'       distribution (IPCW weights estimated within each stratum) **and** the
-#'       baseline subdistribution hazard (each stratum gets its own baseline
-#'       hazard in the weighted Cox fit). This is the standard stratified
-#'       Fine--Gray model of Zhou et al. (2011).}
-#'     \item{`"censoring"`}{Strata stratify the censoring distribution only.
-#'       The baseline subdistribution hazard is common across all strata.}
-#'     \item{`"baseline"`}{Strata stratify the baseline subdistribution hazard
-#'       only. The censoring distribution is estimated pooling across strata.
-#'       Equivalent to `ctype = 2` in Zhou et al. (2011).}
+#'     \item{\code{"both"}}{The default. Allows both the censoring pattern
+#'       and the baseline event pattern to differ between strata.}
+#'     \item{\code{"censoring"}}{Allows the censoring pattern to differ
+#'       between strata, while using a common baseline event pattern.}
+#'     \item{\code{"baseline"}}{Allows the baseline event pattern to differ
+#'       between strata, while estimating a common censoring pattern.}
 #'   }
 #'
 #' @references
-#' Zhou B, Latouche A, Rocha V, Fine JP (2011). Competing risks regression for stratified
-#' data. *Biometrics*, **67**(2), 661--670.
+#' Zhou B, Latouche A, Rocha V, Fine JP (2011). Competing risks regression
+#' for stratified data. \emph{Biometrics}, 67(2), 661--670.
 #' \doi{10.1111/j.1541-0420.2010.01493.x}
 #'
 #' @rdname survival_families
@@ -189,69 +178,47 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 }
 
 
-#' Generalized Estimating Equations (GEE) Family Specification
+#' GEE Family Specification
 #'
-#' Specifies a marginal model fitted by generalized estimating equations for
-#' [mfp2()], using the \pkg{geepack} package. Fractional-polynomial candidate
-#' fits use [geepack::geese.fit()] and the single retained model is refitted
-#' with [geepack::geeglm()], so the returned object is a native `geeglm` object.
+#' Use \code{gee_family()} with [mfp2()] to model outcomes measured more
+#' than once within independent groups, such as repeated measurements from
+#' the same person. Supply the group identifier through \code{mfp2()}'s
+#' \code{id} argument. If measurement order matters, supply \code{waves}.
 #'
-#' @param family A GLM response family (name, function, or family object)
-#'   describing the marginal mean and variance. Supported families are
-#'   `gaussian`, `binomial`, `poisson`, and `Gamma`. Defaults to
-#'   `stats::gaussian()`.
-#' @param corstr Working correlation structure, one of `"exchangeable"`
-#'   (the default), `"independence"`, or `"ar1"`.
-#' @param std.err Type of standard error reported by the retained fit, one of
-#'   `"san.se"` (the robust sandwich estimator, default), `"jack"`, `"j1s"`, or
-#'   `"fij"`.
-#' @param reference_dispersion Optional positive finite dispersion for GEE
-#'   QICu and QBIC comparisons. If `NULL` (default), `mfp2()` estimates one
-#'   dispersion from a full maximum-degree FP reference model before selection;
-#'   powers are chosen deterministically from each term's permitted set,
-#'   preferring powers at least 1 near zero, with 2 for selectable FP1 and
-#'   (1, 2) for FP2 when allowed. Fixed `df = 1` terms remain linear. A failed
-#'   initial fit triggers limited alternative-power
-#'   attempts. Supplying a value skips the
-#'   reference fit. The same value is
-#'   used at every selection step and backfitting cycle. Geepack still estimates
-#'   its own scale for each fitted model and for inference. Only relevant when
-#'   `mfp2(criterion = "aic")` or `mfp2(criterion = "bic")`.
-#' @param qbic_penalty For GEE BIC selection, use `"clusters"` (default) for
-#'   `log(K) * p` or `"observations"` for `log(N) * p`, where `K` is the number
-#'   of independent clusters and `N` is the number of fitted observation rows.
-#'   This setting does not affect QICu or Wald p-value comparisons.
+#' @param family Response family: \code{gaussian}, \code{binomial},
+#'   \code{poisson}, or \code{Gamma}. The default is
+#'   \code{stats::gaussian()}.
+#' @param corstr Assumed pattern of association between measurements in
+#'   the same group: \code{"exchangeable"} (default),
+#'   \code{"independence"}, or \code{"ar1"}.
+#' @param std.err Method for calculating standard errors:
+#'   \code{"san.se"} (robust standard errors; the default),
+#'   \code{"jack"}, \code{"j1s"}, or \code{"fij"}.
+#' @param reference_dispersion Optional positive value that scales the
+#'   quasi-likelihood part of GEE AIC and BIC scores. The score divides
+#'   that part by this value; the penalty for model complexity is not
+#'   divided by it. If \code{NULL} (the default), \code{mfp2()} estimates
+#'   the value. It does not set the scale used for the final model's
+#'   standard errors. It cannot be supplied with p-value selection.
+#' @param qbic_penalty For BIC selection, whether the complexity penalty
+#'   uses the number of independent \code{"clusters"} (default) or the
+#'   number of \code{"observations"}. This setting does not affect AIC
+#'   or p-value selection.
 #'
 #' @details
-#' The cluster identifier is supplied through the top-level `id` argument of
-#' [mfp2()] (one value per observation; interleaved clusters are grouped
-#' internally without changing their within-cluster order), and
-#' repeated-measure ordering through the optional `waves` argument. These are
-#' aligned per observation and therefore live outside `gee_family()`.
+#' All three selection criteria in [mfp2()] are available for GEE models.
+#' P-value selection uses approximate tests for GEE. AIC selection uses
+#' QICu; BIC selection uses a BIC-like score based on quasi-likelihood.
 #'
-#' All three [mfp2()] selection criteria are available. With
-#' `criterion = "pvalue"`, GEE selection reproduces Stata `mfp: xtgee`: the
-#' selection "deviance" is the negative overall robust Wald chi-square and
-#' differences of scores from separately fitted models are referred to a
-#' chi-square distribution as an approximate selection test.
-#' Stata's \eqn{K/(K-1)} finite-cluster sandwich correction is applied, where
-#' \eqn{K} is the number of independent clusters. That compatibility
-#' calculation is not an additive likelihood-deviance test.
-#' With `criterion = "aic"` and
-#' `criterion = "bic"`, selection uses the quasi-likelihood information criteria:
-#' the QICu form of Pan (2001), with extra FP-power degrees of freedom, and
-#' a package-defined BIC-like quasi-likelihood score, respectively. Quasi-likelihood
-#' contributions use the effective prior weights (including grouped-binomial
-#' totals) and the standard Gamma quasi-likelihood.
-#'
-#' @return An `mfp2_gee_family` specification.
+#' @return A family specification to supply as the \code{family} argument
+#'   of [mfp2()].
 #'
 #' @references
 #' Pan, W. (2001). Akaike's information criterion in generalized estimating
 #' equations. \emph{Biometrics}, 57, 120--125.\cr
-#' Halekoh, U., Højsgaard, S. and Yan, J. (2006). The R package geepack for
-#' generalized estimating equations. \emph{Journal of Statistical Software},
-#' 15(2), 1--11.
+#' Halekoh, U., Højsgaard, S. and Yan, J. (2006). The R package geepack
+#' for generalized estimating equations. \emph{Journal of Statistical
+#' Software}, 15(2), 1--11.
 #'
 #' @seealso [mfp2()], [geepack::geeglm()]
 #' @export
@@ -335,35 +302,33 @@ gee_family <- function(family = stats::gaussian(),
 }
 
 
-#' Multinomial Logistic Family Specification
+#' Multinomial Logistic Family
 #'
-#' Specifies an unpenalized baseline-category multinomial logistic model for
-#' [mfp2()] or [mfpi()]. Fractional-polynomial powers are selected once per
-#' predictor and shared by all non-reference logits; regression coefficients
-#' remain outcome specific. Candidate fits use [nnet::nnet.default()] and the
-#' retained fit uses [nnet::multinom()]. The response normalization, effective
-#' case weights, and any class-offset contrasts are prepared once and reused by
-#' every candidate fit.
+#' Use \code{multinomial_family()} with [mfp2()] or [mfpi()] when the outcome
+#' has at least three categories with no natural order. Choose one category
+#' as the reference; the model describes each other category in relation
+#' to it.
 #'
-#' @param reference Optional response class or count-matrix column used as the
-#'   reference outcome. `NULL` uses the first factor level, the first level
-#'   obtained by converting a class-label vector to a factor, or the first
-#'   count-matrix column. For a count matrix, a numeric value may instead be
-#'   the one-based column index.
+#' Each predictor has one selected linear or curved form shared across the
+#' category comparisons. The strength and direction of its association
+#' may differ between categories.
+#'
+#' @param reference Optional reference category. For a factor response,
+#'   give a factor level; for a count-matrix response, give a column name
+#'   or its one-based column number. If \code{NULL}, the first factor level
+#'   or count-matrix column is used. Character and numeric category labels
+#'   are converted to factor levels before the reference is chosen.
 #'
 #' @details
-#' The response may be a factor or character/numeric class-label vector with at
-#' least three classes, or a numeric matrix with at least three columns of
-#' nonnegative integer class counts. Non-factor label vectors are converted to
-#' factors. Every count-response row must contain at least one trial, and every
-#' response class must have positive weighted support.
+#' The response can be a factor, a vector of character or numeric category
+#' labels, or a numeric matrix of category counts. It must contain at least
+#' three categories. Counts must be nonnegative whole numbers, every row
+#' must have at least one count, and every category must be represented in
+#' the weighted data.
 #'
-#' If there are \eqn{C} classes and \eqn{Q = C - 1} non-reference logits, a
-#' linear term contributes \eqn{Q} regression degrees of freedom. An FP of
-#' degree \eqn{m} contributes \eqn{Qm + m}: \eqn{Qm} logit-specific
-#' coefficients and \eqn{m} shared-power search degrees of freedom.
+#' @return A family specification to supply as the \code{family} argument
+#'   of [mfp2()] or [mfpi()].
 #'
-#' @return An `mfp2_multinomial_family` specification.
 #' @examples
 #' set.seed(43)
 #' n <- 150
@@ -400,7 +365,8 @@ gee_family <- function(family = stats::gaussian(),
 #'   type = "response",
 #'   se.fit = FALSE
 #' )
-#' @seealso [nnet::multinom()], [mfp2()], [mfpi()]
+#'
+#' @seealso [mfp2()], [mfpi()]
 #' @export
 multinomial_family <- function(reference = NULL) {
   if (!is.null(reference) &&
@@ -419,42 +385,31 @@ multinomial_family <- function(reference = NULL) {
 }
 
 
-#' Ordinal (Proportional-Odds) Family Specification
+#' Ordinal Family
 #'
-#' Specifies a proportional-odds ordinal regression model for [mfp2()] or
-#' [mfpi()], fitted with the ordinal regression model engine from the `rms`
-#' package. Candidate fits during the FP search call [rms::orm.fit()] directly
-#' on the model matrix and integer-coded response for speed; the retained model
-#' is a native `rms::orm` object, including when variable selection removes all
-#' predictors. `rms` is an optional dependency and must be installed to use
-#' this family.
+#' Use \code{ordinal_family()} with [mfp2()] or [mfpi()] when the outcome
+#' has categories with a meaningful order, such as low, medium, and high.
+#' The default \code{"logistic"} link gives a proportional-odds model.
+#' The optional \pkg{rms} package must be installed to use this family.
 #'
-#' @param link Character string selecting the cumulative-link function passed to
-#'   [rms::orm.fit()]. One of `"logistic"` (default, the proportional-odds
-#'   model), `"probit"`, `"loglog"`, `"cloglog"`, or `"cauchit"`.
+#' @param link Relationship used to model the ordered outcome. Choose
+#'   \code{"logistic"} (default), \code{"probit"}, \code{"loglog"},
+#'   \code{"cloglog"}, or \code{"cauchit"}.
 #'
 #' @details
-#' The model has one regression coefficient per predictor (a common slope across
-#' all cut-points, the proportional-odds assumption) and \eqn{k - 1} intercepts
-#' for a response with \eqn{k} distinct ordered values. A linear term therefore
-#' contributes one regression degree of freedom and an FP of degree \eqn{m}
-#' contributes \eqn{m}; the \eqn{k - 1} intercepts are common to every candidate
-#' and are counted in the model degrees of freedom used for AIC and BIC.
+#' Supply the outcome as an ordered factor to specify the category order.
+#' Numeric outcomes are ordered from smallest to largest. Character
+#' outcomes and unordered factors are ordered alphabetically; \code{mfp2()}
+#' reports the order it has assumed. If alphabetical order is not the
+#' intended order, convert the outcome to an ordered factor before fitting.
 #'
-#' The response may be an ordered factor (its level order is used), or a numeric,
-#' integer, character, or unordered factor. In the latter cases the category
-#' order is taken as `sort(unique(y))` -- ascending for numeric and alphabetical
-#' for character or unordered factors -- matching the behaviour of
-#' [rms::orm()]. Because an alphabetical order may not be the intended clinical
-#' order, [mfp2()] emits an informational message stating the assumed order when
-#' it is inferred from an unordered categorical response; supply an ordered
-#' factor or numeric codes to control the direction. The model is parameterized
-#' on the \eqn{P(Y \ge j)} scale, so a positive coefficient means larger
-#' predictor values are associated with higher response categories.
-#' Case weights are not currently supported for ordinal models; omitted weights
-#' or an explicit all-ones vector are accepted.
+#' A positive predictor coefficient indicates an association with higher
+#' outcome categories. Case weights are not supported; omit them or use
+#' weights that are all equal to one.
 #'
-#' @return An `mfp2_ordinal_family` specification.
+#' @return A family specification to supply as the \code{family} argument
+#'   of [mfp2()] or [mfpi()].
+#'
 #' @examples
 #' ordinal_family()
 #' ordinal_family(link = "probit")
@@ -493,7 +448,8 @@ multinomial_family <- function(reference = NULL) {
 #'   )
 #' }
 #' }
-#' @seealso [rms::orm()], [mfp2()], [mfpi()]
+#'
+#' @seealso [mfp2()], [mfpi()]
 #' @export
 ordinal_family <- function(link = c("logistic", "probit", "loglog",
                                     "cloglog", "cauchit")) {

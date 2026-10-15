@@ -86,11 +86,11 @@ Further guidance is available in:
 \code{\link[=survreg_family]{survreg_family()}}, \code{\link[=finegray_family]{finegray_family()}}, \code{\link[=predict.mfp2]{predict.mfp2()}}, \code{\link[=plot.mfp2]{plot.mfp2()}}
 }
 \author{
-\strong{Maintainer}: Edwin Kipruto \email{edwin.kipruto@uniklinik-freiburg.de}
+\strong{Maintainer}: Edwin Kipruto \email{ek472@email.uni-freiburg.de}
 
 Authors:
 \itemize{
-  \item Edwin Kipruto \email{edwin.kipruto@uniklinik-freiburg.de}
+  \item Edwin Kipruto \email{ek472@email.uni-freiburg.de}
   \item Michael Kammer \email{michael.kammer@meduniwien.ac.at}
   \item Patrick Royston \email{j.royston@ucl.ac.uk}
   \item Willi Sauerbrei \email{wilhelm.sauerbrei@uniklinik-freiburg.de}

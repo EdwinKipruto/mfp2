@@ -2,47 +2,35 @@
 % Please edit documentation in R/family.R
 \name{ordinal_family}
 \alias{ordinal_family}
-\title{Ordinal (Proportional-Odds) Family Specification}
+\title{Ordinal Family}
 \usage{
 ordinal_family(link = c("logistic", "probit", "loglog", "cloglog", "cauchit"))
 }
 \arguments{
-\item{link}{Character string selecting the cumulative-link function passed to
-\code{\link[rms:orm.fit]{rms::orm.fit()}}. One of \code{"logistic"} (default, the proportional-odds
-model), \code{"probit"}, \code{"loglog"}, \code{"cloglog"}, or \code{"cauchit"}.}
+\item{link}{Relationship used to model the ordered outcome. Choose
+\code{"logistic"} (default), \code{"probit"}, \code{"loglog"},
+\code{"cloglog"}, or \code{"cauchit"}.}
 }
 \value{
-An \code{mfp2_ordinal_family} specification.
+A family specification to supply as the \code{family} argument
+of \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}}.
 }
 \description{
-Specifies a proportional-odds ordinal regression model for \code{\link[=mfp2]{mfp2()}} or
-\code{\link[=mfpi]{mfpi()}}, fitted with the ordinal regression model engine from the \code{rms}
-package. Candidate fits during the FP search call \code{\link[rms:orm.fit]{rms::orm.fit()}} directly
-on the model matrix and integer-coded response for speed; the retained model
-is a native \code{rms::orm} object, including when variable selection removes all
-predictors. \code{rms} is an optional dependency and must be installed to use
-this family.
+Use \code{ordinal_family()} with \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} when the outcome
+has categories with a meaningful order, such as low, medium, and high.
+The default \code{"logistic"} link gives a proportional-odds model.
+The optional \pkg{rms} package must be installed to use this family.
 }
 \details{
-The model has one regression coefficient per predictor (a common slope across
-all cut-points, the proportional-odds assumption) and \eqn{k - 1} intercepts
-for a response with \eqn{k} distinct ordered values. A linear term therefore
-contributes one regression degree of freedom and an FP of degree \eqn{m}
-contributes \eqn{m}; the \eqn{k - 1} intercepts are common to every candidate
-and are counted in the model degrees of freedom used for AIC and BIC.
+Supply the outcome as an ordered factor to specify the category order.
+Numeric outcomes are ordered from smallest to largest. Character
+outcomes and unordered factors are ordered alphabetically; \code{mfp2()}
+reports the order it has assumed. If alphabetical order is not the
+intended order, convert the outcome to an ordered factor before fitting.
 
-The response may be an ordered factor (its level order is used), or a numeric,
-integer, character, or unordered factor. In the latter cases the category
-order is taken as \code{sort(unique(y))} -- ascending for numeric and alphabetical
-for character or unordered factors -- matching the behaviour of
-\code{\link[rms:orm]{rms::orm()}}. Because an alphabetical order may not be the intended clinical
-order, \code{\link[=mfp2]{mfp2()}} emits an informational message stating the assumed order when
-it is inferred from an unordered categorical response; supply an ordered
-factor or numeric codes to control the direction. The model is parameterized
-on the \eqn{P(Y \ge j)} scale, so a positive coefficient means larger
-predictor values are associated with higher response categories.
-Case weights are not currently supported for ordinal models; omitted weights
-or an explicit all-ones vector are accepted.
+A positive predictor coefficient indicates an association with higher
+outcome categories. Case weights are not supported; omit them or use
+weights that are all equal to one.
 }
 \examples{
 ordinal_family()
@@ -82,7 +70,8 @@ if (requireNamespace("rms", quietly = TRUE)) {
   )
 }
 }
+
 }
 \seealso{
-\code{\link[rms:orm]{rms::orm()}}, \code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
 }

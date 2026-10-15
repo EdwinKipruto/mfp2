@@ -355,8 +355,11 @@ powers.
 }
 
 \item{transformations}{
-A data frame describing the shifting, scaling, and centering applied to
-the model terms.
+A data frame describing the shift, scale, and centering setting of each
+model term. The shift and centering apply to the final fitted basis;
+the scale is used only during FP selection, so the final basis and its
+coefficients use shifted, unscaled values (see \strong{Shifting, scaling, and
+centering}).
 }
 
 \item{acd}{

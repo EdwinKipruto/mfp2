@@ -144,6 +144,10 @@ test_that("forced-linear formula fit matches nnet::multinom", {
   expect_equal(probabilities, probabilities_reference, tolerance = 1e-6)
   expect_equal(logits, logits_reference, tolerance = 1e-6)
   expect_identical(as.character(classes), as.character(classes_reference))
+  with_se <- predict(fit, newdata = nd, type = "response", se.fit = TRUE)
+  expect_equal(with_se$fit, probabilities_reference, tolerance = 1e-6)
+  expect_identical(dimnames(with_se$se.fit), dimnames(with_se$fit))
+  expect_true(all(is.finite(with_se$se.fit) & with_se$se.fit >= 0))
 
   manual_x <- cbind(`(Intercept)` = 1, x1 = nd$x1, x2 = nd$x2)
   manual_logits <- manual_x %*% t(stats::coef(fit))
@@ -344,15 +348,21 @@ test_that("one nonlinear FP power is shared across all logits", {
 })
 
 
-test_that("multinomial full-model prediction still rejects se.fit", {
+test_that("multinomial numeric predictions return SEs but class labels reject them", {
   dat <- make_multinomial_test_data(n = 180L, seed = 1614L)
   fit <- mfp2(
     y ~ x1 + x2, data = dat, family = "multinomial",
     cycles = 1, df = 1, select = 1, alpha = 1,
     shift = 0, scale = 1, center = FALSE, verbose = FALSE
   )
-  # Robust full-model prediction SEs remain unavailable for multinomial.
-  expect_error(predict(fit, dat[1:3, ], se.fit = TRUE), "not available")
+  for (type in c("link", "response")) {
+    result <- predict(fit, dat[1:3, ], type = type, se.fit = TRUE)
+    expect_equal(result$fit, predict(fit, dat[1:3, ], type = type))
+    expect_identical(dimnames(result$se.fit), dimnames(result$fit))
+    expect_true(all(is.finite(result$se.fit) & result$se.fit >= 0))
+  }
+  expect_error(predict(fit, dat[1:3, ], type = "class", se.fit = TRUE),
+               "class labels")
 })
 
 test_that("multinomial term predictions return one partial predictor per logit", {

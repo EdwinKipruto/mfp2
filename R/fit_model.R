@@ -1,98 +1,109 @@
-#' Function that fits models supported by `mfp2`
+#' Fit a model supported by mfp2
 #'
-#' Fits likelihood-based generalized linear, multinomial logistic, Cox
-#' proportional-hazards, parametric survival, and Fine--Gray models.
+#' Fits generalized linear, multinomial, ordinal, Cox, parametric survival,
+#' Fine--Gray, and generalized estimating equation (GEE) models.
 #'
 #' @details
-#' Computations dispatch to the corresponding matrix-level candidate fitter and
-#' retain the native high-level model class for the final fit.
+#' Candidate models use the fitting method for their family. Final fits use
+#' the corresponding standard model class when the fitted object is retained.
 #'
-#' @param x a matrix of predictors (excluding intercept) with column names.
-#' If column names are not provided they are set according to
-#' `colnames(x, do.NULL = FALSE)`.
-#' @param y Response variable. For GLMs, this may be a numeric vector, a factor
-#' response accepted by [stats::glm()], or for binomial models a two-column
-#' matrix of grouped integer counts `cbind(successes, failures)`. Poisson and
-#' negative-binomial responses are nonnegative integer counts. Multinomial
-#' responses are factors, character/numeric class-label vectors, or class-count
-#' matrices. Survival families use
-#' a family-appropriate [survival::Surv()] object.
-#' @param method a character string specifying the method for tie handling.
-#' See [survival::coxph()].
-#' @param family Resolved GLM, multinomial, Cox, survreg, or Fine--Gray family.
-#' @param strata,weights,offset,rownames,nocenter family-specific fitting
-#' parameters. See [stats::glm()], [survival::coxph()], and
-#' [survival::survreg()] for details.
-#' @param control Required family-specific control object, normalized once by
-#' the public fitting boundary before repeated candidate fits begin.
-#' @param fast logical selecting the matrix-level candidate path rather than the
-#' retained native final fit.
-#' @param calculate_fit_statistics logical. If `TRUE`, return the
-#' family-specific null and fitted-model statistics used for final reporting.
-#' Candidate-selection fits leave this `FALSE`.
-#' @param calculate_gaussian_deviance logical. If `TRUE` for a Gaussian GLM,
-#' compute and retain the scalar Stata-style Gaussian deviance used by F-tests.
-#' Leave this `FALSE` for likelihood-ratio, AIC, and BIC selection so candidate
-#' fits do not copy residual and weight vectors into the lightweight wrapper.
-#' @param keep_fit logical. If `TRUE`, retain the underlying fitted object.
-#' Defaults to `!fast`, so ordinary final fits are retained and fast candidate
-#' fits are discarded unless a caller explicitly needs the fitted object.
-#' @param keep_fitted_values logical. If `TRUE` for a GLM or multinomial model,
-#' retain only the fitted-values vector in the lightweight wrapper. This is
-#' useful for internal candidate searches that need predictions but not the
-#' complete backend fit.
-#' @param keep_coefficients logical. For multinomial candidate fits, controls
-#' whether the per-logit coefficient matrix and flattened coefficient vector are
-#' materialized. Candidate searches that use only likelihood and degrees of
-#' freedom set this to `FALSE`.
-#' @param fitter GLM fitting backend; ignored for survival models.
-#' @param has_offset logical indicating whether an offset was specified before
-#' missing offsets were replaced by zeros internally.
-#' @param x_has_intercept internal logical. If TRUE, GLM fast fitting treats
-#' `x` as an already-intercepted model matrix. Must be FALSE for Cox models.
-#' @param reserved_names Optional character vector of user-facing names that
-#' must not be reused for package-created formula columns in a final refit.
-#' Ignored by fast matrix fits.
-#' @param multinomial_optimizer Optional precomputed mask/weight structure for
-#' a batch of same-shaped multinomial candidates.
-#' @param gee_alpha_start Optional working-correlation starting value for a
-#' fast GEE candidate fit. Other families and final fits ignore it.
-#' @param gee_column_scales Optional factors for an already-scaled GEE FP/ACD
-#'   candidate design. Other families and ordinary fits ignore it.
-#' @param gee_selection_criterion Selection criterion for a fast GEE candidate;
-#'   AIC/BIC candidates require quasi-likelihood but no Wald covariance.
-#' @param gee_allow_failed_candidate Allow an unsuccessful GEE fit to be
-#'   returned as an ineligible result during an FP power search. Required
-#'   null/linear models and retained fits must still fail explicitly.
+#' @param x A predictor matrix with column names. If names are missing,
+#' they are generated. An intercept column may be present when
+#' `x_has_intercept = TRUE`.
+#' @param y The response. Generalized linear models accept responses supported
+#' by their family, including two-column grouped binomial counts. Multinomial
+#' responses may be class labels or a matrix of class counts. Ordinal
+#' responses are ordered categories. Survival models use an appropriate
+#' [survival::Surv()] response. For multinomial, ordinal, parametric survival,
+#' Fine--Gray, and GEE models, the response is taken from `family` rather
+#' than `y`.
+#' @param family The prepared specification for the selected model family.
+#' @param family_string The name of the selected model family, used to choose
+#' the fitting method.
+#' @param weights Case weights, where supported by the family.
+#' @param offset An offset, where supported by the family.
+#' @param method The method for handling tied event times in Cox and
+#' Fine--Gray models. See [survival::coxph()].
+#' @param strata Strata for a Cox model. Other families obtain any required
+#' stratification information from their prepared family specification.
+#' @param control The family-specific fitting controls, prepared before
+#' candidate models are fitted.
+#' @param rownames Row names passed to the Cox candidate fitter.
+#' @param nocenter Values that identify Cox and Fine--Gray predictor columns
+#' that should not be centered internally.
+#' @param fast Logical. If `TRUE` (the default), fit candidate models with
+#' lower-level functions such as [stats::glm.fit()],
+#' [survival::coxph.fit()], [survival::survreg.fit()],
+#' [nnet::nnet.default()], [rms::orm.fit()], or
+#' [geepack::geese.fit()], according to the family. Fine--Gray
+#' candidates use [survival::agreg.fit()]. If `FALSE`, fit the final
+#' model with the corresponding full-model function. Generalized linear
+#' models may use `fastglm`; negative-binomial models use `fastglm_nb`
+#' for both candidate and final fits.
+#' @param calculate_fit_statistics Whether to include null-model and
+#' fitted-model statistics for reporting.
+#' @param calculate_gaussian_deviance Whether to calculate the Gaussian
+#' deviance used for F-tests. Applies only to Gaussian generalized linear
+#' models.
+#' @param keep_fit Whether to include the fitted model object in the result.
+#' Defaults to `!fast`.
+#' @param has_offset Whether an offset was supplied before missing offsets
+#' were replaced internally by zeros.
+#' @param x_has_intercept Whether `x` already has a leading intercept column.
+#' This must be `FALSE` for Cox and Fine--Gray models.
+#' @param fitter The fitting method for generalized linear models. Ignored
+#' by the other families.
+#' @param keep_fitted_values Whether to return fitted values separately from
+#' the fitted object. Supported for generalized linear, multinomial, and
+#' GEE models.
+#' @param keep_coefficients Whether to calculate and return coefficients for
+#' a multinomial candidate fit. Coefficients are still calculated when
+#' `keep_fit = TRUE`.
+#' @param multinomial_optimizer Previously prepared information used across
+#' multinomial candidates with the same design dimensions.
+#' @param gee_alpha_start An optional starting value for the working
+#' correlation in a GEE candidate fit.
+#' @param gee_column_scales Optional column scaling factors for a GEE
+#' candidate whose predictor matrix has already been scaled.
+#' @param gee_selection_criterion The selection criterion for a GEE
+#' candidate. AIC and BIC candidates omit covariance calculations they
+#' do not need.
+#' @param gee_allow_failed_candidate Whether an unsuccessful GEE candidate
+#' may be returned as an ineligible result during a fractional polynomial
+#' power search. This does not apply to the final fit.
+#' @param reserved_names Names that cannot be used for temporary columns
+#' created during a final fit.
 #'
-#' @return
-#' A list with the following components:
+#' @return A list containing `logl`, `df`, and `rank`, along with
+#' family-specific results. `logl` is the fitted log likelihood, except
+#' for GEE models, where it contains a quasi-likelihood measure. An
+#' unsuccessful GEE candidate permitted by `gee_allow_failed_candidate`
+#' has `logl = NA`.
 #'
-#' * `logl`: the log likelihood of the fitted model.
-#' * `coefficients`: regression coefficients. Omitted for multinomial candidate
-#'   fits when `keep_coefficients = FALSE`.
-#' * `df`: number of parameters (degrees of freedom).
-#' * `rank`: fitted regression rank.
-#' * `deviance_gaussian`: when `calculate_gaussian_deviance = TRUE` for a
-#'   Gaussian GLM, the scalar Stata-style Gaussian deviance.
-#' * `null_deviance`: when `calculate_fit_statistics = TRUE`, family-specific
-#'   deviance of the null model. For GLMs,
-#'   this is the `null.deviance` returned by [stats::glm.fit()] or
-#'   [stats::glm()]. For Cox models, it is minus twice the null partial
-#'   log-likelihood.
-#' * `model_deviance`: when `calculate_fit_statistics = TRUE`, family-specific
-#'   deviance of the fitted model. For GLMs,
-#'   this is the `deviance` returned by [stats::glm.fit()] or [stats::glm()].
-#'   For Cox models, it is minus twice the fitted partial log-likelihood.
-#' * `null_logl`: when `calculate_fit_statistics = TRUE` for a Cox model, the
-#'   null partial log-likelihood.
-#' * `fitted_values`: for GLMs and multinomial models, when
-#'   `keep_fitted_values = TRUE`, the backend fitted-values vector or matrix
-#'   without retaining the complete fitted object.
-#' * `fit`: when `keep_fit = TRUE`, the object returned by the fitting
-#'   procedure.
-#' * `transformed_to_model_columns`: for full fits, a named character vector
-#'   mapping source design columns to the exact fitted coefficient names.
+#' `df` is the number of parameters used for model comparisons; `rank`
+#' describes the fitted regression parameters according to the family.
+#' These can differ, for example, when a survival model has additional
+#' scale parameters or an ordinal model has threshold parameters.
+#'
+#' The list may also contain:
+#'
+#' * `coefficients`: fitted regression coefficients. These may be omitted
+#'   for a multinomial candidate when `keep_coefficients = FALSE` and
+#'   `keep_fit = FALSE`.
+#' * `deviance_gaussian`: Gaussian deviance when requested.
+#' * `null_deviance` and `model_deviance`: family-specific deviances when
+#'   `calculate_fit_statistics = TRUE`. For a fast GEE fit,
+#'   `null_deviance` is `NA`.
+#' * `null_logl`: null-model log likelihood when fit statistics are
+#'   requested for a multinomial, ordinal, Cox, Fine--Gray, or parametric
+#'   survival model.
+#' * `fitted_values`: fitted values when requested for a supported family.
+#' * `fit`: the fitted object when `keep_fit = TRUE`.
+#' * `transformed_to_model_columns`: for a final fit, the mapping from
+#'   predictor column names to fitted coefficient names.
+#'
+#' GEE results also include information used for model selection and
+#' working-correlation calculations.
 #'
 #' @importFrom stats family
 #' @keywords internal
@@ -409,6 +420,7 @@ validate_mfp_fit_result <- function(logl,
         call. = FALSE
       )
     }
+
     if (!isTRUE(converged)) {
       mfp2_stop_fit(
         paste0(
@@ -579,60 +591,58 @@ mfp2_muffle_glm_nonconvergence_warning <- function(expr) {
   )
 }
 
-#' Function that fits generalized linear models
+#' Fit a generalized linear model
 #'
-#' @param x a matrix of predictors with nobs observations.
-#' @param y Response variable. For GLMs, this may be a numeric vector, a factor
-#' response accepted by [stats::glm()], or for binomial models a two-column
-#' matrix of grouped integer counts `cbind(successes, failures)`.
-#' @param family a family function e.g. `stats::gaussian()`.
-#' @param weights a numeric vector of length nobs of 'prior weights' to be used
-#' in the fitting process. see [stats::glm()] for details.
-#' @param offset a numeric vector of length nobs of of a priori known component
-#' to be included in the linear predictor during fitting.
-#' @param control A normalized GLM control list. For the fastglm backend,
-#' `epsilon` is mapped to `tol` and `maxit` is passed through;
-#' `trace = TRUE` is not supported by fastglm.
-#' @param fast a logical which determines how the model is fitted. The default
-#' `TRUE` uses fast fitting routines (i.e. [stats::glm.fit()]), while `FALSE`
-#' uses the normal fitting routines ([stats::glm()]) (used for the final output
-#' of `mfp2`).
-#' The difference is mainly due to the fact that normal fitting routines have
-#' to handle data.frames, which is a lot slower than using the model matrix
-#' and outcome vectors directly.
-#' @param calculate_fit_statistics logical. If `TRUE`, return the null and
-#' fitted-model deviances required for final reporting.
-#' @param calculate_gaussian_deviance logical. If `TRUE` for a Gaussian GLM,
-#' compute and retain the scalar Stata-style Gaussian deviance required by
-#' F-tests. Residual and weight vectors are not retained in the wrapper.
-#' @param keep_fit logical. If `TRUE`, retain the underlying fitted object.
-#' @param keep_fitted_values logical. If `TRUE`, retain only the backend
-#' fitted-values vector in the lightweight return object.
-#' @param fitter GLM fitting backend for the matrix fast path.
-#' @param family_string Normalized family name supplied by `fit_model()`.
-#' @param has_offset logical indicating whether `offset` should be included in
-#' the final formula-based fit when `fast = FALSE`.
-#' @param x_has_intercept internal logical. If TRUE, `x` is already the full
-#' model matrix including an intercept column named `"(Intercept)"`.
-#' @param reserved_names Optional character vector of names that package-created
-#' response/offset columns must avoid in the formula-based final refit.
+#' Fits a candidate model directly from a predictor matrix, or fits the
+#' final model using [stats::glm()]. Negative-binomial models use
+#' `fastglm::fastglm_nb()` in both cases.
 #'
-#' @return
-#' A list with the following components:
+#' @param x A predictor matrix with one row per observation. If
+#'   `x_has_intercept = FALSE`, an intercept column is added for fitting.
+#' @param y The response accepted by the selected family. Binomial
+#'   responses may be a two-column matrix of success and failure counts.
+#' @param family A GLM family object, such as `stats::gaussian()`.
+#' @param weights Optional prior weights, one per observation.
+#' @param offset Optional known values added to the linear predictor,
+#'   one per observation.
+#' @param control GLM fitting controls. With `fastglm`, `epsilon` is passed
+#'   as `tol` and `maxit` is passed through. `trace = TRUE` is not supported
+#'   with `fastglm`.
+#' @param fast Logical. If `TRUE` (the default), fit a candidate directly
+#'   from its predictor matrix using [stats::glm.fit()] or, when requested,
+#'   `fastglm::fastglm()`. If `FALSE`, fit the final model with
+#'   [stats::glm()]. Negative-binomial models use `fastglm::fastglm_nb()`
+#'   for both candidate and final fits.
+#' @param calculate_fit_statistics Whether to return the null-model and
+#'   fitted-model deviances.
+#' @param calculate_gaussian_deviance Whether to calculate the Gaussian
+#'   deviance used for F-tests. Applies only to Gaussian models.
+#' @param keep_fit Whether to include the fitted object in the result.
+#'   Defaults to `!fast`.
+#' @param has_offset Whether an offset was supplied and should appear in
+#'   the formula for a final fit.
+#' @param x_has_intercept Whether `x` already begins with a column named
+#'   `"(Intercept)"`.
+#' @param fitter The candidate fitting method: `"base"` or `"fastglm"`.
+#'   Negative-binomial models always use `fastglm::fastglm_nb()`.
+#' @param family_string The family name supplied by `fit_model()`.
+#' @param keep_fitted_values Whether to return fitted values separately
+#'   from the fitted object.
+#' @param reserved_names Names that cannot be used for temporary response
+#'   or offset columns created for a final fit.
 #'
-#' * `logl`: the log likelihood of the fitted model.
-#' * `coefficients`: regression coefficients.
-#' * `df`: number of parameters (degrees of freedom).
-#' * `rank`: fitted regression rank.
-#' * `deviance_gaussian`: when `calculate_gaussian_deviance = TRUE`, the
-#'   scalar Stata-style Gaussian deviance.
-#' * `null_deviance`: when `calculate_fit_statistics = TRUE`, the null-model
-#'   deviance returned by the fitted GLM.
-#' * `model_deviance`: when `calculate_fit_statistics = TRUE`, the residual
-#'   deviance returned by the fitted GLM.
-#' * `fitted_values`: when `keep_fitted_values = TRUE`, the backend
-#'   fitted-values vector without retaining that full object.
-#' * `fit`: when `keep_fit = TRUE`, the fitted model object.
+#' @return A list containing:
+#'
+#' * `logl`: the fitted log likelihood.
+#' * `coefficients`: the regression coefficients.
+#' * `rank`: the fitted regression rank.
+#' * `df`: the number of parameters used for model comparisons. This
+#'   includes an estimated dispersion parameter where applicable.
+#'
+#' When requested, the list also contains `deviance_gaussian`, the
+#' Gaussian deviance used for F-tests; `null_deviance` and
+#' `model_deviance`, the deviances reported by the fitting method;
+#' `fitted_values`, the fitted values; and `fit`, the fitted object.
 #'
 #' @import stats
 #' @keywords internal
@@ -817,8 +827,8 @@ fit_glm <- function(x,
     fit <- mfp2_muffle_glm_nonconvergence_warning(
       stats::glm(
         formula = formula,
-        data = data,
-        family = family,
+        data    = data,
+        family  = family,
         weights = weights,
         control = control,
         x = TRUE,
@@ -1014,7 +1024,9 @@ resolve_fitter <- function(fitter, family_string) {
   # before package/export checks and before any response or candidate-model
   # work, so callers do not have to repeat `fitter = "fastglm"`. This override
   # is intentionally silent: it is a family requirement rather than a fallback.
-  if (identical(family_string, "negbin")) fitter <- "fastglm"
+  if (identical(family_string, "negbin")) {
+    fitter <- "fastglm"
+  }
 
   if (identical(fitter, "base")) {
     return("base")
@@ -1076,14 +1088,25 @@ is_finite_numeric_scalar <- function(value) {
   is.numeric(value) && length(value) == 1L && !is.na(value) && is.finite(value)
 }
 
-#' Fit a GLM with fastglm Without Candidate-level Refitting
+#' Fit a candidate generalized linear model with fastglm
 #'
-#' Package availability is resolved once by `resolve_fitter()` before entering
-#' the candidate-search path. Once fastglm is selected, an error or unusable
-#' result is fatal for that MFP fit: the candidate is not silently retried with
-#' `stats::glm.fit()`, because changing backend after seeing a failed candidate
-#' would make the search path backend-dependent.
+#' Fits the model directly from a predictor matrix using
+#' [fastglm::fastglm()]. Checks that the result contains the statistics
+#' needed for model selection. Gaussian fits must also contain residuals
+#' and weights needed for F-tests.
 #'
+#' If fitting fails or the result is incomplete, fitting stops. The
+#' candidate is not fitted again with [stats::glm.fit()].
+#'
+#' @param x Predictor matrix, including an intercept column.
+#' @param y Response vector or matrix.
+#' @param family GLM family object.
+#' @param weights Prior weights.
+#' @param offset Values added to the linear predictor.
+#' @param control GLM controls. `epsilon` is passed to fastglm as `tol`;
+#'   `maxit` is passed through.
+#'
+#' @return The fitted `fastglm` object.
 #' @keywords internal
 #' @noRd
 fit_glm_fastglm <- function(x, y, family, weights, offset, control) {
@@ -1151,11 +1174,13 @@ fit_glm_fastglm <- function(x, y, family, weights, offset, control) {
   fit
 }
 
-#' Fit a negative-binomial GLM with fastglm
+#' Fit a negative-binomial model with fastglm
 #'
-#' Package and export availability are resolved once by `resolve_fitter()`.
-#' Negative-binomial fitting has no base fallback, so candidate-specific errors
-#' remain fatal.
+#' Fits candidate and final models with [fastglm::fastglm_nb()].
+#' Checks that the result contains finite values needed for model selection
+#' and counts the estimated dispersion parameter in the AIC. An error or
+#' incomplete result stops fitting; there is no alternative fitting method
+#' for negative-binomial models.
 #'
 #' @keywords internal
 #' @noRd
@@ -1233,24 +1258,28 @@ fit_glm_fastglm_nb <- function(x, y, weights, offset, control) {
   fit
 }
 
-
-#' Offset-Aware Null Deviance for Negative-Binomial Models
+#' Calculate negative-binomial null deviance with an offset
 #'
-#' Reproduces the offset-aware null deviance that [MASS::glm.nb()] would
-#' report, without re-estimating the dispersion parameter theta. Only the
-#' intercept-only model deviance is required, so theta is reused from the
-#' full fit. Called only when the reporting statistics of the full-reference
-#' or retained-final fit are requested; never invoked for ordinary MFP
-#' candidate models.
+#' Uses [stats::glm.fit()] to fit an intercept-only model with the supplied
+#' offset and weights. The `family` argument comes from the full
+#' negative-binomial fit: it contains that fit's estimated dispersion
+#' parameter, theta, in its functions. This calculation holds theta fixed
+#' rather than estimating it again.
 #'
-#' @param y Numeric response vector of finite nonnegative integer counts.
-#' @param weights Numeric vector of strictly positive observation weights.
-#' @param offset Numeric offset vector aligned with `y`.
-#' @param family Prepared negative-binomial family object.
-#' @param control Fitting control list used for the null-model iteration.
+#' This helper is called only when fit statistics are requested and the
+#' offset contains a nonzero value. It returns the intercept-only fit's
+#' deviance and stops if that fit does not converge or has a non-finite
+#' deviance.
 #'
-#' @return Numeric scalar with the null deviance for an intercept-only
-#'   negative-binomial model with the supplied offset.
+#' @param y Numeric vector of finite, nonnegative integer counts.
+#' @param weights Numeric vector of positive observation weights.
+#' @param offset Numeric vector aligned with `y`.
+#' @param family Negative-binomial family from the full fit, constructed
+#'   using its estimated theta.
+#' @param control Controls passed to [stats::glm.fit()].
+#'
+#' @return A numeric value: the deviance of the intercept-only model
+#'   fitted with the offset and the full model's theta.
 #'
 #' @keywords internal
 #' @noRd
@@ -1293,24 +1322,18 @@ mfp2_negbin_offset_null_deviance <- function(y, weights, offset, family,
 # Shared control dispatch -----------------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Validate a Control List Against the Selected Fitter Backend
+#' Check whether the selected fitter supports GLM tracing
 #'
-#' Cross-checks the user-supplied `control` list against the chosen `fitter`
-#' backend once, at the public fitting boundary, so that repeated candidate
-#' fits do not have to revalidate it. Family-specific rules are enforced
-#' here: for example, `trace = TRUE` is rejected under
-#' `fitter = "fastglm"`, and the negative-binomial family requires the
-#' `"fastglm"` backend.
+#' Rejects `control$trace = TRUE` when a GLM uses fastglm. This includes
+#' negative-binomial models, which always use fastglm. Called after fitting
+#' controls and the fitter have been resolved, before candidate fitting begins.
 #'
-#' @param control List of control settings, typically produced by
-#'   [stats::glm.control()], [survival::coxph.control()], or
-#'   [survival::survreg.control()]. May be `NULL`.
-#' @param family_string Canonical family name.
-#' @param fitter Fitting backend for repeated GLM candidate models. Either
-#'   `"base"` or `"fastglm"`.
+#' @param control Family-specific fitting controls. May be `NULL`.
+#' @param family_string Name of the selected model family.
+#' @param fitter Resolved GLM fitter, `"base"` or `"fastglm"`.
 #'
-#' @return Invisibly returns `TRUE` on success. Invalid combinations raise
-#'   an error identifying the offending setting.
+#' @return The supplied `control` object, invisibly. An unsupported trace
+#'   setting raises an error.
 #'
 #' @keywords internal
 #' @noRd
@@ -1339,22 +1362,22 @@ validate_fit_control_for_fitter <- function(control, family_string,
 }
 
 
-#' Normalise Family-Specific Fitting Controls
+#' Prepare fitting controls for the selected model family
 #'
-#' Resolves the user-supplied `control` list to the concrete object expected
-#' by the low-level fitter for a given family. This normalisation happens
-#' once at the public fitting boundary; every subsequent MFP candidate fit
-#' reuses the resolved object unchanged.
+#' Fills in family-specific defaults and checks the supplied control settings
+#' before candidate models are fitted. For GLM and negative-binomial models,
+#' it also rejects iteration tracing when the fitter is fastglm. The prepared
+#' controls are reused during model selection.
 #'
-#' @param control User-supplied control list, or `NULL` for family defaults.
-#' @param family_string Canonical family name.
-#' @param fitter Backend selector for GLM families, one of `"base"` or
-#'   `"fastglm"`. Ignored for non-GLM families.
+#' @param control A list of fitting controls, or `NULL` to use the defaults
+#'   for the selected family.
+#' @param family_string Name of the selected model family.
+#' @param fitter Resolved GLM fitter, `"base"` or `"fastglm"`. Negative-binomial
+#'   models use fastglm regardless of this argument.
 #'
-#' @return A control object appropriate for the selected family's fitter:
-#'   a `glm.control()` list for GLM families, a `coxph.control()` list for
-#'   Cox and Fine--Gray, and a `survreg.control()` list for parametric
-#'   survival.
+#' @return A validated control list for the selected family: GLM and
+#'   negative-binomial, Cox and Fine--Gray, parametric survival, multinomial,
+#'   ordinal, or GEE.
 #'
 #' @keywords internal
 #' @noRd
@@ -1387,19 +1410,17 @@ normalize_fit_control <- function(control = NULL, family_string,
 # Ordinal models --------------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Normalise a Control List for the Ordinal Fitter
+#' Prepare controls for ordinal model fitting
 #'
-#' Resolves the user-supplied control list to explicit values for the
-#' [rms::orm.fit()]-based ordinal fitter. Using explicit defaults here means
-#' that MFP candidate-model behaviour does not silently drift with changes to
-#' the defaults of successive `rms` releases. The GLM-style `epsilon`
-#' argument is accepted as an alias for the `rms`-style `eps`.
+#' Fills in and validates the controls used for ordinal fits. Accepts
+#' `epsilon` as an alternative name for `eps`; if both are supplied, `eps`
+#' takes precedence. Other control names are rejected.
 #'
-#' @param control User-supplied control list, or `NULL` to use MFP defaults.
+#' @param control A list containing `maxit`, `eps`, `tol`, or `trace`, or
+#'   `NULL` to use the defaults. `epsilon` may be supplied in place of `eps`.
 #'
-#' @return A named list carrying `maxit`, `eps`, and any additional entries
-#'   accepted by [rms::orm.fit()], with unspecified fields filled from the
-#'   MFP defaults.
+#' @return A list containing `maxit`, `eps`, `tol`, and `trace`. Their defaults
+#'   are `30`, `0.005`, `1e-7`, and `FALSE`, respectively.
 #'
 #' @keywords internal
 #' @noRd
@@ -1410,7 +1431,11 @@ normalize_ordinal_control <- function(control = NULL) {
     tol   = 1.0e-7,
     trace = FALSE
   )
-  if (is.null(control)) return(defaults)
+
+  if (is.null(control)) {
+    return(defaults)
+  }
+
   if (!is.list(control)) {
     stop(
       "For ordinal models, `control` must be `NULL` or a list of ordinal ",
@@ -1452,27 +1477,26 @@ normalize_ordinal_control <- function(control = NULL) {
            call. = FALSE)
     }
   }
+
   if (!is.logical(out$trace) || length(out$trace) != 1L || anyNA(out$trace)) {
     stop("Ordinal `control$trace` must be `TRUE` or `FALSE`.", call. = FALSE)
   }
+
   out
 }
 
-
-#' Convert Ordinal-Fit Non-Convergence Warnings into Fail-Fast Errors
+#' Stop when an ordinal fit warns of convergence failure
 #'
-#' Wraps an expression that fits an ordinal model with [rms::orm()] or
-#' [rms::orm.fit()], catching the non-convergence warnings those functions
-#' emit and rethrowing them as a targeted error. This mirrors the survreg
-#' convergence guard so that candidate and final-fit paths surface fitter
-#' failures immediately instead of silently producing suspect fits.
+#' Evaluates an ordinal fitting expression and turns warnings about
+#' non-convergence or a singular fit into errors. Other warnings retain
+#' their usual behavior. Used around both [rms::orm.fit()] candidate fits
+#' and [rms::orm()] final fits.
 #'
-#' @param expr Unevaluated expression that fits the ordinal model.
-#' @param fast Logical. `TRUE` (default) indicates a candidate-model fit,
-#'   which is reported as such in the error; `FALSE` indicates the retained
-#'   final fit.
+#' @param expr Expression that fits the ordinal model.
+#' @param fast Whether this is a candidate fit. Defaults to `TRUE`;
+#'   `FALSE` identifies a final fit in the error.
 #'
-#' @return The value of `expr` when it converges.
+#' @return The value of `expr` if no matching warning occurs.
 #'
 #' @keywords internal
 #' @noRd
@@ -1495,35 +1519,37 @@ mfp2_with_ordinal_convergence_guard <- function(expr, fast = TRUE) {
   )
 }
 
-
-#' Fit a Proportional-Odds Ordinal Model
+#' Fit an ordinal regression model
 #'
-#' Fits an ordinal regression model with a cumulative-link (proportional-odds)
-#' representation. Candidate MFP fits call [rms::orm.fit()] directly on the
-#' model matrix and integer-coded response for speed; the retained final
-#' model is returned as a native [rms::orm()] object so that the standard
-#' `rms` methods (`coef()`, `vcov()`, `logLik()`, `AIC()`, `predict()`,
-#' `summary()`) work without translation. The integer coding of the response
-#' is prepared once in `prepare_ordinal_family()`.
+#' Fits ordered outcomes using the link specified in `family`. The response
+#' and its category order are prepared before this function is called.
+#' Every fit uses [rms::orm.fit()] on the predictor matrix. When `keep_fit`
+#' is `TRUE`, the function also fits and retains an [rms::orm()] object.
 #'
-#' @param x Numeric model matrix.
-#' @param family Prepared ordinal family object (see
-#'   `prepare_ordinal_family()`).
-#' @param control Normalised ordinal-fit control list (see
-#'   `normalize_ordinal_control()`).
-#' @param fast Logical. `TRUE` fits the fast candidate path through
-#'   [rms::orm.fit()]; `FALSE` refits with [rms::orm()] to produce the
-#'   retained final model.
-#' @param calculate_fit_statistics Logical. If `TRUE`, compute log-likelihood
-#'   and information criteria for reporting.
-#' @param keep_fit Logical. If `TRUE`, retain the fitted-model object in the
+#' @param x Numeric predictor matrix, or `NULL` for an intercept-only model.
+#' @param family Prepared ordinal family containing the response, link, and
+#'   any offset.
+#' @param control Validated ordinal fitting controls.
+#' @param fast Whether this is a candidate fit. Defaults to `TRUE`.
+#' @param calculate_fit_statistics Whether to return the null-model log
+#'   likelihood and the null and fitted-model deviances.
+#' @param keep_fit Whether to include an `rms::orm()` fitted object in the
 #'   result. Defaults to `!fast`.
-#' @param keep_fitted_values Logical. If `TRUE`, retain fitted values in the
-#'   result.
-#' @param ... Additional arguments forwarded to the underlying fitter.
+#' @param x_has_intercept Whether `x` begins with a column named
+#'   `"(Intercept)"`. That column is removed because `orm.fit()` fits
+#'   the ordinal intercepts itself.
+#' @param reserved_names Names that temporary response and offset columns
+#'   must avoid when creating a retained fit.
 #'
-#' @return A list of fit results with components used by the MFP engine and,
-#'   when `keep_fit` is `TRUE`, the fitted-model object.
+#' @return A list containing `logl`, the fitted log likelihood;
+#'   `coefficients`, the predictor coefficients without the ordinal
+#'   intercepts; `rank`, the number of predictor coefficients; and `df`,
+#'   the number of predictor coefficients plus ordinal intercepts.
+#'   `weights` and `residuals` are `NULL`.
+#'
+#'   When `keep_fit = TRUE`, the list also contains `fit`, an `rms::orm()`
+#'   object. When `calculate_fit_statistics = TRUE`, it contains
+#'   `null_logl`, `null_deviance`, and `model_deviance`.
 #'
 #' @keywords internal
 #' @noRd
@@ -1702,23 +1728,19 @@ fit_ordinal <- function(x,
 # Multinomial models ----------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-# Normalize a control list for the nnet-based multinomial fitter.
-#
-#' Normalise a Control List for the Multinomial Fitter
+#' Prepare controls for multinomial model fitting
 #'
-#' Returns a clean, `nnet`-only control list for
-#' [nnet::multinom()]/[nnet::nnet.default()], whose native control knobs
-#' differ from those of [stats::glm.control()]. Routing a multinomial fit
-#' through `glm.control()` would impose `maxit = 25`, far below `nnet`'s own
-#' default of 100, which is easily too tight for FP-transformed candidate
-#' designs. The default `maxit` used here is raised to 300 to give BFGS
-#' iterations enough head-room for MFP candidate models.
+#' Fills in and validates the controls passed to the nnet fitting functions.
+#' Accepts `epsilon` as an alternative name for `reltol`; if both are
+#' supplied, `reltol` takes precedence. Other control names are rejected.
 #'
-#' @param control User-supplied control list, or `NULL` to use MFP defaults.
+#' @param control A list containing `maxit`, `reltol`, `abstol`, `trace`,
+#'   or `MaxNWts`, or `NULL` to use the defaults. `epsilon` may be supplied
+#'   in place of `reltol`.
 #'
-#' @return A named list containing the `nnet`-recognised control fields
-#'   (`maxit`, `abstol`, `reltol`, `trace`, `MaxNWts`, and related values),
-#'   with unspecified fields taking MFP defaults.
+#' @return A list containing `maxit`, `reltol`, `abstol`, `trace`, and
+#'   `MaxNWts`. Their defaults are `300`, `1e-8`, `1e-4`, `FALSE`, and
+#'   `1000`, respectively.
 #'
 #' @keywords internal
 #' @noRd
@@ -1730,7 +1752,10 @@ normalize_multinomial_control <- function(control = NULL) {
     trace   = FALSE,     # nnet default is TRUE; silenced for MFP candidate fits
     MaxNWts = 1000L      # nnet default
   )
-  if (is.null(control)) return(defaults)
+  if (is.null(control)) {
+    return(defaults)
+    }
+
   if (!is.list(control)) {
     stop(
       "For multinomial models, `control` must be `NULL` or a list of nnet ",
@@ -1786,19 +1811,20 @@ normalize_multinomial_control <- function(control = NULL) {
 }
 
 
-#' Flatten a Multinomial Coefficient Matrix to a Named Vector
+#' Flatten multinomial coefficients
 #'
-#' Converts a coefficient matrix with rows indexed by non-reference outcome
-#' and columns indexed by design term into the flat named vector used by
-#' [nnet::multinom()] and by MFP's internal candidate-fit reporting. The
-#' order matches `coef.multinom()`[nnet::coef.multinom]: all design
-#' coefficients for one non-reference outcome, followed by the next outcome.
+#' Converts a coefficient matrix into the named vector returned by mfp2's
+#' multinomial fitter. Coefficients are grouped by non-reference outcome,
+#' with all predictor coefficients for one outcome followed by those for
+#' the next.
 #'
-#' @param coefficient_matrix Numeric matrix of coefficients with dimensions
-#'   `Q` (non-reference outcomes) by `p` (design terms).
+#' @param coefficient_matrix Numeric matrix with one row per non-reference
+#'   outcome and one column per model coefficient. Rows and columns must
+#'   have names.
 #'
-#' @return Numeric vector of length `Q * p` with element names of the form
-#'   `"<outcome>:<term>"`.
+#' @return A numeric vector of length
+#'   `nrow(coefficient_matrix) * ncol(coefficient_matrix)`, with names
+#'   in the form `"<outcome>::<coefficient>"`.
 #'
 #' @keywords internal
 #' @noRd
@@ -1813,24 +1839,24 @@ mfp2_multinomial_flatten <- function(coefficient_matrix) {
 }
 
 
-#' Fit a Multinomial Model via `nnet::nnet.default()`
+#' Fit a multinomial model with nnet::multinom()
 #'
-#' Runs a single native `nnet` fit for a supplied design matrix `xx`. This
-#' is the fast candidate path used by the MFP multinomial engine and is also
-#' used to construct the retained final model when a callable
-#' [nnet::multinom()] wrapper is not needed. Response, weights, and class
-#' offsets are read from the prepared family object.
+#' Builds a formula from the supplied design matrix and fits the model with
+#' [nnet::multinom()]. The response, case weights, and any class-specific
+#' offsets come from the prepared `family` object. This helper is used for
+#' retained fits and for null-model statistics.
 #'
-#' @param xx Numeric design matrix already carrying any intercept column.
-#' @param family Prepared multinomial family object (see
-#'   `prepare_multinomial_family()`).
-#' @param control Normalised multinomial control list (see
-#'   `normalize_multinomial_control()`).
-#' @param Hess Logical. If `TRUE`, request the observed-information Hessian
-#'   from `nnet.default()`.
+#' @param xx Numeric design matrix whose first column is named
+#'   `"(Intercept)"`.
+#' @param family Prepared multinomial family containing the response,
+#'   weights, and any offsets.
+#' @param control Validated multinomial fitting controls.
+#' @param Hess Whether to include a coefficient information matrix. With
+#'   class-specific offsets, the helper calculates it from the fitted
+#'   probabilities; otherwise it requests it from `nnet::multinom()`.
 #'
-#' @return A list with fitted coefficients, log-likelihood, convergence
-#'   status, and, when requested, the Hessian.
+#' @return A fitted `nnet::multinom()` object, with an information matrix
+#'   when `Hess = TRUE`.
 #'
 #' @keywords internal
 #' @noRd
@@ -1901,29 +1927,27 @@ mfp2_fit_multinom_native <- function(xx, family, control, Hess = FALSE) {
 }
 
 
-# Expected information for the freely estimated baseline-category logit
-#' Observed Information Matrix for a Multinomial Fit
+#' Calculate the information matrix for a multinomial fit
 #'
-#' Assembles the weighted observed-information matrix for a baseline-category
-#' multinomial model, evaluated at the current coefficient estimates. Fixed
-#' class offsets shift probabilities but have no derivative with respect to
-#' the regression coefficients, so they must not appear as design columns.
-#' The parameter order matches [nnet::coef.multinom()] and
-#' [nnet::vcov.multinom()]: all design coefficients for one non-reference
-#' outcome, followed by the next outcome.
+#' Calculates the coefficient information matrix from the design matrix,
+#' fitted class probabilities, and case weights. Class-specific offsets
+#' affect the fitted probabilities but are not treated as estimated
+#' coefficients.
 #'
-#' @param x Numeric design matrix.
-#' @param probabilities Numeric matrix of predicted class probabilities with
-#'   one row per observation and one column per class.
+#' Parameters are ordered by non-reference class: all design coefficients
+#' for one class, followed by those for the next.
+#'
+#' @param x Numeric design matrix with one row per observation.
+#' @param probabilities Matrix of fitted probabilities, with one row per
+#'   observation and one column per class.
 #' @param weights Numeric vector of case weights.
-#' @param outcomes Numeric matrix of observed class outcomes (indicator
-#'   representation).
-#' @param class_levels Character vector of class labels in fitted order; the
-#'   first level is the reference class.
+#' @param outcomes Character vector naming the non-reference classes.
+#' @param class_levels Character vector of all class names in fitted order,
+#'   with the reference class first.
 #'
-#' @return Numeric observed-information matrix of order `Q p` by `Q p`,
-#'   where `Q` is the number of non-reference classes and `p` is the number
-#'   of estimable design columns.
+#' @return A square information matrix with
+#'   `length(outcomes) * ncol(x)` rows and columns. Its row and column names
+#'   have the form `"<class>:<design column>"`.
 #'
 #' @keywords internal
 #' @noRd
@@ -1974,22 +1998,23 @@ mfp2_multinomial_information <- function(x, probabilities, weights, outcomes,
 }
 
 
-#' Build the Shared `nnet` Mask and Offset Weights for Multinomial Candidates
+#' Prepare nnet weights for multinomial candidate fits
 #'
-#' Constructs the `nnet` parameter mask and fixed offset weights shared by
-#' every multinomial candidate that has the same number of estimable design
-#' columns. Building this once per candidate class avoids rebuilding the
-#' mask for every candidate fit within the class, which is one of the
-#' hottest paths of the multinomial MFP engine.
+#' Builds the parameter mask used by [nnet::nnet.default()] to identify
+#' which coefficients may be estimated. When class-specific offsets are
+#' present, it also builds fixed weights that carry those offsets into
+#' the fit. Candidates with the same design width, number of classes,
+#' and offset setting can reuse this structure.
 #'
-#' @param p Integer number of estimable design columns.
-#' @param c_classes Integer number of response classes.
-#' @param has_offset Logical flag indicating whether the model uses a class
-#'   offset.
-#' @param MaxNWts Integer maximum number of weights allowed by `nnet`.
+#' @param p Number of design columns, including the intercept.
+#' @param c_classes Number of response classes.
+#' @param has_offset Whether class-specific offsets are present.
+#' @param MaxNWts Requested maximum number of nnet weights.
 #'
-#' @return A list with the parameter mask, offset-weight vector, and helper
-#'   indices consumed by [nnet::nnet.default()] during candidate fitting.
+#' @return A list containing `p`, `n_classes`, `has_offset`, the logical
+#'   parameter `mask`, `fixed_offset_weights` (`NULL` when there is no
+#'   offset), and `MaxNWts`. The returned `MaxNWts` is at least the
+#'   length of the mask.
 #'
 #' @keywords internal
 #' @noRd
@@ -2024,32 +2049,36 @@ mfp2_multinomial_optimizer_structure <- function(p, c_classes, has_offset,
   )
 }
 
-
-#' Matrix-Level Multinomial Candidate Fitter
+#' Fit a multinomial model
 #'
-#' Fast candidate fitter used by the MFP multinomial engine. The response
-#' normalisation, effective case weights, and class offsets are prepared
-#' once in `prepare_multinomial_family()` and then shared across every
-#' candidate model. Candidate fits call [nnet::nnet.default()] directly;
-#' only the retained final model is refitted through the formula-based
-#' [nnet::multinom()] wrapper so that user-facing methods keep working.
+#' Fits candidate models directly from a design matrix with
+#' [nnet::nnet.default()]. When `fast = FALSE`, fits through
+#' [nnet::multinom()]. The response, case weights, and any class-specific
+#' offsets come from the prepared `family` object.
 #'
-#' @param x Numeric model matrix.
-#' @param family Prepared multinomial family object.
-#' @param control Normalised multinomial-fit control list.
-#' @param fast Logical. `TRUE` selects the candidate hot path;
-#'   `FALSE` refits with [nnet::multinom()] to build the retained final
-#'   model.
-#' @param calculate_fit_statistics Logical. If `TRUE`, compute
-#'   log-likelihood and information criteria for reporting.
-#' @param keep_fit Logical. If `TRUE`, retain the fitted-model object in the
-#'   result. Defaults to `!fast`.
-#' @param keep_fitted_values Logical. If `TRUE`, retain the fitted class
-#'   probabilities.
-#' @param ... Additional arguments forwarded to the underlying fitter.
+#' @param x Numeric predictor matrix.
+#' @param family Prepared multinomial family containing the response,
+#'   weights, and any offsets.
+#' @param control Validated multinomial fitting controls.
+#' @param fast Whether to use `nnet.default()` for a candidate fit.
+#'   If `FALSE`, use `nnet::multinom()`. Defaults to `TRUE`.
+#' @param calculate_fit_statistics Whether to fit a null model and return
+#'   its log likelihood and the null and fitted-model deviances.
+#' @param keep_fit Whether to include the fitted object in the result.
+#'   Defaults to `!fast`.
+#' @param keep_fitted_values Whether to return fitted class probabilities.
+#' @param keep_coefficients Whether to return the coefficient vector and
+#'   matrix. Coefficients are always returned when `keep_fit = TRUE`.
+#' @param x_has_intercept Whether `x` already begins with a column named
+#'   `"(Intercept)"`; otherwise an intercept is added.
+#' @param optimizer_structure Optional prepared parameter mask and offset
+#'   weights for a candidate fit with matching design dimensions.
 #'
-#' @return A list of fit results used by the MFP engine; when `keep_fit` is
-#'   `TRUE`, it also contains the fitted-model object.
+#' @return A list containing `logl`, `rank`, `df`, `class_levels`,
+#'   `reference_class`, and `n_logits`. It also contains `coefficients`
+#'   and `coefficient_matrix` when requested; `fitted_values` and `fit`
+#'   when requested; and `null_logl`, `null_deviance`, and
+#'   `model_deviance` when fit statistics are requested.
 #'
 #' @keywords internal
 #' @noRd
@@ -2072,9 +2101,9 @@ fit_multinomial <- function(x, family, control,
 
   use_direct <- isTRUE(fast)
   if (use_direct) {
-    # nnet.default() does not report the design rank. Candidate transforms can
-    # become aliased even when the original input matrix was full rank, so the
-    # direct path must calculate it before assigning likelihood-test df.
+    # nnet.default() does not report the design rank. A transformed candidate
+    # may have aliased columns, so check its rank before fitting and reject it
+    # if the design is rank deficient.
     design_rank <- qr(xx)$rank
     if (design_rank != ncol(xx)) {
       mfp2_stop_fit("The multinomial candidate design is rank deficient.", fast = TRUE)
@@ -2254,29 +2283,31 @@ fit_multinomial <- function(x, family, control,
 # Survival models -------------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Normalise a Control List for the `survreg` Fitter
+#' Prepare controls for parametric survival fitting
 #'
-#' Resolves the user-supplied control list to the concrete object expected
-#' by [survival::survreg.fit()] and [survival::survreg()], filling in
-#' defaults from [survival::survreg.control()] when values are absent. This
-#' is called once per MFP analysis; the resolved list is then reused for
-#' every candidate model.
+#' Applies the defaults and validates the supplied settings using
+#' [survival::survreg.control()]. The resulting list is reused when fitting
+#' candidate and final models.
 #'
-#' @param control User-supplied control list, or `NULL` to use survreg
-#'   defaults.
+#' @param control A list of settings accepted by
+#'   [survival::survreg.control()], or `NULL` to use its defaults.
 #'
-#' @return A `survreg.control()` list carrying the merged fields.
+#' @return A validated list of `survreg` fitting controls.
 #'
 #' @keywords internal
 #' @noRd
 normalize_survreg_control <- function(control = NULL) {
-  if (is.null(control)) return(survival::survreg.control())
+  if (is.null(control)) {
+    return(survival::survreg.control())
+  }
+
   if (!is.list(control)) {
     stop(
       "For `survreg` models, `control` must be `NULL` or a list accepted by `survival::survreg.control()`.",
       call. = FALSE
     )
   }
+
   tryCatch(
     do.call(survival::survreg.control, control),
     error = function(e) {
@@ -2285,18 +2316,16 @@ normalize_survreg_control <- function(control = NULL) {
   )
 }
 
-
-#' Normalise Controls Shared by Cox and Fine--Gray Fitters
+#' Prepare controls for Cox and Fine--Gray fitting
 #'
-#' Resolves the user-supplied control list to a [survival::coxph.control()]
-#' object used by both Cox and Fine--Gray subdistribution-hazard candidate
-#' fits. Any fields not supplied by the user take defaults from
-#' `survival::coxph.control()`.
+#' Applies the defaults and validates the supplied settings using
+#' [survival::coxph.control()]. The resulting list is used for Cox and
+#' Fine--Gray candidate and final fits.
 #'
-#' @param control User-supplied control list, or `NULL` to use coxph
-#'   defaults.
+#' @param control A list of settings accepted by
+#'   [survival::coxph.control()], or `NULL` to use its defaults.
 #'
-#' @return A `coxph.control()` list carrying the merged fields.
+#' @return A validated list of Cox fitting controls.
 #'
 #' @keywords internal
 #' @noRd
@@ -2316,21 +2345,18 @@ normalize_cox_control <- function(control = NULL) {
   )
 }
 
-
-#' Convert `survreg` Non-Convergence Warnings into Fail-Fast Errors
+#' Stop when a survreg fit runs out of iterations
 #'
-#' Wraps an expression that fits a parametric survival model with
-#' [survival::survreg()] or [survival::survreg.fit()], catching
-#' non-convergence warnings and rethrowing them as targeted errors. This
-#' ensures that candidate and final-fit paths surface fitter failures
-#' immediately rather than producing suspect fits.
+#' Evaluates a parametric survival fitting expression. If
+#' [survival::survreg()] or [survival::survreg.fit()] warns that it ran out
+#' of iterations without converging, turns that warning into an error.
+#' Other warnings retain their usual behavior.
 #'
-#' @param expr Unevaluated expression that fits the parametric survival
-#'   model.
-#' @param fast Logical. `TRUE` (default) marks the message as a
-#'   candidate-model failure; `FALSE` marks it as a final-model failure.
+#' @param expr Expression that fits the parametric survival model.
+#' @param fast Whether this is a candidate fit. Defaults to `TRUE`;
+#'   `FALSE` identifies a final fit in the error.
 #'
-#' @return The value of `expr` when it converges.
+#' @return The value of `expr` if the specified warning does not occur.
 #'
 #' @keywords internal
 #' @noRd
@@ -2349,31 +2375,31 @@ mfp2_with_survreg_convergence_guard <- function(expr, fast = TRUE) {
   )
 }
 
-
-#' Evaluate a Cox Fit While Treating Explicit Non-convergence as Fatal
+#' Stop when a Cox or Fine--Gray fit runs out of iterations
 #'
-#' `survival::coxph.fit()` reports iteration exhaustion by warning rather than
-#' by a returned `converged` flag. Convert only that specific warning into an
-#' error. All other Cox warnings retain survival's normal behavior.
+#' Turns an iteration-exhaustion warning into an error that identifies
+#' the model being fitted. Other warnings retain their usual behavior.
 #'
-#' @param expr Cox fitting expression to evaluate.
-#' @param fast Whether this is a repeated candidate fit or the final refit.
+#' @param expr Fitting expression to evaluate.
+#' @param fast Whether this is a candidate fit. Defaults to `TRUE`.
+#' @param model Model name to use in the error message.
 #'
-#' @return The evaluated Cox fit.
+#' @return The value of `expr` if the specified warning does not occur.
 #' @keywords internal
 #' @noRd
-mfp2_with_cox_convergence_guard <- function(expr, fast = TRUE) {
+mfp2_with_cox_convergence_guard <- function(expr, fast = TRUE, model = "Cox") {
   stage <- if (isTRUE(fast)) "candidate" else "final"
 
   withCallingHandlers(
     expr,
     warning = function(w) {
       msg <- conditionMessage(w)
-      if (grepl("Ran out of iterations and did not converge", msg, fixed = TRUE)) {
+      if (grepl("Ran out of iterations and did not converge",
+                msg, fixed = TRUE)) {
         mfp2_stop_fit(
           paste0(
-            "The ", stage,
-            " Cox model did not converge within the configured iteration limit. ",
+            "The ", stage, " ", model,
+            " model did not converge within the configured iteration limit. ",
             "Adjust `control$iter.max` or inspect the data."
           ),
           fast = fast
@@ -2383,32 +2409,40 @@ mfp2_with_cox_convergence_guard <- function(expr, fast = TRUE) {
   )
 }
 
-#' Fit a Parametric Survival Model
+#' Fit a parametric survival model
 #'
-#' Fits an accelerated-failure-time parametric survival model. Candidate MFP
-#' fits use the matrix-level hot path through [survival::survreg.fit()] for
-#' speed. The retained final model is refitted with [survival::survreg()] so
-#' that the standard `survival` methods work through the usual formula
-#' interface. The transformed response is prepared once by
-#' `prepare_survreg_family()`.
+#' Fits candidate models from a design matrix with [survival::survreg.fit()].
+#' When `fast = FALSE`, fits the final model with [survival::survreg()].
+#' The prepared `family` contains the response, distribution, scale, and
+#' any stratification information.
 #'
-#' @param x Numeric model matrix.
-#' @param y Response, typically a [survival::Surv()] object.
-#' @param family Prepared survreg family object.
-#' @param control Normalised survreg-fit control list.
-#' @param fast Logical. `TRUE` selects the candidate hot path;
-#'   `FALSE` refits with [survival::survreg()] to build the retained final
-#'   model.
-#' @param calculate_fit_statistics Logical. If `TRUE`, compute
-#'   log-likelihood and information criteria for reporting.
-#' @param keep_fit Logical. If `TRUE`, retain the fitted-model object in the
-#'   result. Defaults to `!fast`.
-#' @param keep_fitted_values Logical. If `TRUE`, retain fitted linear
-#'   predictors.
-#' @param ... Additional arguments forwarded to the underlying fitter.
+#' @param x Numeric predictor matrix, or `NULL` for an intercept-only model.
+#' @param y Response argument retained for the common fitting interface.
+#'   This function uses the response stored in `family`.
+#' @param family Prepared parametric survival family.
+#' @param weights Observation weights.
+#' @param offset Values added to the linear predictor.
+#' @param control Validated `survreg` fitting controls.
+#' @param fast Whether to use `survreg.fit()` for a candidate fit.
+#'   If `FALSE`, use `survreg()`. Defaults to `TRUE`.
+#' @param calculate_fit_statistics Whether to return the null-model log
+#'   likelihood and the null and fitted-model deviances.
+#' @param keep_fit Whether to include the fitted object in the result.
+#'   Defaults to `!fast`.
+#' @param has_offset Whether an offset was supplied and should appear in
+#'   the formula for a final fit.
+#' @param x_has_intercept Whether `x` already begins with a column named
+#'   `"(Intercept)"`; otherwise an intercept is added for fitting.
+#' @param reserved_names Names that temporary response, offset, and strata
+#'   columns must avoid when creating a final fit.
 #'
-#' @return A list of fit results used by the MFP engine; when `keep_fit` is
-#'   `TRUE`, also carries the fitted-model object.
+#' @return A list containing `logl`, `coefficients`, `rank`, and `df`.
+#'   `df` includes estimated scale parameters where applicable.
+#'   `weights` and `residuals` are `NULL`.
+#'
+#'   When `keep_fit = TRUE`, the list also contains `fit`. When
+#'   `calculate_fit_statistics = TRUE`, it contains `null_logl`,
+#'   `null_deviance`, and `model_deviance`.
 #'
 #' @keywords internal
 #' @noRd
@@ -2636,34 +2670,38 @@ fit_survreg <- function(x,
   result
 }
 
-
-#' Fit a Fine--Gray Subdistribution-Hazard Model
+#' Fit a Fine--Gray subdistribution hazard model
 #'
-#' Fits the weighted counting-process Cox representation produced once by
-#' `prepare_finegray_family()`. The expanded response, expansion weights,
-#' and row-index mapping are read from the family object so that the
-#' expansion is not repeated for every MFP candidate model.
+#' Fits the weighted Cox representation prepared for a Fine--Gray model.
+#' The prepared `family` contains the expanded response, weights, offset,
+#' strata, and mapping from expanded rows to original observations.
+#' Candidate fits use [survival::agreg.fit()]; final fits use
+#' [survival::coxph()].
 #'
-#' @param x Numeric model matrix aligned with the expanded weighted response.
-#' @param family Prepared Fine--Gray family object.
-#' @param offset Numeric offset vector aligned with the expanded response,
-#'   or `NULL`.
-#' @param strata Optional stratification vector aligned with the expanded
-#'   response.
-#' @param control Normalised Cox-fit control list (see
-#'   `normalize_cox_control()`).
-#' @param fast Logical. `TRUE` selects the candidate hot path;
-#'   `FALSE` refits with [survival::coxph()] to build the retained final
-#'   model.
-#' @param calculate_fit_statistics Logical. If `TRUE`, compute
-#'   log-likelihood and information criteria for reporting.
-#' @param keep_fit Logical. If `TRUE`, retain the fitted-model object.
+#' @param x Numeric predictor matrix with one row per original observation,
+#'   or `NULL` for a model without predictors.
+#' @param family Prepared Fine--Gray family.
+#' @param offset Offset aligned with the original observations, or `NULL`.
+#'   The expanded offset used for fitting comes from `family`.
+#' @param control Validated Cox fitting controls.
+#' @param method Method for handling tied event times.
+#' @param nocenter Values identifying columns that the Cox fitter should
+#'   leave uncentered.
+#' @param fast Whether to use `agreg.fit()` for a candidate fit. If `FALSE`,
+#'   use `coxph()` for the final fit. Defaults to `TRUE`.
+#' @param calculate_fit_statistics Whether to return the null partial log
+#'   likelihood and the null and fitted-model deviances.
+#' @param keep_fit Whether to include the fitted object in the result.
 #'   Defaults to `!fast`.
-#' @param keep_fitted_values Logical. If `TRUE`, retain fitted linear
-#'   predictors on the expanded data.
-#' @param ... Additional arguments forwarded to the underlying fitter.
+#' @param has_offset Whether an offset was supplied and should appear in
+#'   the final fit's formula.
+#' @param reserved_names Names that temporary formula columns must avoid
+#'   when creating a final fit.
 #'
-#' @return A list of fit results used by the MFP engine.
+#' @return A list containing `logl`, `coefficients`, `rank`, and `df`.
+#'   `weights` and `residuals` are `NULL`. When requested, the list also
+#'   contains `fit`, or `null_logl`, `null_deviance`, and
+#'   `model_deviance`.
 #'
 #' @keywords internal
 #' @noRd
@@ -2712,7 +2750,8 @@ fit_finegray <- function(x,
         resid = FALSE,
         nocenter = nocenter
       ),
-      fast = TRUE
+      fast = TRUE,
+      model = "Fine-Gray"
     )
   } else {
     has_predictors <- NCOL(x_expanded) > 0L
@@ -2773,7 +2812,8 @@ fit_finegray <- function(x,
         x = TRUE,
         y = TRUE
       ),
-      fast = FALSE
+      fast = FALSE,
+      model = "Fine-Gray"
     )
     fit$mfp2_internal_names <- internal_names
     fit$mfp2_finegray_event <- prepared$event
@@ -2833,46 +2873,44 @@ fit_finegray <- function(x,
   result
 }
 
-
-#' Function that fits Cox proportional hazards models
+#' Fit a Cox proportional hazards model
 #'
-#' @param x a matrix of predictors excluding intercept with nobs observations.
-#' @param y a `Surv` object.
-#' @param weights a numeric vector of length nobs of 'prior weights' to be used
-#' in the fitting process.
-#' @param offset a numeric vector of length nobs of of a priori known component
-#' to be included in the linear predictor during fitting.
-#' @param method a character string specifying the method for tie handling.
-#' See [survival::coxph()].
-#' @param fast a logical which determines how the model is fitted. The default
-#' `TRUE` uses fast fitting routines (i.e. [survival::coxph.fit()]), while
-#' `FALSE`uses the normal fitting routines ([survival::coxph()]) (used for
-#'  the final output of `mfp2`).
-#' @param calculate_fit_statistics logical. If `TRUE`, return the null
-#' partial log-likelihood and the null and fitted-model statistics required for
-#' final reporting.
-#' @param keep_fit logical. If `TRUE`, retain the underlying fitted object.
-#' @param has_offset logical indicating whether `offset` should be included in
-#' the final formula-based fit when `fast = FALSE`.
-#' @param strata `NULL`, a normalized factor, or internal integer stratum codes.
-#' @param reserved_names Optional character vector of names that package-created
-#' response/offset/strata columns must avoid in the formula-based final refit.
-#' @param control,rownames,nocenter passed to [survival::coxph.fit()].
+#' Fits candidate models directly from a predictor matrix with
+#' [survival::coxph.fit()]. When `fast = FALSE`, fits the final model
+#' with [survival::coxph()].
 #'
-#' @return
-#' A list with the following components:
+#' @param x Numeric predictor matrix without an intercept, or `NULL`
+#'   for a model without predictors.
+#' @param y A [survival::Surv()] response.
+#' @param strata Optional strata. Candidate fits use integer stratum codes;
+#'   final fits include strata in the model formula.
+#' @param weights Observation weights.
+#' @param offset Values added to the linear predictor.
+#' @param control Validated Cox fitting controls.
+#' @param method Method for handling tied event times. See
+#'   [survival::coxph()].
+#' @param rownames Row names passed to `coxph.fit()` for candidate fits.
+#' @param nocenter Values identifying predictor columns that the Cox fitter
+#'   should leave uncentered.
+#' @param fast Whether to use `coxph.fit()` for a candidate fit. If `FALSE`,
+#'   use `coxph()` for the final fit. Defaults to `TRUE`.
+#' @param calculate_fit_statistics Whether to return the null partial log
+#'   likelihood and the null and fitted-model statistics.
+#' @param keep_fit Whether to include the fitted object in the result.
+#'   Defaults to `!fast`.
+#' @param has_offset Whether an offset was supplied and should appear in
+#'   the final fit's formula.
+#' @param reserved_names Names that temporary response, offset, and strata
+#'   columns must avoid when creating a final fit.
 #'
-#' * `logl`: the log likelihood of the fitted model.
-#' * `coefficients`: regression coefficients.
-#' * `df`: number of parameters (degrees of freedom).
-#' * `rank`: fitted regression rank.
-#' * `null_logl`: when `calculate_fit_statistics = TRUE`, the null partial
-#'   log-likelihood.
-#' * `null_deviance`: when `calculate_fit_statistics = TRUE`, minus twice the
-#'   null partial log-likelihood.
-#' * `model_deviance`: when `calculate_fit_statistics = TRUE`, minus twice the
-#'   fitted partial log-likelihood.
-#' * `fit`: when `keep_fit = TRUE`, the fitted model object.
+#' @return A list containing `logl`, the fitted partial log likelihood;
+#'   `coefficients`; and `rank` and `df`, both equal to the number of
+#'   non-missing coefficients. `weights` and `residuals` are `NULL`.
+#'
+#'   When `keep_fit = TRUE`, the list also contains `fit`. When
+#'   `calculate_fit_statistics = TRUE`, it contains `null_logl` and
+#'   `null_deviance` and `model_deviance`, calculated as minus twice
+#'   the respective partial log likelihoods.
 #'
 #' @import survival
 #' @keywords internal

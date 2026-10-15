@@ -324,7 +324,7 @@ test_that("ordinal training predictions include the fitted offset", {
   )$fit
   slope <- fitted$coefficients["age"]
   expected <- as.numeric(fitted$x[, "age"] * slope + off)
-  actual <- mfp2:::mfp2_predict_ordinal(fitted, type = "link")
+  actual <- mfp2:::mfp2_predict_ordinal(fitted, type = "link", add_intercept = FALSE)
   expect_equal(unname(actual), expected, tolerance = 1e-8)
   cumulative <- cbind(1, vapply(fitted$mfp2_ordinal_intercepts, function(a) {
     stats::plogis(a + expected)
@@ -369,9 +369,11 @@ test_that("predict returns correct link, probabilities, and mean", {
   expect_equal(max(abs(rowSums(probs) - 1)), 0, tolerance = 1e-10)
   expect_equal(max(abs(probs - predict(ref, type = "fitted.ind"))), 0, tolerance = 1e-6)
 
-  # covariate linear predictor differs from orm's centred lp only by a constant
+  # The default includes the same reference-cutoff intercept as rms::orm.
   lp <- predict(fit, type = "link")
-  expect_equal(sd(lp - predict(ref, type = "lp")), 0, tolerance = 1e-8)
+  # rms attaches an internal `intercepts` attribute. Compare numeric values
+  # explicitly; unname() removes names but retains that additional attribute.
+  expect_equal(as.numeric(lp), as.numeric(predict(ref, type = "lp")), tolerance = 1e-6)
 
   # newdata prediction agrees with the training-data subset
   expect_equal(

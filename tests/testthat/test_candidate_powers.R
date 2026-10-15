@@ -35,27 +35,26 @@ test_that("single non-1 candidate power is valid for df > 1", {
 })
 
 
-# Test purpose: Power 1 remains a valid searched FP1 candidate even when the
-# maximum requested model has higher FP degree.
+# Test purpose: A singleton power 1 works in the actual fitting path,
+# including FP searches with higher maximum degree.
 test_that("candidate power set containing only 1 is valid for df > 1", {
-  expect_true(
-    validate_mfp_candidate_powers(
-      powers = list(x = 1),
-      df = c(x = 4)
-    )
+  fit <- mfp2(
+    x_prostate[, c("cavol", "age")], y_prostate,
+    powers = list(cavol = 1), df = 4,
+    verbose = FALSE
   )
+  expect_s3_class(fit, "mfp2")
 })
 
 
-# Test purpose: Checks that powers = 1 is allowed when the term is restricted
-# to a linear effect.
+# Test purpose: A singleton power 1 also works for a linear term.
 test_that("candidate power set containing only 1 is valid for df = 1", {
-  expect_true(
-    validate_mfp_candidate_powers(
-      powers = list(x = 1),
-      df = c(x = 1)
-    )
+  fit <- mfp2(
+    x_prostate[, c("cavol", "age")], y_prostate,
+    powers = list(cavol = 1), df = 1,
+    verbose = FALSE
   )
+  expect_s3_class(fit, "mfp2")
 })
 
 

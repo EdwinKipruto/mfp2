@@ -28,62 +28,71 @@ fracplot(
 \arguments{
 \item{model}{A fitted object of class \code{"mfp2"}.}
 
-\item{terms}{Character vector naming variables to plot. If \code{NULL}, all
-eligible terms retained in the final model are plotted.}
+\item{terms}{Names of the variables to plot, for example,
+\code{c("age", "cavol")}. By default (\code{NULL}), requests all variables kept in
+the final model. See \strong{Choosing terms}.}
 
-\item{partial_only}{Logical scalar. If \code{TRUE}, plot only the fitted
-partial predictor. If \code{FALSE}, the default, add residuals to produce
-component-plus-residual plots. This argument is used only when
-\code{type = "terms"}; contrast plots always use \code{partial_only = TRUE}.}
+\item{partial_only}{Whether to show only the fitted effect and confidence
+interval. Defaults to \code{FALSE}. See \strong{Component-plus-residual plots}.}
 
-\item{type}{Character scalar, either \code{"terms"} or \code{"contrasts"}.
-Term plots display partial predictors; contrast plots display differences
-from the reference supplied through \code{ref}.}
+\item{type}{Either \code{"terms"} (default) or \code{"contrasts"}.
+See \strong{Choosing the plot type}.}
 
-\item{ref}{Optional named list of reference values used when
-\code{type = "contrasts"}. Ignored for term plots.}
+\item{ref}{Named list of reference values for contrast plots, for example,
+\code{list(age = 50)}. See \strong{Contrasts and reference values}.}
 
-\item{terms_seq}{Character scalar, either \code{"data"} or
-\code{"equidistant"}. The first evaluates the fitted function at observed
-covariate values; the second uses an equally spaced grid over the observed
-range. For contrast plots, the default is \code{"equidistant"} when this
-argument is omitted.}
+\item{terms_seq}{Either \code{"data"} or \code{"equidistant"}.
+See \strong{Evaluation values} for their meaning and defaults.}
 
-\item{alpha}{Numeric scalar giving the significance level used to construct
-confidence intervals; for example, \code{alpha = 0.05} gives 95 percent
-intervals.}
+\item{alpha}{Significance level for confidence intervals. The default,
+\code{0.05}, gives 95 percent intervals. See \strong{Confidence intervals}.}
 
-\item{show_titles}{Logical scalar. If \code{TRUE}, add titles describing the
-selected FP or ACD representation, positive-part handling, and any retained
-zero-indicator or spike-at-zero component.}
+\item{show_titles}{Whether to show titles describing the fitted
+transformation or variable representation. Defaults to \code{TRUE}.}
 
-\item{color_points}{Colour used for residual points.}
+\item{color_points}{Colour of component-plus-residual points, for example,
+\code{"grey60"} or \code{"#AAAAAA"}. All colour arguments accept ggplot2 colour
+names or hexadecimal codes. See \link[ggplot2:aes_colour_fill_alpha]{ggplot2::aes_colour_fill_alpha}.}
 
-\item{color_line}{Colour used for fitted curves, binary fitted points, and
-the zero endpoint of a term fitted with \code{zero = TRUE} alone.}
+\item{color_line}{Colour of fitted curves and fitted points for binary
+predictors and factors, for example, \code{"black"} or \code{"blue"}. Also used
+for the zero endpoint of a term fitted with \code{zero = TRUE} alone.}
 
-\item{color_line_spike}{Colour used for the zero-component point of a
-\code{catzero} term or a term assessed with spike-at-zero selection.}
+\item{color_line_spike}{Colour of the separate zero endpoint for a
+\code{catzero} or spike-at-zero term with a continuous component,
+for example, \code{"red"}.}
 
-\item{color_fill}{Fill colour used for confidence ribbons.}
+\item{color_fill}{Fill colour of confidence bands, for example,
+\code{"lightblue"} or \code{"#56B4E9"}.}
 
-\item{shape}{Point shape used for residual observations.}
+\item{shape}{Shape of component-plus-residual points. Common ggplot2
+shape codes include \code{1} for open circles and \code{16} for solid circles.
+The default is \code{1}. See \code{\link[ggplot2:scale_shape]{ggplot2::scale_shape()}}.}
 
-\item{size_points}{Point size used for residual observations.}
+\item{size_points}{Numeric size of component-plus-residual points,
+in millimetres, for example, \code{1} or \code{2}. The default is \code{1}.
+See \code{\link[ggplot2:geom_point]{ggplot2::geom_point()}}.}
 
-\item{size_points_spike}{Point size used for fitted values shown at exactly
-zero for zero-handled covariates.}
+\item{size_points_spike}{Numeric size of fitted points for binary
+predictors, factors, and zero endpoints.
+For example, use \code{3} for larger points. The default is \code{2}.
+See \code{\link[ggplot2:geom_point]{ggplot2::geom_point()}}.}
 
-\item{linetype}{Line type used for fitted curves.}
+\item{linetype}{Line style of fitted curves, for example, \code{"solid"},
+\code{"dashed"}, or \code{"dotted"}. The default is \code{"solid"}.
+See \code{\link[ggplot2:scale_linetype]{ggplot2::scale_linetype()}}.}
 
-\item{linewidth}{Line width used for fitted curves.}
+\item{linewidth}{Numeric width of fitted curves, for example, \code{0.5}
+or \code{1}. Larger values produce thicker lines. The default is \code{1}.
+See \code{\link[ggplot2:geom_line]{ggplot2::geom_line()}}.}
 
-\item{alpha_fill}{Numeric scalar between 0 and 1 controlling confidence-band
-transparency.}
+\item{alpha_fill}{Confidence-band transparency, from \code{0} (transparent)
+to \code{1} (opaque).}
 }
 \value{
 A named list of \code{ggplot2} objects, one for each plotted term, identical to
-the result returned by \code{\link[=plot.mfp2]{plot.mfp2()}}.
+the result returned by \code{\link[=plot.mfp2]{plot.mfp2()}} called with the same arguments
+(including the colours).
 }
 \description{
 \code{fracplot()} is retained temporarily for compatibility with code written
@@ -91,7 +100,8 @@ for earlier versions of \code{mfp2}. Use \code{\link[=plot.mfp2]{plot.mfp2()}} o
 }
 \details{
 The function forwards its arguments to \code{\link[=plot.mfp2]{plot.mfp2()}} and returns the same
-plot objects.
+plot objects, except that its own defaults for \code{color_line} and
+\code{color_line_spike} are \code{"red"}, whereas \code{\link[=plot.mfp2]{plot.mfp2()}} uses \code{"black"}.
 }
 \examples{
 data("prostate")

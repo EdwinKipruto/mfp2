@@ -3,7 +3,7 @@
 \name{survreg_family}
 \alias{survreg_family}
 \alias{finegray_family}
-\title{Survival Family Specifications}
+\title{Survival Model Families}
 \usage{
 survreg_family(dist = "weibull", scale = 0, parms = NULL)
 
@@ -14,61 +14,50 @@ finegray_family(
 )
 }
 \arguments{
-\item{dist}{A distribution accepted by \code{\link[survival:survreg]{survival::survreg()}}.}
+\item{dist}{Survival-time distribution accepted by
+\code{\link[survival:survreg]{survival::survreg()}}. The default is \code{"weibull"}.}
 
-\item{scale}{Fixed scale. The default, zero, estimates the scale.}
+\item{scale}{Scale of the chosen distribution. The default, \code{0},
+estimates it from the data; a positive value fixes it.}
 
-\item{parms}{Optional distribution parameters accepted by
-\code{\link[survival:survreg]{survival::survreg()}}.}
+\item{parms}{Optional parameters for the chosen distribution, as accepted
+by \code{\link[survival:survreg]{survival::survreg()}}.}
 
-\item{etype}{Endpoint of interest, using the same interpretation as the
-\code{etype} argument of \code{\link[survival:finegray]{survival::finegray()}}. \code{NULL} uses the first event
-state, matching \code{finegray()}.}
+\item{etype}{Event type of interest in a Fine-Gray model. If \code{NULL},
+the first event type is used.}
 
-\item{timefix}{Logical; pass event times through survival's round-off check.}
+\item{timefix}{Whether to correct small differences in event times caused
+by rounding. The default is \code{TRUE}.}
 
-\item{strata_action}{A character string controlling how \code{strata()} terms in
-the model formula are used in Fine--Gray models. Three options are
-available, following Zhou et al. (2011, \emph{Biometrics}):
+\item{strata_action}{How \code{strata()} terms in the model formula affect
+a Fine--Gray model:
 \describe{
-\item{\code{"both"}}{(default) Strata stratify \strong{both} the censoring
-distribution (IPCW weights estimated within each stratum) \strong{and} the
-baseline subdistribution hazard (each stratum gets its own baseline
-hazard in the weighted Cox fit). This is the standard stratified
-Fine--Gray model of Zhou et al. (2011).}
-\item{\code{"censoring"}}{Strata stratify the censoring distribution only.
-The baseline subdistribution hazard is common across all strata.}
-\item{\code{"baseline"}}{Strata stratify the baseline subdistribution hazard
-only. The censoring distribution is estimated pooling across strata.
-Equivalent to \code{ctype = 2} in Zhou et al. (2011).}
+\item{\code{"both"}}{The default. Allows both the censoring pattern
+and the baseline event pattern to differ between strata.}
+\item{\code{"censoring"}}{Allows the censoring pattern to differ
+between strata, while using a common baseline event pattern.}
+\item{\code{"baseline"}}{Allows the baseline event pattern to differ
+between strata, while estimating a common censoring pattern.}
 }}
 }
 \value{
-An \code{mfp2_survreg_family} specification for the \code{family} argument of
-\code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}}, or an \code{mfp2_finegray_family} specification for
-\code{\link[=mfp2]{mfp2()}}.
+A family specification for the \code{family} argument of
+\code{\link[=mfp2]{mfp2()}}. The specification from \code{survreg_family()} can also be
+used with \code{\link[=mfpi]{mfpi()}}.
 }
 \description{
-\code{survreg_family()} specifies a parametric accelerated failure-time or
-location-scale model. \code{finegray_family()} specifies a proportional
-subdistribution-hazards model for competing risks.
+Use \code{survreg_family()} to choose a parametric survival model and its
+distribution. Use \code{finegray_family()} to study a particular event
+when other event types may occur first.
 }
 \details{
-For parametric survival models, repeated candidate models are fitted with
-\code{\link[survival:survreg.fit]{survival::survreg.fit()}}, and the selected model is refitted with
-\code{\link[survival:survreg]{survival::survreg()}}.
-For log-time distributions, an interval-censored observation with lower
-boundary zero is converted to the mathematically equivalent left-censored
-observation at its finite upper boundary before applying the logarithmic
-time transformation. This includes the log-logistic distribution.
+Supply the resulting specification as the \code{family} argument to
+\code{mfp2()}. \code{survreg_family()} can also be used with
+\code{mfpi()}; Fine-Gray models cannot.
 
-For Fine--Gray models, \code{\link[survival:finegray]{survival::finegray()}} expands the multi-state
-response once. Repeated candidate models then use
-\code{\link[survival:agreg.fit]{survival::agreg.fit()}}, while the selected model is returned as a weighted
-robust \code{coxph} fit. The public model interface remains
-\code{family = finegray_family(etype = ...)}. An \code{id} argument is required by
-\code{\link[=mfp2]{mfp2()}} only for a start--stop multi-state response. Fine--Gray models are
-not supported by \code{\link[=mfpi]{mfpi()}}.
+Both functions require a survival response. For Fine-Gray models, the
+response must identify the possible event types. Supply an \code{id}
+to \code{mfp2()} when observations use start and stop times.
 }
 \examples{
 survreg_spec <- survreg_family(dist = "weibull")
@@ -119,10 +108,10 @@ fit_finegray <- mfp2(
 }
 }
 \references{
-Zhou B, Latouche A, Rocha V, Fine JP (2011). Competing risks regression for stratified
-data. \emph{Biometrics}, \strong{67}(2), 661--670.
+Zhou B, Latouche A, Rocha V, Fine JP (2011). Competing risks regression
+for stratified data. \emph{Biometrics}, 67(2), 661--670.
 \doi{10.1111/j.1541-0420.2010.01493.x}
 }
 \seealso{
-\code{\link[survival:survreg]{survival::survreg()}}, \code{\link[survival:finegray]{survival::finegray()}}, \code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
+\code{\link[survival:survreg]{survival::survreg()}}, \code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
 }

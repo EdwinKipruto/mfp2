@@ -2,10 +2,10 @@ Package: mfp2
 Type: Package
 Title: Multivariable Fractional Polynomial Models with Extensions
 Version: 1.1.0
-Date: 2026-09-28
+Date: 2026-10-14
 Authors@R: c(
     person("Edwin", "Kipruto", role = c("aut", "cre"),
-           email = "edwin.kipruto@uniklinik-freiburg.de"),
+           email = "ek472@email.uni-freiburg.de"),
     person("Michael", "Kammer", role = "aut",
            email = "michael.kammer@meduniwien.ac.at"),
     person("Patrick", "Royston", role = "aut",
@@ -54,4 +54,4 @@ Author: Edwin Kipruto [aut, cre],
   Michael Kammer [aut],
   Patrick Royston [aut],
   Willi Sauerbrei [aut]
-Maintainer: Edwin Kipruto <edwin.kipruto@uniklinik-freiburg.de>
+Maintainer: Edwin Kipruto <ek472@email.uni-freiburg.de>

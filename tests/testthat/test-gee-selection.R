@@ -288,13 +288,6 @@ test_that("GEE quasi-likelihood is stable at response boundaries", {
   )
 })
 
-test_that("power one is valid in every searched FP1 class", {
-  expect_true(validate_mfp_candidate_powers(
-    powers = list(x = 1),
-    df = c(x = 4)
-  ))
-})
-
 test_that("GEE visiting order uses full-model robust block tests", {
   x <- cbind(x1 = 1:5, x2 = 6:10)
   beta <- c("(Intercept)" = 0, x1 = 1, x2 = 3)

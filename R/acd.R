@@ -32,10 +32,10 @@ reset_acd <- function(x, acdx) {
   names_acd <- names(acdx)[acdx]
 
   # number of unique values of each column in acdx
-  n_unique <- apply(
-    x[, names_acd, drop = FALSE],
-    2,
-    function(col) length(unique(col))
+  n_unique <- vapply(
+    names_acd,
+    function(name) length(unique(x[, name])),
+    integer(1)
   )
 
   ind_reset <- which(n_unique < 5)

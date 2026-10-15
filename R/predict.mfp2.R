@@ -18,105 +18,162 @@
 #'
 #' Term and contrast predictions require enough valid covariance information to
 #' calculate their standard errors and confidence intervals. Negligible negative
-#' variances caused by numerical rounding are treated as zero. Prediction stops
+#' variances caused by numerical rounding are treated as zero. The same checks
+#' apply to full-model GEE, fastglm, ordinal, and multinomial standard errors.
+#' Prediction stops
 #' if a variance is non-finite or meaningfully negative and a valid interval
 #' cannot be calculated.
 #'
 #' @section Supplying prediction data:
-#' Supply `newdata` in the same form used when fitting the model.
+#' Supply `newdata` with one row for each observation to predict.
 #'
-#' For a model fitted with a formula, normally supply the original variables.
-#' For example, supply the factor `race`, not manually created contrast columns
-#' such as `raceB` and `raceC`. Use factor levels that were available when the
-#' model was fitted. The required formula terms and factor contrasts are
-#' recreated automatically.
+#' If you fitted the model using the formula interface, supply the variables
+#' named in the formula. For example, for a model fitted with
+#' `y ~ age + race`, prediction data could be:
 #'
-#' For a model fitted with a numeric matrix, supply the original numeric columns
-#' with the same names and coding used in the fitting matrix.
+#' ```r
+#' newdata <- data.frame(
+#'   age = c(50, 60, 70),
+#'   race = c("A", "B", "C")
+#' )
+#' ```
 #'
-#' If several matrix columns were grouped using `term_groups`, supply every
-#' member column. Use the group name, rather than the member-column names, in
-#' the `terms` argument.
+#' Supply `race` itself; you do not need to create separate columns for its
+#' categories. The race categories `"A"`, `"B"`, and `"C"` must have been
+#' available during fitting.
 #'
-#' For complete-model prediction, normally supply only the variables needed by
-#' terms included in the final model. For term or contrast prediction, only the
-#' requested terms are required. Additional variables can be needed to evaluate
-#' a formula offset, Cox or `survreg` strata, or an absolute Cox prediction.
+#' If you fitted the model using the matrix interface, supply the same
+#' column names and use the same coding as in the fitting matrix.
+#' For example, if race had three categories during fitting, with race
+#' category A as the reference category, the fitting matrix could contain
+#' `age`, `raceB`, and `raceC`. The same prediction data would then be:
 #'
-#' Required values must not be missing. No numeric column in `newdata` may
-#' contain `Inf` or `-Inf`, including unused extra columns. Prediction stops if
-#' a supplied value is outside the valid range of the fitted transformation.
-#' For example, some logarithmic or negative-power functions require a
-#' positive value after the fitted shift is applied.
+#' ```r
+#' newdata <- cbind(
+#'   age   = c(50, 60, 70),
+#'   raceB = c(0, 1, 0),
+#'   raceC = c(0, 0, 1)
+#' )
+#' ```
+#'
+#' The first row represents an observation aged 50 in race category A;
+#' the second, an observation aged 60 in race category B; and the third,
+#' an observation aged 70 in race category C.
+#' Race category A has zero in both `raceB` and `raceC`.
+#'
+#' If you grouped these columns during fitting with
+#' `term_groups = list(race = c("raceB", "raceC"))`, include both `raceB`
+#' and `raceC` when predicting the group. In `terms`, use the group name
+#' `"race"`, rather than the column names. For example:
+#'
+#' ```r
+#' predict(fit, newdata = newdata, type = "terms", terms = "race")
+#' ```
+#'
+#' For predictions from the whole model, include all variables kept in the
+#' final model. For term or contrast predictions, include only the variables
+#' needed for the requested terms.
+#'
+#' Extra columns may be needed for offsets or survival groups (`strata`)
+#' specified in the formula. For Cox `type = "expected"` or `"survival"`,
+#' also include the time and event-status variables in `newdata`, using the
+#' names from the fitting formula. The time values specify when predictions
+#' are evaluated.
+#'
+#' Values needed for prediction must not be missing or contain `Inf` or
+#' `-Inf`. Extra columns that are not used are ignored.
+#'
+#' Supply values on their original scale; fitted shifts and transformations
+#' are applied automatically. Prediction stops if a transformation cannot
+#' use a supplied value. For example, a logarithm requires a positive value
+#' after the fitted shift is added.
 #'
 #' @section Choosing the prediction type:
-#' For all supported likelihood GLMs:
+#' The default is `"lp"` for Cox and Fine--Gray models and `"link"` for
+#' all other models. `"link"` and `"lp"` are interchangeable.
 #'
-#' - `type = "link"` returns predictions on the link scale.
-#' - `type = "response"` returns predictions on the response scale.
-#' - `type = "lp"` is accepted as another name for `"link"`.
+#' For GLM (including negative-binomial) and GEE models:
+#'
+#' - `type = "link"` returns the linear predictor.
+#' - `type = "response"` returns the predicted mean on the response scale.
+#'
+#' For GEE models, standard errors use the covariance estimator chosen
+#' during fitting. Response-scale standard errors are approximated from
+#' those on the link scale.
 #'
 #' For parametric `survreg` models:
 #'
 #' - `type = "link"` returns the fitted location (linear predictor).
-#' - `type = "response"` transforms the fitted location back to the response
+#'   `"linear"` is also accepted.
+#' - `type = "response"` returns the fitted location transformed back to
+#'   the response scale. This is not generally the mean survival time.
+#' - `type = "quantile"` returns predicted quantiles on the response scale.
+#' - `type = "uquantile"` returns predicted quantiles on the linear-predictor
 #'   scale.
-#' - `type = "quantile"` and `type = "uquantile"` use the corresponding
-#'   [survival::predict.survreg()] predictions; supply probabilities through
-#'   `...` (for example, `p = 0.5`).
-#' - `type = "lp"` and `type = "linear"` are accepted as other names for
-#'   `"link"`, matching [survival::predict.survreg()].
+#'
+#' For `"quantile"` and `"uquantile"`, supply probabilities using `p`,
+#' for example, `p = 0.5` for the median. See [survival::predict.survreg()].
 #'
 #' For Cox models:
 #'
 #' - `type = "lp"` returns the relative log-hazard.
 #' - `type = "risk"` returns the relative hazard, calculated as `exp(lp)`.
-#' - `type = "expected"` returns the predicted cumulative hazard up to the
-#'   supplied follow-up time.
-#' - `type = "survival"` returns the estimated survival probability at the
-#'   supplied follow-up time.
-#' - `type = "link"` is accepted as another name for `"lp"`.
+#' - `type = "expected"` returns the predicted cumulative hazard up to
+#'   the supplied follow-up time.
+#' - `type = "survival"` returns the survival probability at that time,
+#'   calculated as `exp(-expected)`.
 #'
-#' For Fine--Gray models, `type = "lp"` and `type = "risk"` return the
-#' relative log subdistribution hazard and relative subdistribution hazard,
-#' respectively. `"link"` is accepted as another name for `"lp"`. With
-#' `times`, `type = "response"` returns cumulative-incidence probabilities.
+#' For Fine--Gray models:
 #'
-#' For ordinal models, `type = "link"` returns the common covariate linear
-#' predictor without the cut-point intercepts, `type = "response"` returns an
-#' `n` by `K` matrix of category probabilities, and `type = "mean"` returns the
-#' expected category value. Numeric response levels are used for the expected
-#' value when possible; otherwise, category scores `1, ..., K` are used.
-#' Full-model ordinal standard errors are not currently provided, so use
-#' `se.fit = FALSE` for these three prediction types.
+#' - `type = "lp"` returns the relative log subdistribution hazard.
+#' - `type = "risk"` returns the relative subdistribution hazard,
+#'   calculated as `exp(lp)`.
+#' - `type = "response"` returns cumulative-incidence probabilities at
+#'   the times supplied in `times`.
 #'
-#' For likelihood GLMs, ordinal models, Cox models, Fine--Gray models, and
-#' `survreg` models:
+#' For ordinal models:
 #'
-#' - `type = "terms"` returns a fitted value for each requested term on the
-#'   linear-predictor scale. For GLM and `survreg` models, the intercept is
-#'   included by default. Ordinal terms have a shared predictor effect across
-#'   cutoffs, so they omit cutoff intercepts unless `ordinal_cutoff` is supplied.
-#' - `type = "contrasts"` compares each fitted term value with a reference
-#'   value.
+#' - `type = "link"` returns the linear predictor including the cutoff
+#'   intercept selected by `rms::orm()`. Set `add_intercept = FALSE` to
+#'   return only the predictor effects and any offset.
+#' - `type = "response"` returns category probabilities, with one row per
+#'   observation and one column per category.
+#' - `type = "mean"` returns the expected category value. Numeric category
+#'   labels are used when possible; otherwise, categories are scored
+#'   `1, ..., K`, where `K` is the number of categories.
 #'
-#' When `type` is not supplied, the default is `"link"` for GLM, multinomial,
-#' ordinal, and `survreg` models and `"lp"` for Cox and Fine--Gray models.
+#' For multinomial models:
 #'
-#' For multinomial models, `type = "link"` returns an `n` by `C - 1` matrix of
-#' reference-category logits, `type = "response"` returns an `n` by `C` matrix
-#' of class probabilities, and `type = "class"` returns the predicted response
-#' class. Link and response matrices retain the observation names from the
-#' fitted data or `newdata`. The fitted FP transformations are common across
-#' logits. Full-model multinomial standard errors are not currently provided,
-#' so use `se.fit = FALSE` with `type = "link"`, `"response"`, or `"class"`.
+#' - `type = "link"` returns log-odds relative to the reference category,
+#'   with one row per observation and one column per non-reference category.
+#' - `type = "response"` returns category probabilities, with one row per
+#'   observation and one column per category.
+#' - `type = "class"` returns the category with the highest predicted
+#'   probability.
 #'
-#' Multinomial `type = "terms"` and `type = "contrasts"` predictions are
-#' available: because each predictor has a separate coefficient per
-#' non-reference logit, the result is a named list whose elements stack the
-#' per-logit partial predictors, distinguished by a `logit` factor column (the
-#' non-reference class labels, in coefficient-matrix order). Standard errors use
-#' the logit-specific block of the multinomial covariance.
+#' Use `se.fit = TRUE` to also obtain standard errors for complete-model
+#' numeric predictions. Ordinal probability and mean standard errors and
+#' multinomial probability standard errors use a first-order approximation
+#' (the delta method). Multinomial class labels have no standard error;
+#' use `type = "response"` to obtain uncertainty for their probabilities.
+#'
+#' For all supported models:
+#'
+#' - `type = "terms"` returns each requested term's contribution on the
+#'   linear-predictor scale.
+#' - `type = "contrasts"` returns the difference between each term's
+#'   contribution and its contribution at a reference value.
+#'
+#' Term predictions include the intercept by default for GLM, GEE,
+#' `survreg`, and multinomial models. Set `add_intercept = FALSE` to omit it.
+#' Cox and Fine--Gray terms have no intercept. Ordinal terms omit cutoff
+#' intercepts unless `ordinal_cutoff` is supplied. Intercepts cancel from
+#' contrast predictions.
+#'
+#' Term and contrast predictions include standard errors and confidence
+#' intervals. For multinomial models, each term's result contains separate
+#' predictions for each non-reference category, identified by the `logit`
+#' column.
 #'
 #' @section Term predictions:
 #' A single term result can represent an FP2 function, a factor, a zero-handled
@@ -136,8 +193,9 @@
 #'
 #' Factors and other grouped terms are evaluated row by row.
 #'
-#' For GLM and `survreg` models, `add_intercept = TRUE` includes the fitted
-#' intercept in each term result. Set `add_intercept = FALSE` to return only the
+#' For GLM (including negative-binomial), GEE, and `survreg` models,
+#' `add_intercept = TRUE` includes the fitted intercept in each term result;
+#' for multinomial models it includes each logit's own intercept. Set `add_intercept = FALSE` to return only the
 #' contribution from the requested term. This argument does not affect Cox,
 #' Fine--Gray, or contrast predictions.
 #'
@@ -148,45 +206,101 @@
 #' standard error. Ordinal contrasts cancel the intercept at every cutoff.
 #'
 #' @section Contrasts and reference values:
-#' With `type = "contrasts"`, the returned value is:
+#' Use `type = "contrasts"` to compare a term's contribution at different
+#' values with its contribution at a chosen reference value.
+#' Each contrast is calculated as:
 #'
-#' `fitted term value at the evaluated value - fitted term value at the reference`.
+#' `term contribution at the prediction value - term contribution at the reference`.
 #'
-#' Supply references as a named list, for example:
+#' The contrast is zero at the reference value. A positive contrast means
+#' a larger contribution than at the reference; a negative contrast means
+#' a smaller contribution. Differences are reported on the model's
+#' linear-predictor scale, such as log-odds for logistic regression.
 #'
-#' `ref = list(age = 50, race = "A")`.
+#' **Example using the formula interface**
 #'
-#' Supply numeric references on the original variable scale. If a variable was
-#' shifted during fitting, the same shift is added to the reference automatically.
-#' The fitted FP or ACD function and centering are then applied automatically.
-#' Do not shift, transform, or center the reference yourself.
+#' For a model that includes `age` and the factor `race`, compare ages
+#' 50, 60, and 70 with age 50, and race categories A, B, and C with
+#' race category A:
 #'
+#' ```r
+#' newdata <- data.frame(
+#'   age = c(50, 60, 70),
+#'   race = c("A", "B", "C")
+#' )
+#'
+#' predict(
+#'   fit_formula,
+#'   newdata = newdata,
+#'   type = "contrasts",
+#'   terms = c("age", "race"),
+#'   terms_seq = "data",
+#'   ref = list(age = 50, race = "A")
+#' )
+#' ```
+#'
+#' The result contains separate age and race comparisons. The age contrasts
+#' compare each age with 50; the race contrasts compare each category with A.
+#' The contrast for age 50 is zero, as is the contrast for race category A.
+#' For example, if the fitted age contributions at ages 60 and 50 are
+#' 0.8 and 0.3, the contrast at age 60 is `0.8 - 0.3 = 0.5`.
+#'
+#' Supply references as a named list: each name identifies a term, and its
+#' value specifies the reference. For formula factors, use a category label
+#' that was available during fitting, such as `"A"`.
+#'
+#' **Numeric references**
+#'
+#' Supply numeric references on the original variable scale. Any fitted
+#' shift, FP or ACD transformation, and centering are applied automatically.
 #' For example, if the fitted function uses `log(age + 10)`, supply
-#' `ref = list(age = 50)`, not 60 and not `log(60)`.
+#' `ref = list(age = 50)`, not 60 or `log(60)`.
 #'
-#' For a formula factor, supply a fitted level label. For another grouped term,
-#' such as a formula interaction or a matrix term created with `term_groups`,
-#' supply one numeric value for every member column. A named vector is
-#' recommended, for example:
+#' **References for grouped matrix columns**
 #'
-#' `ref = list(race = c(raceB = 0, raceC = 0))`.
-#' For a matrix group, use the original member-column names supplied in
-#' `term_groups`. For another grouped term, use the component names shown in its
-#' term prediction result.
+#' If race was represented by `raceB` and `raceC`, with race category A
+#' as the reference category, and grouped during fitting using
+#' `term_groups = list(race = c("raceB", "raceC"))`, compare with
+#' race category A by supplying both column values as zero:
 #'
-#' If no reference is supplied, the function uses:
+#' ```r
+#' newdata <- cbind(
+#'   raceB = c(0, 1, 0),
+#'   raceC = c(0, 0, 1)
+#' )
+#'
+#' predict(
+#'   fit_matrix,
+#'   newdata = newdata,
+#'   type = "contrasts",
+#'   terms = "race",
+#'   ref = list(race = c(raceB = 0, raceC = 0))
+#' )
+#' ```
+#'
+#' The rows compare race categories A, B, and C with race category A.
+#' For comparison with race category B instead, use
+#' `ref = list(race = c(raceB = 1, raceC = 0))`.
+#'
+#' For other grouped terms, including formula interactions, supply one
+#' numeric reference value for every member column. Use the column names
+#' supplied in `term_groups`, or those shown in the term prediction result.
+#'
+#' **Default references**
+#'
+#' If a reference is not supplied for a term, the function uses:
 #'
 #' - the smaller value for a numeric term with two distinct values;
 #' - the mean for another single numeric term;
-#' - the first fitted level for a formula factor;
+#' - the first fitted category for a formula factor;
 #' - the first available row for another grouped term.
 #'
-#' The numeric and grouped-row defaults are based on `newdata` when it is
-#' supplied and on the fitted data otherwise. A formula factor always uses its
-#' first fitted level.
+#' Numeric and grouped-row defaults use `newdata` when supplied, otherwise
+#' the fitting data. Formula factors always use their first fitted category.
+#' Supply `ref` explicitly to keep the same comparison when `newdata` changes.
 #'
-#' The model intercept is not included in contrasts because it cancels from the
-#' comparison.
+#' The model intercept cancels from the comparison and is not included
+#' in contrasts.
 #'
 #' @section Zero and spike-at-zero variables:
 #' Supply zero-handled and spike-at-zero variables on their original scale.
@@ -207,67 +321,233 @@
 #' and a positive reference as indicator 0. Negative references are rejected.
 #'
 #' @section Offsets:
-#' Offsets are used only for complete-model predictions. They are not included
-#' in term or contrast results.
+#' Offsets are included in predictions from the whole model. They are not
+#' included in term or contrast predictions.
 #'
-#' When `newdata = NULL`, the offset values used for fitting are used.
+#' When `newdata = NULL`, the offsets used during fitting are reused.
+#' For new observations, provide offsets as described below.
 #'
-#' When `newdata` is supplied:
+#' **Offset in the formula**
 #'
-#' - If the model formula contains `offset(...)`, include the variable or
-#'   variables needed by that expression in `newdata`. The offset is evaluated
-#'   automatically.
-#' - If the offset was supplied through the separate `offset` argument, supply
-#'   the offset for the new rows through `newoffset`.
-#' - A supplied `newoffset` takes precedence over a formula offset.
+#' If the fitting formula contains `offset(...)`, include the variables
+#' needed to calculate it in `newdata`. The offset is calculated automatically.
+#' For example, for a model fitted with
+#' `count ~ age + offset(log(exposure))`:
 #'
-#' Supply one finite `newoffset` value for each row of `newdata`, and supply only
-#' the original predictors needed for the model. If a model fitted with an older
-#' package version cannot safely reproduce its formula offset, prediction stops
-#' and the model must be refitted with the current package version.
+#' ```r
+#' newdata <- data.frame(
+#'   age = c(50, 60),
+#'   exposure = c(1, 2)
+#' )
+#'
+#' predict(fit_formula, newdata = newdata, type = "response")
+#' ```
+#'
+#' Here, `log(exposure)` is calculated separately for each new observation.
+#'
+#' **Offset supplied separately**
+#'
+#' If the offset was supplied through the `offset` argument during fitting,
+#' supply the new offset values through `newoffset`. For example, if the
+#' fitting offset was `log(exposure)`:
+#'
+#' ```r
+#' predict(
+#'   fit_offset,
+#'   newdata = newdata["age"],
+#'   newoffset = log(newdata$exposure),
+#'   type = "response"
+#' )
+#' ```
+#'
+#' Supply the calculated offset, such as `log(exposure)`, rather than
+#' `exposure` itself. An explicit `newoffset` overrides a formula offset;
+#' the variables used only by that formula offset can then be omitted.
+#'
+#' For most models, supply one finite `newoffset` value per prediction row.
+#' For example, `newoffset = c(0.1, 0.2)` supplies offsets for two observations.
+#' `newoffset` requires `newdata` and a model fitted with an offset.
+#'
+#' **Multinomial offsets**
+#'
+#' For multinomial models, offsets must form a matrix with one row per
+#' observation. Columns can represent all response categories or only
+#' the non-reference categories. Values are offsets on the logit scale.
+#'
+#' A formula offset must produce such a matrix. For example, for response
+#' categories A, B, and C, with A as the reference category:
+#'
+#' ```r
+#' fit_multinomial <- mfp2(
+#'   outcome ~ age + offset(cbind(A = off_A, B = off_B, C = off_C)),
+#'   data = training,
+#'   family = multinomial_family(reference = "A")
+#' )
+#'
+#' newdata <- data.frame(
+#'   age   = c(50, 60),
+#'   off_A = c(0, 0),
+#'   off_B = c(0.2, 0.4),
+#'   off_C = c(-0.1, 0.3)
+#' )
+#'
+#' predict(fit_multinomial, newdata = newdata, type = "response")
+#' ```
+#'
+#' The offset matrix is calculated automatically from the columns in
+#' `newdata`. The offset for reference category A is subtracted from
+#' those for categories B and C.
+#'
+#' Alternatively, supply the matrix directly through `newoffset`.
+#' This overrides the formula offset, so only `age` is needed in `newdata`:
+#'
+#' ```r
+#' newoffset <- cbind(
+#'   A = newdata$off_A,
+#'   B = newdata$off_B,
+#'   C = newdata$off_C
+#' )
+#'
+#' predict(
+#'   fit_multinomial,
+#'   newdata = newdata["age"],
+#'   newoffset = newoffset,
+#'   type = "response"
+#' )
+#' ```
+#'
+#' Because the offsets for reference category A are zero here, supplying
+#' only columns B and C gives the same predictions:
+#'
+#' ```r
+#' predict(
+#'   fit_multinomial,
+#'   newdata = newdata["age"],
+#'   newoffset = newoffset[, c("B", "C"), drop = FALSE],
+#'   type = "response"
+#' )
+#' ```
+#'
+#' With columns for only the non-reference categories, supply offsets
+#' relative to the reference category. Name the columns using the
+#' corresponding response-category labels. The same matrix formats apply
+#' when the offset was supplied separately during fitting.
 #'
 #' @section Proportional-hazards predictions:
-#' Cox and Fine--Gray predictions with `type = "lp"` and `type = "risk"` are
-#' relative quantities. They are not absolute hazards or survival probabilities.
+#' Cox and Fine--Gray `type = "lp"` predictions are relative log-hazards;
+#' `type = "risk"` returns their exponentials. For Fine--Gray models,
+#' these refer to the subdistribution hazard. Neither type returns an
+#' absolute hazard or a survival probability.
 #'
-#' Use `cox_reference` to choose the covariate reference for these relative
-#' predictions:
+#' **Reference for relative predictions**
+#'
+#' Use `cox_reference` with `"lp"` or `"risk"`:
 #'
 #' - `"zero"` uses zero on the fitted predictor scale and is the default.
-#' - `"sample"` uses the fitted-sample predictor means.
-#' - `"strata"` uses fitted-sample means within each stratum.
+#' - `"sample"` uses the average fitted predictor values in the fitting sample.
+#' - `"strata"` uses separate averages within each fitted stratum.
 #'
-#' Changing `cox_reference` changes the displayed linear predictors and risks,
-#' but comparisons made using the same reference remain unchanged. With
-#' `cox_reference = "strata"`, comparisons should be made within the same
-#' stratum.
+#' For example:
 #'
-#' For the right-censored Cox models supported by `mfp2`,
-#' `type = "expected"` or `type = "survival"` requires `newdata` to contain
-#' follow-up information. For a formula model, include the variables used in the
-#' fitted `Surv()` response. Alternatively, include exactly one column that is a
-#' `Surv` object. Wrap it in `I()` when placing it in a data frame, for example:
+#' ```r
+#' predict(
+#'   fit_cox,
+#'   newdata = data.frame(age = c(50, 60)),
+#'   type = "risk",
+#'   cox_reference = "sample"
+#' )
+#' ```
 #'
-#' `data.frame(x = xnew, followup = I(survival::Surv(time, event)))`.
+#' Changing the reference changes the reported log-hazards and risk scores.
+#' Ratios of risk scores remain unchanged when a common reference is used.
+#' With `"strata"`, make comparisons within the same stratum.
+#' `cox_reference` is used only with `"lp"` and `"risk"`.
 #'
-#' When `newdata = NULL`, the follow-up values used to fit the model are used.
+#' **Cox survival probabilities and cumulative hazards**
 #'
-#' Do not use `cox_reference` with `type = "expected"` or
-#' `type = "survival"`.
+#' Use `type = "survival"` for survival probabilities and
+#' `type = "expected"` for cumulative hazards.
+#' When supplying `newdata`, also include the variables used in the fitted
+#' `Surv()` response. The time values specify when predictions are evaluated.
 #'
-#' For a stratified Cox model, each prediction row must have a valid stratum.
-#' If `strata()` was included in the formula, include its original variable or
-#' variables in `newdata`; the fitted strata term is reconstructed
-#' automatically, so do not also supply the `strata` argument. If strata were
-#' supplied separately when fitting through the matrix interface, supply the
-#' new strata through `strata`.
-#' Prediction strata are treated as categorical labels and matched to the
-#' strata observed when the model was fitted; new, previously unseen strata are
-#' not allowed. For several stratification variables, supply the same variables
-#' in the same column order used for fitting.
+#' For example, suppose the model was fitted with
+#' `Surv(time, event) ~ age`, with time measured in days and event coded 0/1.
+#' To predict survival at 365 days:
 #'
-#' Fine--Gray models expose relative `"lp"` and `"risk"` predictions and
-#' cumulative incidence through `type = "response"` together with `times`.
+#' ```r
+#' newdata <- data.frame(
+#'   age = c(50, 60),
+#'   time = c(365, 365),
+#'   event = c(0, 0)
+#' )
+#'
+#' predict(fit_cox, newdata = newdata, type = "survival")
+#' ```
+#'
+#' The event-status column is required to construct the `Surv()` response,
+#' but its values do not affect these predictions. Use valid status values.
+#' With `type = "expected"`, the same data give cumulative hazards at 365 days.
+#'
+#' Alternatively, include exactly one `Surv` column:
+#'
+#' ```r
+#' newdata <- data.frame(
+#'   age = c(50, 60),
+#'   followup = I(survival::Surv(c(365, 365), c(0, 0)))
+#' )
+#' ```
+#'
+#' For matrix-interface fits, supply follow-up information this way.
+#' When `newdata = NULL`, the follow-up times used during fitting are reused.
+#'
+#' **Stratified models**
+#'
+#' Each observation must belong to a stratum available during fitting.
+#' If the formula contains `strata(...)`, include its variables in `newdata`.
+#' For example, for a model fitted with
+#' `Surv(time, event) ~ age + strata(sex)`:
+#'
+#' ```r
+#' newdata <- data.frame(
+#'   age = c(50, 60),
+#'   sex = c("F", "M")
+#' )
+#'
+#' predict(fit_stratified, newdata = newdata, type = "risk")
+#' ```
+#'
+#' Here, `"F"` and `"M"` must match fitted stratum labels.
+#' Do not also supply the `strata` argument for formula-level strata.
+#'
+#' If strata were supplied separately during matrix-interface fitting,
+#' supply them separately for the new observations:
+#'
+#' ```r
+#' predict(
+#'   fit_matrix,
+#'   newdata = as.matrix(newdata["age"]),
+#'   strata = newdata$sex,
+#'   type = "risk"
+#' )
+#' ```
+#'
+#' Strata are matched by their labels, not by numeric positions.
+#' For several stratification variables, supply the same variables in
+#' the same column order used during fitting. New strata are not allowed.
+#'
+#' **Fine--Gray cumulative incidence**
+#'
+#' Use `type = "response"` with `times` to predict cumulative incidence.
+#' Supply times in the same units used during fitting. For example:
+#'
+#' ```r
+#' predict(
+#'   fit_finegray,
+#'   newdata = data.frame(age = c(50, 60)),
+#'   type = "response",
+#'   times = c(365, 730)
+#' )
+#' ```
 #'
 #' @param object A fitted object of class `"mfp2"`.
 #'
@@ -277,20 +557,20 @@
 #' @param type A character value selecting the prediction type. See
 #'   **Choosing the prediction type**.
 #'
-#' @param se.fit A single non-missing `TRUE` or `FALSE` value. For complete-model
-#'   predictions, `TRUE` requests standard errors from the underlying model
-#'   method. Full-model multinomial and ordinal predictions do not currently
-#'   provide standard errors. Term and contrast results always include standard
-#'   errors and confidence limits, so this argument is ignored for those
-#'   prediction types.
+#' @param se.fit Logical; return standard errors for complete-model predictions.
+#'   Not available for multinomial class labels. Ignored for term and contrast
+#'   predictions, which always include standard errors and confidence limits.
+#'   See **Choosing the prediction type**.
 #'
 #' @param terms An optional character vector naming terms to return with
 #'   `type = "terms"` or `type = "contrasts"`. Use original variable or group
 #'   names. If `NULL`, all terms included in the final model are used.
 #'
-#' @param terms_seq A character value controlling the evaluation values for a
-#'   single numeric term. Use `"equidistant"` or `"data"`. The default is
-#'   `"equidistant"`. Grouped terms are always evaluated row by row.
+#' @param terms_seq For term and contrast predictions, choose which values
+#'   to predict at. `"equidistant"` (the default) uses `nseq` evenly spaced
+#'   values between the variable's minimum and maximum. `"data"` uses the
+#'   observed values. Both use `newdata` when supplied, otherwise the fitting
+#'   data. Factors and grouped terms always use the supplied or fitted rows.
 #'
 #' @param alpha A single finite number strictly between 0 and 1 used to
 #'   calculate confidence intervals for term and contrast results. The confidence level is `1 - alpha`. The
@@ -300,186 +580,321 @@
 #'   `type = "contrasts"`. Numeric references must be supplied on the original
 #'   variable scale. See **Contrasts and reference values**.
 #'
-#' @param strata Optional stratum information for complete-model prediction
-#'   from a stratified Cox or `survreg` model fitted with externally supplied
-#'   strata when `newdata` is supplied. This is normally the matrix interface;
-#'   it also covers the deprecated external-strata compatibility path in
-#'   `mfp2.formula()`. For one
-#'   stratification variable, supply one value per row as a character, factor,
-#'   numeric/integer, or logical vector. For several stratification variables,
-#'   supply a matrix or data frame with one row per prediction row. Values are
-#'   matched as categorical labels to the strata observed during fitting, so
-#'   previously unseen strata are rejected.
+#' @param strata Strata for new rows of a Cox or `survreg` model fitted with
+#'   separately supplied strata. Supply a vector for one stratification
+#'   variable, or a matrix or data frame for several. For formula strata,
+#'   include the variables in `newdata` instead. See **Proportional-hazards
+#'   predictions** and **Parametric survival predictions**.
 #'
-#'   For a model fitted with `strata(...)` in its formula, do not use this
-#'   argument. Include the original strata variable or variables in `newdata`;
-#'   they are reconstructed automatically. Otherwise, `strata` can be supplied
-#'   only for complete-model prediction from a stratified Cox or `survreg`
-#'   model when `newdata` is supplied.
+#' @param newoffset Offsets for new rows: one finite numeric value per row,
+#'   or, for multinomial models, a matrix with one column per category or
+#'   non-reference category. See **Offsets**.
 #'
-#' @param newoffset An optional finite numeric vector containing one offset
-#'   value for each row of `newdata`. For multinomial models, supply an `n` by
-#'   `C` class-offset matrix or an `n` by `C - 1` reference-logit matrix. See
-#'   **Offsets**.
-#'
-#'   This argument can be supplied only for a complete-model prediction when the
-#'   fitted model used an offset and `newdata` is supplied.
-#'
-#' @param times Optional non-negative numeric time or time grid used for
-#'   Fine--Gray `type = "response"` cumulative-incidence predictions. It is
-#'   required for that prediction type and rejected for all other types.
+#' @param times Time points for Fine--Gray cumulative-incidence predictions,
+#'   in the same units as the fitted follow-up time. Required for
+#'   `type = "response"` in Fine--Gray models; unavailable otherwise.
+#'   See **Proportional-hazards predictions**.
 #'
 #' @param nseq A single finite positive integer giving the number of equally
 #'   spaced values used when `terms_seq = "equidistant"`. The default is 100.
 #'
-#' @param add_intercept A single non-missing `TRUE` or `FALSE` value. For GLM
-#'   and `survreg` term predictions, `TRUE` includes the fitted intercept in
-#'   each result. The default is `TRUE`. It has no effect for proportional-
-#'   hazards models, ordinal terms without `ordinal_cutoff`, or contrasts.
-#' @param ordinal_cutoff For ordinal `type = "terms"` only, an optional integer
-#'   from `1` to the number of response categories minus one. When supplied,
-#'   include that cutoff's intercept and its covariance with the term in each
-#'   estimate and confidence interval. `NULL` returns the shared term effect
-#'   without an intercept. Cutoff `1` compares categories 2 and above with
-#'   category 1.
+#' @param add_intercept Logical; defaults to `TRUE`. Includes the fitted
+#'   intercept in term predictions where applicable and the reference-cutoff
+#'   intercept in full-model ordinal link predictions. See **Choosing the
+#'   prediction type**.
+#' @param ordinal_cutoff Cutoff number for ordinal term predictions. Includes
+#'   the chosen cutoff's intercept and accounts for its uncertainty.
+#'   The default, `NULL`, omits cutoff intercepts. See **Choosing the
+#'   prediction type**.
 #'
-#' @param cox_reference A character value choosing the covariate reference for
-#'   Cox or Fine--Gray predictions with `type = "lp"` or `type = "risk"`. Use `"zero"`,
-#'   `"sample"`, or `"strata"`. The default is `"zero"`. It cannot be
-#'   used for other models, term or contrast predictions, or Cox predictions
-#'   with `type = "expected"` or `type = "survival"`.
+#' @param cox_reference Reference for Cox or Fine--Gray `"lp"` and `"risk"`
+#'   predictions: `"zero"` (default), `"sample"`, or `"strata"`.
+#'   See **Proportional-hazards predictions**.
 #'
-#' @param ... Further arguments passed to [stats::predict.glm()] or
-#'   the native [survival::predict.coxph()] or
-#'   [survival::predict.survreg()] method for complete-model predictions.
+#' @param ... Additional arguments for the underlying prediction method,
+#'   such as `p = 0.5` for `survreg` quantiles. Internal prediction methods
+#'   ignore these arguments; negative-binomial predictions reject unknown
+#'   arguments. See **Choosing the prediction type**.
 #'
 #' @return
-#' For complete-model predictions, the result follows the applicable native
-#' GLM, `coxph`, or `survreg` prediction method where one is used. It is usually
-#' a numeric vector. When `se.fit = TRUE`, it is usually a list containing fitted
-#' values and standard errors.
+#' Complete-model predictions usually return a numeric vector, or a list
+#' containing predictions and standard errors when `se.fit = TRUE`.
+#' Where a native prediction method is used, its return format is retained.
 #'
-#' For multinomial models, `type = "link"` and `type = "response"` return
-#' matrices that retain observation names.
+#' GEE predictions with `se.fit = TRUE` return a list containing `fit`,
+#' `se.fit`, and `residual.scale`.
 #'
-#' For ordinal models, `type = "link"` and `type = "mean"` return numeric
-#' vectors, while `type = "response"` returns an `n` by `K` matrix whose columns
-#' are the ordered response categories.
+#' Multinomial link and response predictions return matrices; class predictions
+#' return a factor. Ordinal link and mean predictions return numeric vectors;
+#' response predictions return a matrix with one column per ordered category.
+#' For these numeric predictions, `se.fit = TRUE` returns a list containing
+#' `fit` and `se.fit` with matching dimensions and observation names.
+#' See **Choosing the prediction type**.
 #'
-#' For `type = "terms"` or `type = "contrasts"`, the result is a named list
-#' with one data frame for each requested term. Each data frame contains:
+#' Term and contrast predictions return a named list with one data frame per
+#' requested term, containing:
 #'
 #' - `variable`: the evaluated value or factor level;
-#' - `variable_pre`: the value after the fitted shift and before the final
-#'   transformation for a single numeric term. For an indicator-only spike
-#'   term, this is the zero indicator;
-#' - `value`: the term-specific fitted value or contrast;
-#' - `se`: the standard error;
-#' - `lower`: the lower confidence limit;
-#' - `upper`: the upper confidence limit.
+#' - `variable_pre`: for a single numeric term, the shifted value before the
+#'   final transformation; for an indicator-only spike term, the zero indicator;
+#' - `value`: the fitted term value or contrast;
+#' - `se`: its standard error;
+#' - `lower`, `upper`: its confidence limits.
 #'
-#' Grouped terms can also include their member columns so that each evaluated
-#' row can be identified.
+#' Grouped terms may also include their member columns. Multinomial term and
+#' contrast results include a `logit` column identifying the non-reference
+#' category.
 #'
 #' @examples
+#' ## Gaussian models: complete predictions, terms, and contrasts
 #' data("prostate")
 #'
-#' fit <- mfp2(
+#' fit_gaussian <- mfp2(
 #'   lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
 #'   data = prostate,
+#'   family = "gaussian",
 #'   keep = c("age", "cavol"),
 #'   verbose = FALSE
 #' )
 #'
-#' # Predict for the data used to fit the model.
-#' predict(fit)
+#' # Predictions for the fitting data.
+#' predict(fit_gaussian)
 #'
-#' # Predict for five observations on the response scale.
-#' predict(fit, newdata = prostate[1:5, ], type = "response")
-#'
-#' # Link-scale predictions with standard errors.
-#' predict(fit, newdata = prostate[1:5, ], se.fit = TRUE)
-#'
-#' # Fitted contributions of age and cancer volume.
+#' # Predictions and standard errors for five rows.
 #' predict(
-#'   fit,
+#'   fit_gaussian,
+#'   newdata = prostate[1:5, ],
+#'   type = "response",
+#'   se.fit = TRUE
+#' )
+#'
+#' # For this Gaussian model, the response is lpsa.
+#' # These predictions are therefore on the log-PSA scale.
+#'
+#' # Term contributions, without the model intercept.
+#' predict(
+#'   fit_gaussian,
 #'   type = "terms",
 #'   terms = c("age", "cavol"),
 #'   add_intercept = FALSE
 #' )
 #'
-#' # Compare age values with age 50 and cancer volume values with 1.
-#' # The references are supplied on the original variable scale.
+#' # Evaluate exactly these ages, rather than an equally spaced grid.
+#' # Only age is needed for an age term prediction.
 #' predict(
-#'   fit,
+#'   fit_gaussian,
+#'   newdata = data.frame(age = c(40, 50, 60)),
+#'   type = "contrasts",
+#'   terms = "age",
+#'   terms_seq = "data",
+#'   ref = list(age = 50)
+#' )
+#'
+#' # References use the original variable scale, even for fitted FP functions.
+#' predict(
+#'   fit_gaussian,
 #'   type = "contrasts",
 #'   terms = c("age", "cavol"),
 #'   ref = list(age = 50, cavol = 1)
 #' )
 #'
 #' \dontrun{
-#' # A formula offset is evaluated from newdata.
+#' ## Gaussian models: a predictor with a spike at zero
 #' set.seed(1)
-#' d <- data.frame(
-#'   y = rpois(80, 2),
-#'   age = runif(80, 30, 75),
-#'   exposure = runif(80, 0.5, 3)
-#' )
-#'
-#' fit_offset <- mfp2(
-#'   y ~ fp(age) + offset(log(exposure)),
-#'   data = d,
-#'   family = "poisson",
-#'   verbose = FALSE
-#' )
-#'
-#' predict(
-#'   fit_offset,
-#'   newdata = d[1:4, c("age", "exposure")],
-#'   type = "response"
-#' )
-#'
-#' # An offset supplied separately must be supplied again for new rows.
-#' fit_external_offset <- mfp2(
-#'   y ~ fp(age),
-#'   data = d,
-#'   family = "poisson",
-#'   offset = log(d$exposure),
-#'   verbose = FALSE
-#' )
-#'
-#' predict(
-#'   fit_external_offset,
-#'   newdata = d[1:4, "age", drop = FALSE],
-#'   newoffset = log(d$exposure[1:4]),
-#'   type = "response"
-#' )
-#'
-#' # Spike-at-zero references are supplied on the original scale.
 #' d_spike <- data.frame(
-#'   y = rnorm(120),
 #'   exposure = c(rep(0, 35), runif(85, 0.1, 8))
+#' )
+#' d_spike$y <- with(
+#'   d_spike,
+#'   2 * (exposure > 0) + log1p(exposure) + rnorm(120)
 #' )
 #'
 #' fit_spike <- mfp2(
 #'   y ~ fp(exposure, spike = TRUE),
 #'   data = d_spike,
+#'   family = "gaussian",
 #'   keep = "exposure",
 #'   verbose = FALSE
 #' )
 #'
+#' # Compare exactly 0, 1, and 4 with exposure = 0.
 #' predict(
 #'   fit_spike,
 #'   newdata = data.frame(exposure = c(0, 1, 4)),
 #'   type = "contrasts",
 #'   terms = "exposure",
+#'   terms_seq = "data",
 #'   ref = list(exposure = 0)
 #' )
 #'
-#' # Cox predictions.
-#' data("gbsg")
+#' ## Poisson models: formula offsets and separately supplied offsets
+#' set.seed(2)
+#' d_count <- data.frame(
+#'   age = runif(80, 30, 75),
+#'   exposure = runif(80, 0.5, 3)
+#' )
+#' d_count$count <- rpois(
+#'   80,
+#'   lambda = with(d_count, exposure * exp(0.02 * (age - 50)))
+#' )
 #'
-#' # Include tumour grade as a Cox stratification term in the formula.
+#' fit_poisson <- mfp2(
+#'   count ~ fp(age) + offset(log(exposure)),
+#'   data = d_count,
+#'   family = "poisson",
+#'   keep = "age",
+#'   verbose = FALSE
+#' )
+#'
+#' # The formula calculates log(exposure) from the new rows.
+#' nd_count <- d_count[1:4, c("age", "exposure")]
+#' predict(fit_poisson, newdata = nd_count, type = "response")
+#'
+#' # Response predictions are expected counts for the supplied exposure.
+#' # Set exposure to 1 to obtain expected counts per unit of exposure.
+#' nd_unit <- nd_count
+#' nd_unit$exposure <- 1
+#' predict(fit_poisson, newdata = nd_unit, type = "response")
+#'
+#' fit_external_offset <- mfp2(
+#'   count ~ fp(age),
+#'   data = d_count,
+#'   family = "poisson",
+#'   offset = log(d_count$exposure),
+#'   keep = "age",
+#'   verbose = FALSE
+#' )
+#'
+#' # A separately supplied offset must be supplied again for new rows.
+#' predict(
+#'   fit_external_offset,
+#'   newdata = nd_count["age"],
+#'   newoffset = log(nd_count$exposure),
+#'   type = "response"
+#' )
+#'
+#' ## GEE models: predictions and standard errors
+#' # Illustrate groups of four observations.
+#' d_count$id <- rep(seq_len(20), each = 4)
+#' fit_gee <- mfp2(
+#'   count ~ fp(age) + offset(log(exposure)),
+#'   data = d_count,
+#'   family = gee_family(poisson(), corstr = "independence"),
+#'   id = id,
+#'   keep = "age",
+#'   verbose = FALSE
+#' )
+#'
+#' # New group identifiers are not needed for these mean predictions.
+#' predict(
+#'   fit_gee,
+#'   newdata = nd_count,
+#'   type = "response",
+#'   se.fit = TRUE
+#' )
+#'
+#' ## Multinomial models: category probabilities and matrix offsets
+#' d_multi <- iris
+#' d_multi$off_A <- 0.1
+#' d_multi$off_B <- 0.05 * d_multi$Sepal.Width
+#' d_multi$off_C <- -0.05 * d_multi$Sepal.Width
+#'
+#' fit_multinomial <- mfp2(
+#'   Species ~ fp(Sepal.Length) +
+#'     offset(cbind(
+#'       setosa = off_A,
+#'       versicolor = off_B,
+#'       virginica = off_C
+#'     )),
+#'   data = d_multi,
+#'   family = multinomial_family(reference = "setosa"),
+#'   df = 1,
+#'   select = 1,
+#'   verbose = FALSE
+#' )
+#'
+#' nd_multi <- d_multi[
+#'   c(1, 51, 101),
+#'   c("Sepal.Length", "off_A", "off_B", "off_C")
+#' ]
+#'
+#' # The formula rebuilds the offset matrix from these columns.
+#' predict(
+#'   fit_multinomial,
+#'   newdata = nd_multi,
+#'   type = "response",
+#'   se.fit = TRUE
+#' )
+#'
+#' # Equivalent offsets for only the non-reference categories.
+#' # Subtract the setosa offset; do not simply drop its column.
+#' relative_offsets <- with(
+#'   nd_multi,
+#'   cbind(
+#'     versicolor = off_B - off_A,
+#'     virginica = off_C - off_A
+#'   )
+#' )
+#'
+#' # Explicit newoffset replaces the formula offset, so its source columns
+#' # are no longer needed in newdata.
+#' predict(
+#'   fit_multinomial,
+#'   newdata = nd_multi["Sepal.Length"],
+#'   newoffset = relative_offsets,
+#'   type = "response"
+#' )
+#'
+#' # Class predictions return labels; do not request their standard errors.
+#' predict(fit_multinomial, newdata = nd_multi, type = "class")
+#'
+#' ## Ordinal models: category probabilities and cutoff intercepts
+#' set.seed(3)
+#' d_ordinal <- data.frame(age = runif(150, 30, 75))
+#' d_ordinal$severity <- cut(
+#'   0.04 * (d_ordinal$age - 50) + rlogis(150),
+#'   breaks = c(-Inf, -0.5, 0.5, Inf),
+#'   labels = c("low", "medium", "high"),
+#'   ordered_result = TRUE
+#' )
+#'
+#' fit_ordinal <- mfp2(
+#'   severity ~ fp(age),
+#'   data = d_ordinal,
+#'   family = ordinal_family(),
+#'   df = 1,
+#'   select = 1,
+#'   verbose = FALSE
+#' )
+#'
+#' nd_ordinal <- data.frame(age = c(40, 50, 60))
+#' predict(
+#'   fit_ordinal,
+#'   newdata = nd_ordinal,
+#'   type = "response",
+#'   se.fit = TRUE
+#' )
+#'
+#' # The common predictor without a cutoff intercept.
+#' predict(
+#'   fit_ordinal,
+#'   newdata = nd_ordinal,
+#'   type = "link",
+#'   add_intercept = FALSE
+#' )
+#'
+#' # Include cutoff 1: medium/high versus low.
+#' predict(
+#'   fit_ordinal,
+#'   newdata = nd_ordinal,
+#'   type = "terms",
+#'   terms = "age",
+#'   terms_seq = "data",
+#'   ordinal_cutoff = 1
+#' )
+#'
+#' ## Cox models: relative risk and survival at a chosen time
+#' data("gbsg")
 #' fit_cox <- mfp2(
 #'   survival::Surv(rectime, censrec) ~
 #'     fp(age) + fp(nodes) + strata(grade),
@@ -487,43 +902,81 @@
 #'   family = "cox",
 #'   df = 1,
 #'   select = 1,
-#'   alpha = 1,
 #'   verbose = FALSE
 #' )
 #'
-#' relative_profiles <- gbsg[1:3, c("age", "nodes", "grade")]
+#' # Relative predictions need predictors and the strata variable.
+#' nd_cox <- gbsg[1:3, c("age", "nodes", "grade")]
+#' predict(fit_cox, newdata = nd_cox, type = "lp")
 #' predict(
 #'   fit_cox,
-#'   newdata = relative_profiles,
-#'   type = "lp"
-#' )
-#' predict(
-#'   fit_cox,
-#'   newdata = relative_profiles,
+#'   newdata = nd_cox,
 #'   type = "risk",
 #'   cox_reference = "strata"
 #' )
 #'
-#' # Survival predictions also need the original follow-up variables.
-#' absolute_profiles <- gbsg[
-#'   1:3,
-#'   c("rectime", "censrec", "age", "nodes", "grade")
-#' ]
-#' predict(
-#'   fit_cox,
-#'   newdata = absolute_profiles,
-#'   type = "survival"
+#' # Predict survival at 365 days for each profile.
+#' # Use the response-variable names from the fitted formula.
+#' nd_survival <- nd_cox
+#' nd_survival$rectime <- 365
+#' nd_survival$censrec <- 0L
+#'
+#' # censrec is required to reconstruct Surv(); its value is a placeholder
+#' # here, not knowledge of whether a future event will occur.
+#' predict(fit_cox, newdata = nd_survival, type = "survival")
+#'
+#' # "expected" returns cumulative hazard, not an event probability.
+#' predict(fit_cox, newdata = nd_survival, type = "expected")
+#'
+#' ## Parametric survival models: predicted survival-time quantiles
+#' fit_survreg <- mfp2(
+#'   survival::Surv(rectime, censrec) ~ fp(age) + fp(nodes),
+#'   data = gbsg,
+#'   family = survreg_family(dist = "weibull"),
+#'   df = 1,
+#'   select = 1,
+#'   verbose = FALSE
 #' )
+#'
+#' # Median survival time, in days. New follow-up values are not needed.
 #' predict(
-#'   fit_cox,
-#'   newdata = absolute_profiles,
-#'   type = "expected"
+#'   fit_survreg,
+#'   newdata = gbsg[1:3, c("age", "nodes")],
+#'   type = "quantile",
+#'   p = 0.5
+#' )
+#'
+#' ## Fine--Gray models: cumulative incidence at chosen times
+#' set.seed(4)
+#' d_fg <- data.frame(
+#'   time = rexp(180, rate = 1 / 1000),
+#'   age = runif(180, 30, 75),
+#'   event = factor(
+#'     sample(c("censored", "relapse", "death"), 180, replace = TRUE),
+#'     levels = c("censored", "relapse", "death")
+#'   )
+#' )
+#'
+#' # The first event level represents censoring.
+#' fit_finegray <- mfp2(
+#'   survival::Surv(time, event) ~ fp(age, select = 1),
+#'   data = d_fg,
+#'   family = finegray_family(etype = "relapse"),
+#'   verbose = FALSE
+#' )
+#'
+#' # Probability of relapse by 365 and 730 days, allowing for competing death.
+#' # Unlike Cox survival prediction, supply times through the times argument.
+#' predict(
+#'   fit_finegray,
+#'   newdata = data.frame(age = c(40, 50, 60)),
+#'   type = "response",
+#'   times = c(365, 730)
 #' )
 #' }
-#'
 #' @seealso
 #' [mfp2()], [get_selected_variable_names()], [stats::predict.glm()],
-#' [survival::predict.coxph()]
+#' [survival::predict.coxph()], [geepack::geeglm()]
 #'
 #' @method predict mfp2
 #' @export
@@ -676,7 +1129,7 @@ predict.mfp2 <- function(object,
          call. = FALSE)
   }
 
-  # `strata` and `newoffset` alter only native full-model predictions on
+  # `strata` and `newoffset` alter only full-model predictions on
   # supplied rows. Reject irrelevant combinations before formula evaluation or
   # transformation so that an accepted argument is never silently ignored.
   full_model_prediction <- !type %in% c("terms", "contrasts")
@@ -764,16 +1217,22 @@ predict.mfp2 <- function(object,
     stop("Newdata must have column names", call. = FALSE)
   }
 
+  # Data-frame subclasses such as tibbles return data frames from `[, j]`,
+  # which the term and contrast code expects to be vectors. Use a plain
+  # data.frame throughout.
+  if (is.data.frame(newdata) && !identical(class(newdata), "data.frame")) {
+    newdata <- as.data.frame(newdata)
+    class(newdata) <- "data.frame"
+  }
+
   newdata_raw <- newdata
 
-  # Reject infinite numeric values before formula reconstruction can discard
-  # unselected columns or model.matrix() can propagate them into derived terms.
-  # Missing-value validation remains limited to the reconstructed predictors
-  # actually required by the fitted model.
+  # Check row count before constructing ranges or references, without inspecting
+  # unused columns. Required predictors and formula inputs are validated below;
+  # offsets, strata, and absolute Cox responses are checked when they are used.
   if (!is.null(newdata_raw)) {
     mfp2_validate_prediction_newdata(
-      newdata = newdata_raw,
-      check_missing = FALSE
+      newdata = newdata_raw[, integer(0L), drop = FALSE]
     )
   }
 
@@ -801,10 +1260,11 @@ predict.mfp2 <- function(object,
     selected_internal_terms
   }
 
-  zero_option_terms <- active_zero_option_names(
-    object$zero,
-    object$catzero,
-    object$spike
+  # Zero-handling flags also exist for unrequested or eliminated terms. Those
+  # columns must be ignored just like any other unused prediction input.
+  zero_option_terms <- intersect(
+    prediction_terms,
+    active_zero_option_names(object$zero, object$catzero, object$spike)
   )
 
   if (!is.null(newdata_raw)) {
@@ -835,8 +1295,8 @@ predict.mfp2 <- function(object,
 
   if (!is.null(newdata)) {
     # Validate only the reconstructed predictors used by the requested
-    # prediction. Matrix-interface callers may include irrelevant extra columns
-    # containing missing values; those columns are intentionally ignored.
+    # prediction. Irrelevant extra columns, including missing or infinite values,
+    # are intentionally ignored for both fitting interfaces.
     validation_lookup <- prediction_term_to_columns(
       object,
       terms = prediction_terms
@@ -880,23 +1340,24 @@ predict.mfp2 <- function(object,
     }
     requested_terms <- terms
     internal_terms <- requested_terms
-
     selected <- internal_terms %in% selected_internal_terms
-    if (!any(selected)) {
+
+    # Name each omitted term, including unknown names and eliminated terms.
+    omitted_terms <- unique(requested_terms[!selected])
+    if (length(omitted_terms) > 0L) {
+      action <- if (any(selected)) {
+        "Omitting these terms."
+      } else {
+        "Returning an empty list."
+      }
       warning(
-        "i All the terms supplied are not in the final model.\n",
-        "i predict() continues but returns an empty list.",
-        call. = FALSE
-      )
-    } else if (!all(selected)) {
-      warning(
-        paste0(
-          "i Some terms supplied are not in the final model.\n",
-          "i predict() continues but omits terms not in the model."
-        ),
+        "predict(): requested term(s) not retained in the final model: ",
+        paste(paste0("`", omitted_terms, "`"), collapse = ", "), ".\n",
+        action,
         call. = FALSE
       )
     }
+    if (!any(selected)) return(list())
 
     requested_terms <- requested_terms[selected]
     internal_terms <- internal_terms[selected]
@@ -1046,6 +1507,7 @@ predict.mfp2 <- function(object,
             x_seq,
             terms = t,
             apply_pre = FALSE,
+            check_binary = FALSE,
             allow_missing_predictors = TRUE
           ))
         } else {
@@ -1061,11 +1523,14 @@ predict.mfp2 <- function(object,
             object$x_original[, t, drop = FALSE]
           }
 
+          # check_binary = FALSE: one or two distinct evaluation values must
+          # still receive the fitted FP transformation.
           x_trafo <- as.matrix(prepare_newdata_for_predict(
             object,
             x_seq,
             terms = t,
             apply_pre = FALSE,
+            check_binary = FALSE,
             allow_missing_predictors = TRUE
           ))
         }
@@ -1146,9 +1611,9 @@ predict.mfp2 <- function(object,
     return(res_list)
   }
 
-  # Full-model prediction reconstructs every required raw design column,
-  # applies the fitted transformations, and then delegates to the underlying
-  # glm or coxph prediction method.
+  # Full-model prediction reconstructs the required raw design columns
+  # and fitted transformations, then uses the appropriate family-specific
+  # prediction path.
 
   if (!is.null(newdata)) {
 
@@ -1205,7 +1670,13 @@ predict.mfp2 <- function(object,
       newdata,
       terms = selected_internal_terms,
       strata = strata,
-      offset = if (identical(object$family_string, "multinomial")) NULL else newoffset,
+      # Multinomial and ordinal predictors apply `newoffset` themselves and
+      # have no formula offset helper column to attach it to.
+      offset = if (object$family_string %in% c("multinomial", "ordinal")) {
+        NULL
+      } else {
+        newoffset
+      },
       check_binary = FALSE
     )
 
@@ -1233,7 +1704,8 @@ predict.mfp2 <- function(object,
         transformed = newdata,
         type = type,
         se.fit = se.fit,
-        newoffset = newoffset
+        newoffset = newoffset,
+        add_intercept = add_intercept
       ))
     }
 
@@ -1298,23 +1770,34 @@ predict.mfp2 <- function(object,
       } else {
         as.numeric(newoffset)
       }
+      # prepare_newdata_for_predict() also attaches the offset as the internal
+      # formula helper column used by predict.glm(). The matrix predictor
+      # receives the same values through `offset`, so drop that helper column
+      # rather than treating it as a coefficient column.
+      offset_column <- object$mfp2_internal_names$offset
+      if (!is.null(newoffset) && is.character(offset_column) &&
+          length(offset_column) == 1L) {
+        prediction_data[[offset_column]] <- NULL
+      }
       prediction_matrix <- as.matrix(prediction_data)
       colnames(prediction_matrix) <- prediction_model_column_names(
         object, colnames(prediction_matrix)
       )
-      return(
-        mfp2_predict_gee_matrix(
-          object = object,
-          newx = prediction_matrix,
-          offset = prediction_offset,
-          type = type,
-          se.fit = TRUE
-        )
+      prediction <- mfp2_predict_gee_matrix(
+        object = object,
+        newx = prediction_matrix,
+        offset = prediction_offset,
+        type = type,
+        se.fit = TRUE
       )
+      # Match the row names returned by the se.fit = FALSE (predict.glm) path.
+      names(prediction$fit) <- names(prediction$se.fit) <-
+        row.names(prediction_data)
+      return(prediction)
     }
 
-    # Strip "mfp2" so S3 dispatch reaches predict.glm() rather than recursively
-    # entering predict.mfp2().
+    # Strip "mfp2" so S3 dispatch reaches the underlying prediction method
+    # rather than recursively entering predict.mfp2().
     obj_base <- object
     class(obj_base) <- setdiff(class(obj_base), "mfp2")
     obj_base <- mfp2_restore_gee_family(obj_base)
@@ -1330,9 +1813,8 @@ predict.mfp2 <- function(object,
     )
   }
 
-  # With no newdata, the fitted base object already contains the training
-  # response, transformed design, strata, and offsets required by its native
-  # prediction method.
+  # With no newdata, the fitted object contains the training response,
+  # transformed design, strata, and offsets needed for prediction.
   if (identical(object$family_string, "multinomial")) {
     return(mfp2_predict_multinomial(
       object = object,
@@ -1349,7 +1831,8 @@ predict.mfp2 <- function(object,
       transformed = NULL,
       type = type,
       se.fit = se.fit,
-      newoffset = NULL
+      newoffset = NULL,
+      add_intercept = add_intercept
     ))
   }
 
@@ -1408,17 +1891,18 @@ predict.mfp2 <- function(object,
   )
 }
 
-#' Restore the inner GLM family on a GEE object before delegating to
-#' `predict.glm()`
+#' Prepare a GEE Family for GLM Prediction
 #'
-#' Current retained GEE models preserve the native `stats::family()` object in
-#' their `family` slot. Older objects may instead store an `mfp2_gee_family`
-#' wrapper there; for those objects, restore the inner response family before
-#' delegation. All other objects are returned unchanged.
+#' Ensures that a GEE object stores the response family expected by
+#' [stats::predict.glm()]. If its `family` slot contains an `mfp2_gee_family`
+#' wrapper, replaces it with the inner GLM family. Otherwise, returns the
+#' object unchanged.
 #'
-#' @param object A base (non-`mfp2`) object about to be passed to
-#'   `stats::predict()`.
-#' @return `object`, with a genuine GLM family restored when it is a GEE fit.
+#' @param object A fitted object with the `mfp2` class removed, ready for
+#'   prediction through its underlying method.
+#'
+#' @return The object with its inner GLM family restored when needed.
+#'
 #' @keywords internal
 #' @noRd
 mfp2_restore_gee_family <- function(object) {
@@ -1436,19 +1920,13 @@ mfp2_restore_gee_family <- function(object) {
 }
 
 
-#' Match a Cox Prediction Type Used by `predict.mfp2()`
+#' Validate and Match a Cox Prediction Type
 #'
-#' Resolves exact or unambiguous partial Cox prediction-type names before the
-#' method chooses a prediction path. `mfp2` implements `"terms"` and
-#' `"contrasts"` itself, delegates `"lp"` and `"risk"` to the relative
-#' prediction branch of `predict.coxph()`, and delegates `"expected"` and
-#' `"survival"` to its baseline-hazard branch.
+#' Matches an exact or unambiguous abbreviated prediction type to its full
+#' name before selecting the prediction method or transforming prediction
+#' data. Invalid or ambiguous values produce an error.
 #'
-#' Performing this match centrally prevents a partially matched type from being
-#' routed to the wrong branch and makes invalid values fail before prediction
-#' data are transformed.
-#'
-#' @param type Character scalar supplied to `predict.mfp2()`.
+#' @param type A single character value supplied to `predict.mfp2()`.
 #'
 #' @return One of `"lp"`, `"risk"`, `"expected"`, `"survival"`,
 #'   `"terms"`, or `"contrasts"`.
@@ -1471,15 +1949,14 @@ mfp2_match_cox_prediction_type <- function(type) {
   )
 }
 
-
-#' Match a GLM Prediction Type Used by `predict.mfp2()`
+#' Validate and Match a GLM Prediction Type
 #'
-#' Resolves exact or unambiguous partial GLM prediction-type names before the
-#' method constructs transformed prediction data. Linear-predictor aliases have
-#' already been normalized by `normalize_prediction_type()`.
+#' Matches an exact or unambiguous abbreviated prediction type to its full
+#' name before transforming prediction data. Invalid or ambiguous values
+#' produce an error. Aliases are handled by `normalize_prediction_type()`
+#' before this function is called.
 #'
-#' @param type Character scalar supplied to `predict.mfp2()` after alias
-#'   normalization.
+#' @param type A single character value after alias normalization.
 #'
 #' @return One of `"link"`, `"response"`, `"terms"`, or `"contrasts"`.
 #'
@@ -1510,18 +1987,15 @@ mfp2_match_glm_prediction_type <- function(type) {
   )
 }
 
-
-#' Match a User-Supplied Multinomial Prediction Type
+#' Validate and Match a Multinomial Prediction Type
 #'
-#' Matches the user-supplied `type` argument to the multinomial
-#' prediction types supported by `predict.mfp2()`, so that abbreviated or
-#' misspelled values are rejected with a clear message before any
-#' prediction machinery runs.
+#' Matches an exact or unambiguous abbreviated prediction type to its full
+#' name before prediction. Invalid or ambiguous values produce an error.
 #'
-#' @param type User-supplied character scalar.
+#' @param type A single character value supplied to `predict.mfp2()`.
 #'
-#' @return Character scalar with the canonical prediction type. Raises an
-#'   error for unsupported values.
+#' @return One of `"link"`, `"response"`, `"class"`, `"terms"`,
+#'   or `"contrasts"`.
 #'
 #' @keywords internal
 #' @noRd
@@ -1539,18 +2013,16 @@ mfp2_match_multinomial_prediction_type <- function(type) {
   )
 }
 
-
-#' Match a User-Supplied Ordinal Prediction Type
+#' Validate and Match an Ordinal Prediction Type
 #'
-#' Matches the user-supplied `type` argument to the ordinal
-#' proportional-odds prediction types supported by `predict.mfp2()`, so
-#' that abbreviated or misspelled values are rejected before any
-#' prediction machinery runs.
+#' Matches an exact or unambiguous abbreviated prediction type to its full
+#' name before prediction. Invalid or ambiguous values produce an error.
+#' The alias `"lp"` is converted to `"link"` before this function is called.
 #'
-#' @param type User-supplied character scalar.
+#' @param type A single character value after alias normalization.
 #'
-#' @return Character scalar with the canonical prediction type. Raises an
-#'   error for unsupported values.
+#' @return One of `"link"`, `"response"`, `"mean"`, `"terms"`,
+#'   or `"contrasts"`.
 #'
 #' @keywords internal
 #' @noRd
@@ -1570,41 +2042,35 @@ mfp2_match_ordinal_prediction_type <- function(type) {
   )
 }
 
-
-#' Full-Model Predictions for a Proportional-Odds Ordinal `mfp2` Fit
+#' Compute Full-Model Ordinal Predictions
 #'
-#' Computes full-model predictions for a proportional-odds ordinal `"mfp2"`
-#' model. The covariate linear predictor is `eta = X %*% beta` (with no
-#' cut-point intercept, so it is common to every cut-point); category
-#' probabilities combine `eta` with the `k - 1` stored threshold
-#' intercepts through the inverse link. Mirrors
-#' `mfp2_predict_multinomial()` so that the two categorical paths share a
-#' consistent argument surface.
+#' Returns link predictions, category probabilities, or expected category
+#' values. Link predictions can include the reference-cutoff intercept;
+#' probabilities and means always use all fitted cutoffs.
+#' Standard errors account for uncertainty in the relevant coefficients
+#' and their covariances.
 #'
-#' @param object An `"mfp2"` ordinal model object.
-#' @param transformed Optional prepared prediction design matrix, or
-#'   `NULL` to use `object$x`.
-#' @param type Character scalar, one of `"link"`, `"response"`, or
-#'   `"mean"`.
-#' @param se.fit Logical. If `TRUE`, return prediction standard errors.
-#' @param newoffset Optional prediction-time offset, or `NULL`.
+#' @param object A fitted ordinal `mfp2` model.
+#' @param transformed Prepared prediction data with the fitted transformations
+#'   applied, or `NULL` to use the fitting data.
+#' @param type One of `"link"`, `"response"`, or `"mean"`.
+#' @param se.fit Logical; whether to return prediction standard errors.
+#' @param newoffset Offsets for new rows. When `transformed = NULL`, the
+#'   fitting offsets are used instead.
+#' @param add_intercept Logical; whether link predictions include the
+#'   reference-cutoff intercept. Does not affect probabilities or means.
 #'
-#' @return A numeric vector or matrix of predictions, matching the
-#'   selected `type`. When `se.fit = TRUE`, a list with `fit` and
-#'   `se.fit`.
+#' @return A numeric vector for link or mean predictions, or a matrix with
+#'   one column per response category for probabilities. With `se.fit = TRUE`,
+#'   a list containing `fit` and `se.fit` with matching dimensions and names.
 #'
 #' @keywords internal
 #' @noRd
 mfp2_predict_ordinal <- function(object, transformed = NULL,
                                  type = c("link", "response", "mean"),
-                                 se.fit = FALSE, newoffset = NULL) {
+                                 se.fit = FALSE, newoffset = NULL,
+                                 add_intercept = TRUE) {
   type <- match.arg(type)
-  if (isTRUE(se.fit)) {
-    stop(
-      "`se.fit = TRUE` is not available for full ordinal predictions; use `summary()` for coefficient uncertainty.",
-      call. = FALSE
-    )
-  }
 
   intercepts <- object$mfp2_ordinal_intercepts
   n_int <- length(intercepts)
@@ -1637,28 +2103,73 @@ mfp2_predict_ordinal <- function(object, transformed = NULL,
     colnames(xx) <- needed
   }
 
-  eta <- if (length(betas) > 0L) {
+  n <- if (is.null(transformed)) {
+    if (!is.null(xx)) nrow(xx) else object$nobs
+  } else {
+    nrow(transformed)
+  }
+  if (length(betas) == 0L) {
+    xx <- matrix(numeric(0L), nrow = n, ncol = 0L,
+                 dimnames = list(prediction_rownames, character(0L)))
+  } else {
     if (is.null(xx)) {
       stop("Internal error: ordinal prediction design is unavailable.",
            call. = FALSE)
     }
-    as.numeric(xx[, names(betas), drop = FALSE] %*% betas)
+    xx <- xx[, names(betas), drop = FALSE]
+  }
+  eta <- if (length(betas) > 0L) {
+    as.numeric(xx %*% betas)
   } else {
-    n_prediction <- if (is.null(transformed)) object$nobs else length(prediction_rownames)
-    rep(0, n_prediction)
+    rep(0, n)
   }
   if (!is.null(newoffset)) eta <- eta + as.numeric(newoffset)
   names(eta) <- prediction_rownames
-  if (type == "link") return(eta)
+  if (type == "link") {
+    fit <- eta
+    X <- xx
+    if (isTRUE(add_intercept)) {
+      # predictrms() uses interceptRef, falling back to the first cutoff for
+      # older fits. Do not choose a cutoff from the new prediction data.
+      cutoff <- object$interceptRef
+      if (is.null(cutoff) || length(cutoff) == 0L) cutoff <- 1L
+      if (!is.numeric(cutoff) || length(cutoff) != 1L ||
+          is.na(cutoff) || !is.finite(cutoff) || cutoff != floor(cutoff) ||
+          cutoff < 1L || cutoff > n_int) {
+        stop("The fitted ordinal reference cutoff is invalid.", call. = FALSE)
+      }
+      fit <- fit + unname(intercepts[cutoff])
+      if (isTRUE(se.fit)) {
+        V <- mfp2_ordinal_vcov_all(object)
+        columns <- c(names(intercepts)[cutoff], names(betas))
+        V <- V[columns, columns, drop = FALSE]
+        X <- cbind(1, X)
+      }
+    } else if (isTRUE(se.fit)) {
+      V <- mfp2_ordinal_vcov_slopes(object)
+    }
+    if (!isTRUE(se.fit)) return(fit)
+    se <- mfp2_prediction_standard_error(X, V)
+    names(se) <- names(fit)
+    return(list(fit = fit, se.fit = se))
+  }
 
   ginv <- switch(link,
     logistic = stats::plogis,
     probit   = stats::pnorm,
     loglog   = function(z) exp(-exp(-z)),
-    cloglog  = function(z) 1 - exp(-exp(z)),
+    cloglog  = function(z) -expm1(-exp(z)),
     cauchit  = stats::pcauchy
   )
-  n <- length(eta)
+  # Derivatives of the inverse links. The exponential forms avoid Inf * 0
+  # when a finite but extreme predictor makes exp(z) or exp(-z) overflow.
+  density <- switch(link,
+    logistic = stats::dlogis,
+    probit   = stats::dnorm,
+    loglog   = function(z) exp(-z - exp(-z)),
+    cloglog  = function(z) exp(z - exp(z)),
+    cauchit  = stats::dcauchy
+  )
   k <- n_int + 1L
   cum <- matrix(1, n, k)                      # cum[, j] = P(Y >= j); P(Y>=1)=1
   for (j in seq_len(n_int)) cum[, j + 1L] <- ginv(intercepts[j] + eta)
@@ -1667,43 +2178,68 @@ mfp2_predict_ordinal <- function(object, transformed = NULL,
     probs[, j] <- cum[, j] - (if (j < k) cum[, j + 1L] else 0)
   }
   dimnames(probs) <- list(prediction_rownames, levels_labels)
-  if (type == "response") return(probs)
+  if (type == "response" && !isTRUE(se.fit)) return(probs)
 
   # type == "mean": expected response using numeric level values when available,
   # otherwise the 1..k category index.
   numeric_levels <- suppressWarnings(as.numeric(levels_labels))
   vals <- if (!anyNA(numeric_levels)) numeric_levels else seq_len(k)
-  stats::setNames(as.numeric(probs %*% vals), prediction_rownames)
+  fit <- if (type == "response") probs else {
+    stats::setNames(as.numeric(probs %*% vals), prediction_rownames)
+  }
+  if (!isTRUE(se.fit)) return(fit)
+
+  V <- mfp2_ordinal_vcov_all(object)
+  derivatives <- matrix(0, nrow = n, ncol = n_int)
+  for (j in seq_len(n_int)) {
+    derivatives[, j] <- density(intercepts[j] + eta)
+  }
+  if (type == "mean") {
+    # E[Y] = value[1] + sum_j diff(value)[j] * P(Y >= j + 1).
+    # Slopes affect every cutoff; include their covariance with all intercepts.
+    threshold_gradient <- sweep(derivatives, 2L, diff(vals), "*")
+    gradient <- cbind(threshold_gradient, xx * rowSums(threshold_gradient))
+    se <- mfp2_prediction_standard_error(gradient, V)
+    names(se) <- names(fit)
+  } else {
+    se <- matrix(0, nrow = n, ncol = k, dimnames = dimnames(probs))
+    for (j in seq_len(k)) {
+      # P(Y = j) is the difference of its two adjacent cumulative probabilities.
+      # Only those cutoff coefficients enter this gradient. Restricting the
+      # covariance block avoids multiplying a mostly zero, potentially large
+      # matrix for ordinal responses with many categories.
+      cutoffs <- seq.int(max(1L, j - 1L), min(n_int, j))
+      threshold_gradient <- sweep(derivatives[, cutoffs, drop = FALSE], 2L,
+                                  ifelse(cutoffs == j, -1, 1), "*")
+      gradient <- cbind(threshold_gradient, xx * rowSums(threshold_gradient))
+      columns <- c(cutoffs, n_int + seq_along(betas))
+      se[, j] <- mfp2_prediction_standard_error(gradient, V[columns, columns, drop = FALSE])
+    }
+  }
+  list(fit = fit, se.fit = se)
 }
 
-
-#' Term and Contrast Predictions for a Multinomial `mfp2` Fit
+#' Compute Multinomial Term and Contrast Predictions
 #'
-#' Baseline-category multinomial models share one set of fractional-polynomial
-#' powers across logits but carry a separate coefficient row per non-reference
-#' logit. A term prediction is therefore not a single partial predictor but one
-#' per logit: for logit \eqn{q} and conceptual term \eqn{j} the value is
-#' \eqn{\beta_{q,j}^{\top} f_j(x)} on the log-odds scale, with the intercept
-#' added when `add_intercept = TRUE` and `type = "terms"`.
+#' Computes each requested term's contribution to the log-odds of each
+#' non-reference category versus the reference category. Terms share the same
+#' fitted transformations across categories but have separate coefficients.
 #'
-#' The transformed design for a term (`x_trafo`, and the reference design for
-#' contrasts) is identical across logits because the FP powers are shared, so it
-#' is built once per term following the same path as the scalar
-#' `predict.mfp2()` terms branch. Only the coefficient dot product and the
-#' standard error vary by logit; standard errors use the logit-specific block of
-#' the multinomial covariance, whose rows and columns are named `"<logit>:<col>"`.
+#' Term predictions include each category's intercept when
+#' `add_intercept = TRUE`. Contrasts subtract the term's value at the
+#' reference specified by `ref` and omit intercepts. Standard errors use
+#' the covariance block for the corresponding category comparison.
 #'
-#' @param object A fitted multinomial `"mfp2"` object.
+#' @param object A fitted multinomial `mfp2` model.
 #' @param terms,type,ref,terms_seq,nseq,newdata,alpha,add_intercept Arguments
-#'   forwarded from [predict.mfp2()] with the same meaning.
-#' @param selected_internal_terms Character vector of terms retained in the
-#'   final model, as resolved by the caller.
+#'   passed from [predict.mfp2()], with the same meaning.
+#' @param selected_internal_terms Internal names of terms retained in the
+#'   final model, as determined by the caller.
 #'
-#' @return A named list with one entry per requested term. Each entry is a data
-#'   frame stacking the per-logit predictions, with a `logit` factor column
-#'   (levels are the non-reference class labels in coefficient-matrix order) in
-#'   addition to the `variable`, `variable_pre`, `value`, `se`, `lower`, and
-#'   `upper` columns returned for scalar families.
+#' @return A named list with one data frame per requested term. Each contains
+#'   `variable`, `variable_pre`, `value`, `se`, `lower`, and `upper`, plus a
+#'   `logit` factor identifying the non-reference category. Factor levels
+#'   follow the coefficient-matrix row order.
 #'
 #' @keywords internal
 #' @noRd
@@ -1719,24 +2255,25 @@ mfp2_predict_multinomial_terms <- function(object,
                                            selected_internal_terms) {
   requested_terms <- terms
   internal_terms <- requested_terms
-
   selected <- internal_terms %in% selected_internal_terms
-  if (!any(selected)) {
+
+  # Name each omitted term, including unknown names and eliminated terms.
+  omitted_terms <- unique(requested_terms[!selected])
+  if (length(omitted_terms) > 0L) {
+    action <- if (any(selected)) {
+      "Omitting these terms."
+    } else {
+      "Returning an empty list."
+    }
     warning(
-      "i All the terms supplied are not in the final model.\n",
-      "i predict() continues but returns an empty list.",
-      call. = FALSE
-    )
-    return(list())
-  } else if (!all(selected)) {
-    warning(
-      paste0(
-        "i Some terms supplied are not in the final model.\n",
-        "i predict() continues but omits terms not in the model."
-      ),
+      "predict(): requested term(s) not retained in the final model: ",
+      paste(paste0("`", omitted_terms, "`"), collapse = ", "), ".\n",
+      action,
       call. = FALSE
     )
   }
+  if (!any(selected)) return(list())
+
   requested_terms <- requested_terms[selected]
   internal_terms <- internal_terms[selected]
 
@@ -1772,9 +2309,8 @@ mfp2_predict_multinomial_terms <- function(object,
       )
     }
     block <- covariance[ind, ind, drop = FALSE]
-    v <- rowSums((X %*% block) * X)
-    v[v < 0] <- 0
-    sqrt(v)
+    # Use the same finite-value and roundoff checks as scalar term predictions.
+    mfp2_prediction_standard_error(X, block)
   }
 
   lookup <- prediction_term_to_columns(object)
@@ -1864,7 +2400,7 @@ mfp2_predict_multinomial_terms <- function(object,
         }
       }
       x_trafo <- as.matrix(prepare_newdata_for_predict(
-        object, x_seq, terms = t, apply_pre = FALSE,
+        object, x_seq, terms = t, apply_pre = FALSE, check_binary = FALSE,
         allow_missing_predictors = TRUE
       ))
       variable <- as.numeric(x_seq) - object$transformations[t, "shift"]
@@ -1934,23 +2470,25 @@ mfp2_predict_multinomial_terms <- function(object,
   res_list
 }
 
-
-#' Full-Model Predictions for a Baseline-Category Multinomial `mfp2` Fit
+#' Compute Full-Model Multinomial Predictions
 #'
-#' Computes full-model predictions for a baseline-category multinomial
-#' `"mfp2"` fit. The per-class logits are `eta_c = X %*% beta_c` for each
-#' non-reference class `c`; class probabilities normalise `exp(eta_c)`
-#' against the reference-class logit fixed at zero.
+#' Returns log-odds relative to the reference category, category probabilities,
+#' or predicted category labels. Predictions include any fitted or supplied
+#' offsets. The reference category's logit is fixed at zero.
 #'
-#' @param object An `"mfp2"` multinomial model object.
-#' @param transformed Optional prepared prediction design matrix, or
-#'   `NULL` to use `object$x`.
-#' @param ... Additional named arguments carrying the prediction type,
-#'   standard-error flag, and any prediction-time offset (see
-#'   `predict.mfp2()`).
+#' @param object A fitted multinomial `mfp2` model.
+#' @param transformed Prepared prediction data with the fitted transformations
+#'   applied, or `NULL` to use the fitting data.
+#' @param type One of `"link"`, `"response"`, or `"class"`.
+#' @param se.fit Logical; whether to return standard errors. Not supported
+#'   for `"class"` predictions.
+#' @param newoffset Offset matrix for new rows. When `transformed = NULL`,
+#'   the fitting offsets are used instead.
 #'
-#' @return A numeric vector or matrix of predictions, matching the
-#'   requested type.
+#' @return A matrix of non-reference-category log-odds or category
+#'   probabilities, or a factor of predicted category labels. For numeric
+#'   predictions with `se.fit = TRUE`, a list containing `fit` and `se.fit`
+#'   matrices with matching dimensions and names.
 #'
 #' @keywords internal
 #' @noRd
@@ -1958,9 +2496,9 @@ mfp2_predict_multinomial <- function(object, transformed = NULL,
                                       type = c("link", "response", "class"),
                                       se.fit = FALSE, newoffset = NULL) {
   type <- match.arg(type)
-  if (isTRUE(se.fit)) {
+  if (isTRUE(se.fit) && type == "class") {
     stop(
-      "`se.fit = TRUE` is not available for full multinomial predictions; use `summary()` for coefficient uncertainty.",
+      "`se.fit = TRUE` is not available for multinomial class labels; use `type = 'response'` for probability standard errors.",
       call. = FALSE
     )
   }
@@ -2007,11 +2545,35 @@ mfp2_predict_multinomial <- function(object, transformed = NULL,
     )
   }
 
-  eta <- xx[, colnames(coefficient_matrix), drop = FALSE] %*%
-    t(coefficient_matrix)
+  xx <- xx[, colnames(coefficient_matrix), drop = FALSE]
+  eta <- xx %*% t(coefficient_matrix)
   eta <- eta + offset_matrix[, -1L, drop = FALSE]
   dimnames(eta) <- list(prediction_rownames, rownames(coefficient_matrix))
-  if (type == "link") return(eta)
+  if (isTRUE(se.fit)) {
+    # Flatten in logit-major order, matching vcov.multinom(). Match both axes
+    # by name so neither coefficient nor covariance storage order is assumed.
+    covariance_names <- unlist(lapply(rownames(coefficient_matrix), function(q) {
+      paste0(q, ":", colnames(coefficient_matrix))
+    }), use.names = FALSE)
+    V <- as.matrix(stats::vcov(object))
+    if (!all(covariance_names %in% rownames(V)) ||
+        !all(covariance_names %in% colnames(V))) {
+      stop("The multinomial covariance matrix lacks required coefficient names.",
+           call. = FALSE)
+    }
+    V <- V[covariance_names, covariance_names, drop = FALSE]
+    p <- ncol(xx)
+    n_logits <- nrow(coefficient_matrix)
+  }
+  if (type == "link") {
+    if (!isTRUE(se.fit)) return(eta)
+    se <- matrix(0, nrow = nrow(eta), ncol = ncol(eta), dimnames = dimnames(eta))
+    for (q in seq_len(n_logits)) {
+      block <- (q - 1L) * p + seq_len(p)
+      se[, q] <- mfp2_prediction_standard_error(xx, V[block, block, drop = FALSE])
+    }
+    return(list(fit = eta, se.fit = se))
+  }
 
   eta_full <- cbind(0, eta)
   colnames(eta_full) <- object$class_levels
@@ -2019,11 +2581,29 @@ mfp2_predict_multinomial <- function(object, transformed = NULL,
   exp_eta <- exp(eta_full - row_max)
   probabilities <- exp_eta / rowSums(exp_eta)
 
+  if (isTRUE(se.fit)) {
+    se <- matrix(0, nrow = nrow(probabilities), ncol = ncol(probabilities),
+                 dimnames = dimnames(probabilities))
+    for (j in seq_len(ncol(probabilities))) {
+      # Softmax derivative: d P_j / d eta_q = P_j * (I[j = q] - P_q).
+      # Probability SEs need cross-logit covariance, including for the reference
+      # category. Keep one n-by-parameter gradient at a time, not an n-by-n matrix.
+      gradient <- do.call(cbind, lapply(seq_len(n_logits), function(q) {
+        xx * (probabilities[, j] * ((j == q + 1L) - probabilities[, q + 1L]))
+      }))
+      se[, j] <- mfp2_prediction_standard_error(gradient, V)
+    }
+  }
+
   original_levels <- object$mfp2_family$prepared$original_levels
   if (!is.null(original_levels) && all(original_levels %in% colnames(probabilities))) {
     probabilities <- probabilities[, original_levels, drop = FALSE]
+    if (isTRUE(se.fit)) se <- se[, original_levels, drop = FALSE]
   }
-  if (type == "response") return(probabilities)
+  if (type == "response") {
+    if (isTRUE(se.fit)) return(list(fit = probabilities, se.fit = se))
+    return(probabilities)
+  }
 
   factor(
     colnames(probabilities)[max.col(probabilities, ties.method = "first")],
@@ -2031,17 +2611,15 @@ mfp2_predict_multinomial <- function(object, transformed = NULL,
   )
 }
 
-
-#' Match a User-Supplied `survreg` Prediction Type
+#' Validate and Match a survreg Prediction Type
 #'
-#' Matches the user-supplied `type` argument to the prediction types
-#' implemented by [survival::predict.survreg()], while retaining the
-#' package-owned `terms` and `contrasts` paths on the linear-predictor
-#' scale.
+#' Matches prediction types supported by [survival::predict.survreg()],
+#' together with the `"terms"` and `"contrasts"` predictions handled by
+#' `predict.mfp2()` on the linear-predictor scale.
 #'
-#' @param type User-supplied character scalar.
+#' @param type A single character value supplied to `predict.mfp2()`.
 #'
-#' @return Character scalar with the canonical prediction type.
+#' @return The matched prediction type used internally.
 #'
 #' @keywords internal
 #' @noRd
@@ -2060,18 +2638,15 @@ mfp2_match_survreg_prediction_type <- function(type) {
   )
 }
 
-
-#' Match a User-Supplied Fine--Gray Prediction Type
+#' Validate and Match a Fine--Gray Prediction Type
 #'
-#' Matches the user-supplied `type` argument to the prediction types
-#' offered for Fine--Gray subdistribution-hazard models. Fine--Gray uses a
-#' weighted Cox fit, so relative linear predictors and risk scores use the
-#' native `coxph` interface; absolute cumulative-incidence curves are
-#' obtained from [survival::survfit()] on the retained weighted Cox fit.
+#' Matches a supported prediction type to the name used internally before
+#' selecting the prediction method. Unsupported values produce an error.
 #'
-#' @param type User-supplied character scalar.
+#' @param type A single character value supplied to `predict.mfp2()`.
 #'
-#' @return Character scalar with the canonical prediction type.
+#' @return One of `"lp"`, `"risk"`, `"response"`, `"terms"`,
+#'   or `"contrasts"`.
 #'
 #' @keywords internal
 #' @noRd
@@ -2089,35 +2664,30 @@ mfp2_match_finegray_prediction_type <- function(type) {
   )
 }
 
-
-#' Fine--Gray Cumulative-Incidence Predictions
+#' Compute Fine--Gray Cumulative-Incidence Predictions
 #'
-#' Computes Fine--Gray cumulative incidence at requested times from the
-#' retained weighted Cox model. [survival::survfit.coxph()] evaluates the
-#' fitted subdistribution survival curve; one minus that curve is the
-#' cumulative incidence function (CIF) for the selected event type. The
-#' function evaluates one CIF curve per prediction row and aligns the
-#' result so that rows correspond to prediction rows and columns to
-#' requested time points.
+#' Predicts the probability of the selected event occurring by each requested
+#' time, accounting for competing events. Uses [survival::survfit()] on the
+#' retained weighted Cox fit and calculates cumulative incidence as one minus
+#' the fitted subdistribution survival curve.
 #'
-#' @param object An `"mfp2"` Fine--Gray model object.
-#' @param newdata Optional new data frame for prediction.
-#' @param times Numeric vector of prediction time points.
-#' @param se.fit Whether to return standard errors of the CIF estimates.
+#' @param object A fitted Fine--Gray `mfp2` model.
+#' @param newdata Prediction data, or `NULL` to use the stored fitting data.
+#' @param times Finite, non-negative prediction times, in the same units as
+#'   the fitted follow-up time. Sorted and reduced to unique values.
+#' @param se.fit Logical; whether to return prediction standard errors.
 #'
-#' @return A named numeric vector for one time, otherwise a prediction-row
-#'   by time matrix; with `se.fit = TRUE`, a list with `fit`, `se.fit`,
-#'   `times`, and `event`.
+#' @return A named numeric vector for one time, or a matrix with prediction
+#'   rows and one column per time. With `se.fit = TRUE`, a list containing
+#'   `fit`, `se.fit`, `times`, and the selected `event`.
+#'
+#' @details
+#' Predictions are computed in batches. If a batch result cannot be aligned
+#' reliably, its rows are evaluated individually. Output rows retain the
+#' order of the prediction data.
 #'
 #' @keywords internal
 #' @noRd
-#'
-#' @details
-#' Rows are passed to `survival::survfit()` in bounded batches so prediction
-#' does not allocate a survival curve for every requested row at once. The
-#' returned curves follow the prediction data's row order; the native fitter
-#' resolves baseline strata and formula offsets. An unrecognized batch layout
-#' is evaluated one row at a time to preserve the original prediction behavior.
 mfp2_predict_finegray_cif <- function(object, newdata = NULL, times,
                                       se.fit = FALSE) {
   if (!inherits(object, "coxph")) {
@@ -2230,21 +2800,17 @@ mfp2_predict_finegray_cif <- function(object, newdata = NULL, times,
        event = object$mfp2_finegray_event)
 }
 
-
 #' Validate Prediction Data
 #'
-#' Checks raw or reconstructed prediction data before ranges,
-#' fractional-polynomial transformations, or model matrices are calculated.
-#' Missing values retain their dedicated diagnostic when requested, while
-#' positive and negative infinity are always rejected and reported by column.
+#' Checks the selected prediction columns before transformations or model
+#' matrix construction. Callers supply only columns needed for the requested
+#' prediction. Errors identify missing values or columns containing infinities.
 #'
-#' @param newdata Prediction data used by `predict.mfp2()`.
-#' @param check_missing Logical scalar. When `TRUE`, reject missing values in
-#'   addition to non-finite numeric values. Raw user data are checked with
-#'   `FALSE` before formula reconstruction; reconstructed required predictors
-#'   are checked with `TRUE` before transformation.
+#' @param newdata Prediction data to check.
+#' @param check_missing Logical; whether to reject missing values.
+#'   Numeric infinities are always rejected.
 #'
-#' @return Invisibly `TRUE`.
+#' @return Invisibly `TRUE` when validation succeeds.
 #'
 #' @keywords internal
 #' @noRd
@@ -2909,66 +3475,6 @@ resolve_grouped_reference <- function(object, term, reference, block) {
   reference
 }
 
-
-#' Transform Linear Predictor to Response or Risk
-#'
-#' Converts a likelihood-GLM linear predictor through any link implemented by
-#' [stats::make.link()]. Cox and Fine--Gray risk predictions are exponentiated.
-#'
-#' @param nfit Numeric vector of linear predictors \eqn{X\beta}.
-#' @param family Normalized family name.
-#' @param link Link name. When omitted, the base family's default link is used.
-#' @param type Character string specifying the type of prediction:
-#'   - `"response"` or `"risk"`: returns predictions on the response/probability scale
-#'   - `NULL` (default): returns the linear predictor itself
-#'
-#' @return Numeric vector of predictions on the requested scale.
-#'
-#' @examples
-#' \dontrun{
-#' # Binomial example
-#' lp_bin <- c(-1, 0, 1)
-#' transform_linear_predictor(lp_bin, family = "binomial", link = "logit", type = "response")
-#'
-#' # Poisson example
-#' lp_pois <- c(0.5, 1, 1.5)
-#' transform_linear_predictor(lp_pois, family = "poisson", link = "log", type = "response")
-#'
-#' # Gaussian example
-#' lp_gauss <- c(1, 2, 3)
-#' transform_linear_predictor(lp_gauss, family = "gaussian", link = "log", type = "response")
-#' }
-#' @keywords internal
-#' @noRd
-transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
-  if (family %in% c("cox", "finegray")) {
-    if (!is.null(type) && type %in% c("response", "risk")) {
-      return(exp(nfit))
-    }
-    return(nfit)
-  }
-
-  if (is.null(type) || !identical(type, "response")) return(nfit)
-
-  default_links <- c(
-    gaussian = "identity",
-    binomial = "logit",
-    poisson = "log",
-    Gamma = "inverse",
-    inverse.gaussian = "1/mu^2",
-    negbin = "log"
-  )
-  if (!family %in% names(default_links)) return(nfit)
-  if (is.null(link)) link <- unname(default_links[[family]])
-
-  tryCatch(
-    stats::make.link(link)$linkinv(nfit),
-    error = function(e) {
-      stop("Unknown link '", link, "' for family '", family, "'.", call. = FALSE)
-    }
-  )
-}
-
 #' Is a Prediction Term Explicitly Stored as Binary-Only SAZ?
 #'
 #' Current SAZ fits store one named decision code per term in
@@ -3208,7 +3714,7 @@ reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
   # A final intercept-only model has no predictor dependencies. Preserve the
   # requested row count without evaluating any original formula expression.
   if (length(expected) == 0L) {
-    return(data.frame(row.names = seq_len(nrow(newdata))))
+    return(data.frame(row.names = row.names(as.data.frame(newdata))))
   }
 
   # Accept callers that already supplied the exact active model-matrix columns.
@@ -3235,6 +3741,11 @@ reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
   active_xlevels <- object$formula_xlevels[
     intersect(names(object$formula_xlevels), active_frame_variables)
   ]
+
+  # Validate only the inputs to the active formula. Checking the resulting
+  # model matrix alone would miss inputs masked by an expression, e.g. 1 / Inf.
+  source_columns <- intersect(all.vars(active_formula_terms), names(newdata_df))
+  mfp2_validate_prediction_newdata(newdata_df[, source_columns, drop = FALSE])
 
   # model.frame() evaluates only active formula expressions and enforces their
   # fitted factor levels; model.matrix() recreates the fitted contrast coding.
@@ -3311,6 +3822,11 @@ reconstruct_formula_strata_newdata <- function(object, newdata) {
   }
 
   newdata_df <- as.data.frame(newdata)
+
+  # Formula strata are needed only for full-model survival predictions. Keep
+  # their input checks local so term predictions can ignore these columns.
+  source_columns <- intersect(all.vars(object$formula_strata_terms), names(newdata_df))
+  mfp2_validate_prediction_newdata(newdata_df[, source_columns, drop = FALSE])
 
   mf <- tryCatch(
     stats::model.frame(
@@ -3578,6 +4094,7 @@ prepare_newdata_for_predict <- function(object,
   # selected. Predictor isolation therefore precedes matrix conversion.
   newdata <- as.data.frame(newdata, check.names = FALSE)
   n_newdata <- nrow(newdata)
+  prediction_rownames <- row.names(newdata)
 
   if (is.null(colnames(newdata)) || any(colnames(newdata) == "")) {
     stop("! newdata must have non-empty column names.", call. = FALSE)
@@ -3774,6 +4291,11 @@ prepare_newdata_for_predict <- function(object,
     }
   }
 
+  # Transformation builders may drop matrix row names. Restore the names from
+  # the supplied rows, including for intercept-only designs, before prediction
+  # methods use them to label fitted values and standard errors.
+  row.names(newdata) <- prediction_rownames
+
   # Attach high-level strata and offset variables expected by the stored model
   # formula after the predictor design has been reconstructed. The exact helper
   # names are recovered from fit-time metadata so user predictors named
@@ -3799,8 +4321,8 @@ prepare_newdata_for_predict <- function(object,
     if (length(offset) != nrow(newdata)) {
       stop("! offset must have one value per observation.", call. = FALSE)
     }
-    # Formula-based GLM/Cox fits store the exact offset helper name. Matrix-
-    # based fastglm fits consume the offset separately and need no helper column.
+    # Formula-based fits store the exact offset helper name. Matrix-based
+    # fastglm fits consume the offset separately and need no helper column.
     if (!inherits(object, "fastglm")) {
       offset_name <- mfp2_internal_fit_name(
         object,
@@ -3901,49 +4423,9 @@ calculate_standard_error <- function(model,
     ind <- c(intercept_ind, ind)
   }
 
-  # Compute diag(X V X') without constructing the full n-by-n product.
-  # Validate only the selected block: an undefined covariance for an unrelated,
-  # unused coefficient must not prevent an otherwise estimable prediction.
+  # Select before validation: an undefined covariance for an unrelated, unused
+  # coefficient must not prevent an otherwise estimable prediction. All custom
+  # prediction paths share the same finite-value and negative-variance checks.
   vcovx <- vcovx[ind, ind, drop = FALSE]
-  if (anyNA(vcovx) || any(!is.finite(vcovx))) {
-    stop(
-      "Cannot compute standard errors: the covariance matrix contains ",
-      "non-finite entries for the required coefficients.",
-      call. = FALSE
-    )
-  }
-
-  quadratic_terms <- (X %*% vcovx) * X
-  v <- rowSums(quadratic_terms)
-
-  if (anyNA(v) || any(!is.finite(v))) {
-    stop(
-      "Cannot compute standard errors: the prediction variance contains ",
-      "non-finite values.",
-      call. = FALSE
-    )
-  }
-
-  # In exact arithmetic, diag(X V X') is non-negative for a valid covariance
-  # matrix. Cancellation can nevertheless leave a tiny negative value. Scale
-  # the tolerance by the absolute quadratic-form contributions so the decision
-  # remains meaningful for both small and large predictors.
-  variance_scale <- rowSums(abs(quadratic_terms))
-  tolerance <- 100 * .Machine$double.eps * pmax(1, variance_scale)
-  materially_negative <- v < -tolerance
-
-  if (any(materially_negative)) {
-    stop(
-      "Cannot compute standard errors: the prediction variance is materially ",
-      "negative for ", sum(materially_negative), " row(s). The fitted ",
-      "covariance matrix may not be positive semidefinite.",
-      call. = FALSE
-    )
-  }
-
-  # Values in [-tolerance, 0) are floating-point artifacts, not evidence of a
-  # negative statistical variance. Clamp only those accepted values to zero.
-  v[v < 0] <- 0
-
-  sqrt(v)
+  mfp2_prediction_standard_error(X, vcovx)
 }

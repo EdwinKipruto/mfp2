@@ -2,7 +2,7 @@
 % Please edit documentation in R/family.R
 \name{gee_family}
 \alias{gee_family}
-\title{Generalized Estimating Equations (GEE) Family Specification}
+\title{GEE Family Specification}
 \usage{
 gee_family(
   family = stats::gaussian(),
@@ -13,73 +13,51 @@ gee_family(
 )
 }
 \arguments{
-\item{family}{A GLM response family (name, function, or family object)
-describing the marginal mean and variance. Supported families are
-\code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma}. Defaults to
+\item{family}{Response family: \code{gaussian}, \code{binomial},
+\code{poisson}, or \code{Gamma}. The default is
 \code{stats::gaussian()}.}
 
-\item{corstr}{Working correlation structure, one of \code{"exchangeable"}
-(the default), \code{"independence"}, or \code{"ar1"}.}
+\item{corstr}{Assumed pattern of association between measurements in
+the same group: \code{"exchangeable"} (default),
+\code{"independence"}, or \code{"ar1"}.}
 
-\item{std.err}{Type of standard error reported by the retained fit, one of
-\code{"san.se"} (the robust sandwich estimator, default), \code{"jack"}, \code{"j1s"}, or
-\code{"fij"}.}
+\item{std.err}{Method for calculating standard errors:
+\code{"san.se"} (robust standard errors; the default),
+\code{"jack"}, \code{"j1s"}, or \code{"fij"}.}
 
-\item{reference_dispersion}{Optional positive finite dispersion for GEE
-QICu and QBIC comparisons. If \code{NULL} (default), \code{mfp2()} estimates one
-dispersion from a full maximum-degree FP reference model before selection;
-powers are chosen deterministically from each term's permitted set,
-preferring powers at least 1 near zero, with 2 for selectable FP1 and
-(1, 2) for FP2 when allowed. Fixed \code{df = 1} terms remain linear. A failed
-initial fit triggers limited alternative-power
-attempts. Supplying a value skips the
-reference fit. The same value is
-used at every selection step and backfitting cycle. Geepack still estimates
-its own scale for each fitted model and for inference. Only relevant when
-\code{mfp2(criterion = "aic")} or \code{mfp2(criterion = "bic")}.}
+\item{reference_dispersion}{Optional positive value that scales the
+quasi-likelihood part of GEE AIC and BIC scores. The score divides
+that part by this value; the penalty for model complexity is not
+divided by it. If \code{NULL} (the default), \code{mfp2()} estimates
+the value. It does not set the scale used for the final model's
+standard errors. It cannot be supplied with p-value selection.}
 
-\item{qbic_penalty}{For GEE BIC selection, use \code{"clusters"} (default) for
-\code{log(K) * p} or \code{"observations"} for \code{log(N) * p}, where \code{K} is the number
-of independent clusters and \code{N} is the number of fitted observation rows.
-This setting does not affect QICu or Wald p-value comparisons.}
+\item{qbic_penalty}{For BIC selection, whether the complexity penalty
+uses the number of independent \code{"clusters"} (default) or the
+number of \code{"observations"}. This setting does not affect AIC
+or p-value selection.}
 }
 \value{
-An \code{mfp2_gee_family} specification.
+A family specification to supply as the \code{family} argument
+of \code{\link[=mfp2]{mfp2()}}.
 }
 \description{
-Specifies a marginal model fitted by generalized estimating equations for
-\code{\link[=mfp2]{mfp2()}}, using the \pkg{geepack} package. Fractional-polynomial candidate
-fits use \code{\link[geepack:geese.fit]{geepack::geese.fit()}} and the single retained model is refitted
-with \code{\link[geepack:geeglm]{geepack::geeglm()}}, so the returned object is a native \code{geeglm} object.
+Use \code{gee_family()} with \code{\link[=mfp2]{mfp2()}} to model outcomes measured more
+than once within independent groups, such as repeated measurements from
+the same person. Supply the group identifier through \code{mfp2()}'s
+\code{id} argument. If measurement order matters, supply \code{waves}.
 }
 \details{
-The cluster identifier is supplied through the top-level \code{id} argument of
-\code{\link[=mfp2]{mfp2()}} (one value per observation; interleaved clusters are grouped
-internally without changing their within-cluster order), and
-repeated-measure ordering through the optional \code{waves} argument. These are
-aligned per observation and therefore live outside \code{gee_family()}.
-
-All three \code{\link[=mfp2]{mfp2()}} selection criteria are available. With
-\code{criterion = "pvalue"}, GEE selection reproduces Stata \code{mfp: xtgee}: the
-selection "deviance" is the negative overall robust Wald chi-square and
-differences of scores from separately fitted models are referred to a
-chi-square distribution as an approximate selection test.
-Stata's \eqn{K/(K-1)} finite-cluster sandwich correction is applied, where
-\eqn{K} is the number of independent clusters. That compatibility
-calculation is not an additive likelihood-deviance test.
-With \code{criterion = "aic"} and
-\code{criterion = "bic"}, selection uses the quasi-likelihood information criteria:
-the QICu form of Pan (2001), with extra FP-power degrees of freedom, and
-a package-defined BIC-like quasi-likelihood score, respectively. Quasi-likelihood
-contributions use the effective prior weights (including grouped-binomial
-totals) and the standard Gamma quasi-likelihood.
+All three selection criteria in \code{\link[=mfp2]{mfp2()}} are available for GEE models.
+P-value selection uses approximate tests for GEE. AIC selection uses
+QICu; BIC selection uses a BIC-like score based on quasi-likelihood.
 }
 \references{
 Pan, W. (2001). Akaike's information criterion in generalized estimating
 equations. \emph{Biometrics}, 57, 120--125.\cr
-Halekoh, U., Højsgaard, S. and Yan, J. (2006). The R package geepack for
-generalized estimating equations. \emph{Journal of Statistical Software},
-15(2), 1--11.
+Halekoh, U., Højsgaard, S. and Yan, J. (2006). The R package geepack
+for generalized estimating equations. \emph{Journal of Statistical
+Software}, 15(2), 1--11.
 }
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[geepack:geeglm]{geepack::geeglm()}}

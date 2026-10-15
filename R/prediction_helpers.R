@@ -1,5 +1,39 @@
 # Shared prediction helpers ---------------------------------------------------
 
+#' Select Retained Prediction Terms and Identify Omitted Terms
+#'
+#' Reports missing terms by their requested names. Plotting selects terms once
+#' before generating curves, residual points, or cutoff panels so the same
+#' omission does not produce several warnings.
+#'
+#' @param terms Requested term names.
+#' @param retained_terms Names of terms retained in the fitted model.
+#' @param caller Name of the calling method used in the warning.
+#'
+#' @return Requested terms that occur in `retained_terms`, in request order.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_select_prediction_terms <- function(terms, retained_terms,
+                                         caller = "predict()") {
+  selected <- terms %in% retained_terms
+  omitted <- unique(terms[!selected])
+  if (length(omitted) > 0L) {
+    action <- if (any(selected)) {
+      "Omitting these terms."
+    } else {
+      "Returning an empty list."
+    }
+    warning(
+      caller, ": requested term(s) not retained in the final model: ",
+      paste(paste0("`", omitted, "`"), collapse = ", "), ".\n",
+      action,
+      call. = FALSE
+    )
+  }
+  terms[selected]
+}
+
 #' Identify Formula-Level Survival Strata Stored on a Fitted Object
 #'
 #' Formula-level strata must be reconstructed from their original variables in
@@ -363,6 +397,11 @@ reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
     response_formula <- object$formula
     response_formula[[3L]] <- 1
 
+    # Validate raw response inputs only when absolute Cox prediction uses them.
+    # A formula expression can otherwise hide an infinite input (e.g. 1 / time).
+    source_columns <- intersect(all.vars(response_formula), names(newdata_df))
+    mfp2_validate_prediction_newdata(newdata_df[, source_columns, drop = FALSE])
+
     formula_environment <- environment(response_formula)
     if (is.null(formula_environment)) {
       formula_environment <- parent.frame()
@@ -529,6 +568,61 @@ prediction_fit_has_strata <- function(fit_obj) {
 }
 
 
+#' Validate and Compute Prediction Standard Errors
+#'
+#' Shared by scalar and multinomial term predictions and the GEE/fastglm
+#' full-model paths. Callers select and align the required covariance block,
+#' including any intercept or dispersion adjustment, before calling this helper.
+#' Undefined covariances for unrelated coefficients are therefore ignored.
+#'
+#' @param X Numeric prediction design matrix, already differenced for contrasts.
+#' @param covariance Required coefficient covariance block, in `X` column order.
+#'
+#' @return Numeric vector of standard errors. Only negative variances within a
+#'   scale-aware roundoff tolerance are clamped to zero; non-finite or materially
+#'   negative variances cause an error instead of misleading uncertainty output.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_prediction_standard_error <- function(X, covariance) {
+  if (anyNA(covariance) || any(!is.finite(covariance))) {
+    stop(
+      "Cannot compute standard errors: the covariance matrix contains ",
+      "non-finite entries for the required coefficients.",
+      call. = FALSE
+    )
+  }
+
+  # Compute diag(X V X') without allocating an n-by-n prediction covariance.
+  quadratic_terms <- (X %*% covariance) * X
+  v <- rowSums(quadratic_terms)
+  if (anyNA(v) || any(!is.finite(v))) {
+    stop(
+      "Cannot compute standard errors: the prediction variance contains ",
+      "non-finite values.",
+      call. = FALSE
+    )
+  }
+
+  # Keep the scalar term predictor's existing tolerance for all prediction
+  # paths. An unconditional pmax(v, 0) would hide invalid covariance estimates.
+  variance_scale <- rowSums(abs(quadratic_terms))
+  tolerance <- 100 * .Machine$double.eps * pmax(1, variance_scale)
+  materially_negative <- v < -tolerance
+  if (any(materially_negative)) {
+    stop(
+      "Cannot compute standard errors: the prediction variance is materially ",
+      "negative for ", sum(materially_negative), " row(s). The fitted ",
+      "covariance matrix may not be positive semidefinite.",
+      call. = FALSE
+    )
+  }
+
+  v[v < 0] <- 0
+  sqrt(v)
+}
+
+
 #' Predict from a GEE (geeglm) Fit Using Its Selected Covariance
 #'
 #' Computes linear-predictor and response predictions for a retained GEE model
@@ -628,8 +722,7 @@ mfp2_predict_gee_matrix <- function(object,
   # Covariance selected by std.err, aligned to the coefficient order.
   V <- as.matrix(stats::vcov(object))
   V <- V[names(beta), names(beta), drop = FALSE]
-  variances <- pmax(rowSums((X %*% V) * X), 0)
-  se_link <- sqrt(variances)
+  se_link <- mfp2_prediction_standard_error(X, V)
 
   # Estimated scale (dispersion) for `residual.scale`, mirroring predict.glm's
   # reporting; the prediction SEs above do not depend on it.
@@ -781,11 +874,10 @@ mfp2_predict_fastglm_matrix <- function(object,
     keep <- !is.na(beta)
     covariance <- covariance[keep, keep, drop = FALSE] * dispersion
     X_estimable <- X[, keep, drop = FALSE]
-    variances <- rowSums((X_estimable %*% covariance) * X_estimable)
-    variances <- pmax(variances, 0)
+    se_link <- mfp2_prediction_standard_error(X_estimable, covariance)
     result <- list(
       fit = eta,
-      se.fit = sqrt(variances),
+      se.fit = se_link,
       residual.scale = sqrt(dispersion)
     )
   }

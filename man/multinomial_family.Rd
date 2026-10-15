@@ -2,40 +2,37 @@
 % Please edit documentation in R/family.R
 \name{multinomial_family}
 \alias{multinomial_family}
-\title{Multinomial Logistic Family Specification}
+\title{Multinomial Logistic Family}
 \usage{
 multinomial_family(reference = NULL)
 }
 \arguments{
-\item{reference}{Optional response class or count-matrix column used as the
-reference outcome. \code{NULL} uses the first factor level, the first level
-obtained by converting a class-label vector to a factor, or the first
-count-matrix column. For a count matrix, a numeric value may instead be
-the one-based column index.}
+\item{reference}{Optional reference category. For a factor response,
+give a factor level; for a count-matrix response, give a column name
+or its one-based column number. If \code{NULL}, the first factor level
+or count-matrix column is used. Character and numeric category labels
+are converted to factor levels before the reference is chosen.}
 }
 \value{
-An \code{mfp2_multinomial_family} specification.
+A family specification to supply as the \code{family} argument
+of \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}}.
 }
 \description{
-Specifies an unpenalized baseline-category multinomial logistic model for
-\code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}}. Fractional-polynomial powers are selected once per
-predictor and shared by all non-reference logits; regression coefficients
-remain outcome specific. Candidate fits use \code{\link[nnet:nnet.default]{nnet::nnet.default()}} and the
-retained fit uses \code{\link[nnet:multinom]{nnet::multinom()}}. The response normalization, effective
-case weights, and any class-offset contrasts are prepared once and reused by
-every candidate fit.
+Use \code{multinomial_family()} with \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} when the outcome
+has at least three categories with no natural order. Choose one category
+as the reference; the model describes each other category in relation
+to it.
 }
 \details{
-The response may be a factor or character/numeric class-label vector with at
-least three classes, or a numeric matrix with at least three columns of
-nonnegative integer class counts. Non-factor label vectors are converted to
-factors. Every count-response row must contain at least one trial, and every
-response class must have positive weighted support.
+Each predictor has one selected linear or curved form shared across the
+category comparisons. The strength and direction of its association
+may differ between categories.
 
-If there are \eqn{C} classes and \eqn{Q = C - 1} non-reference logits, a
-linear term contributes \eqn{Q} regression degrees of freedom. An FP of
-degree \eqn{m} contributes \eqn{Qm + m}: \eqn{Qm} logit-specific
-coefficients and \eqn{m} shared-power search degrees of freedom.
+The response can be a factor, a vector of character or numeric category
+labels, or a numeric matrix of category counts. It must contain at least
+three categories. Counts must be nonnegative whole numbers, every row
+must have at least one count, and every category must be represented in
+the weighted data.
 }
 \examples{
 set.seed(43)
@@ -73,7 +70,8 @@ predict(
   type = "response",
   se.fit = FALSE
 )
+
 }
 \seealso{
-\code{\link[nnet:multinom]{nnet::multinom()}}, \code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
 }

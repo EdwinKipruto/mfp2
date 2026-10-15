@@ -2,7 +2,7 @@
 % Please edit documentation in R/fracplot.R
 \name{plot.mfp2}
 \alias{plot.mfp2}
-\title{Plot response functions from a fitted \code{mfp2} object}
+\title{Plot fitted term contributions and contrasts from an mfp2 model}
 \usage{
 \method{plot}{mfp2}(
   x,
@@ -27,139 +27,675 @@
 )
 }
 \arguments{
-\item{x}{A fitted \code{mfp2} object.}
+\item{x}{A fitted \code{mfp2} model.}
 
-\item{terms}{Character vector naming variables to plot. If \code{NULL}, all
-eligible terms retained in the final model are plotted.}
+\item{terms}{Names of the variables to plot, for example,
+\code{c("age", "cavol")}. By default (\code{NULL}), requests all variables kept in
+the final model. See \strong{Choosing terms}.}
 
-\item{partial_only}{Logical scalar. If \code{TRUE}, plot only the fitted
-partial predictor. If \code{FALSE}, the default, add residuals to produce
-component-plus-residual plots. This argument is used only when
-\code{type = "terms"}; contrast plots always use \code{partial_only = TRUE}.}
+\item{partial_only}{Whether to show only the fitted effect and confidence
+interval. Defaults to \code{FALSE}. See \strong{Component-plus-residual plots}.}
 
-\item{type}{Character scalar, either \code{"terms"} or \code{"contrasts"}.
-Term plots display partial predictors; contrast plots display differences
-from the reference supplied through \code{ref}.}
+\item{type}{Either \code{"terms"} (default) or \code{"contrasts"}.
+See \strong{Choosing the plot type}.}
 
-\item{ref}{Optional named list of reference values used when
-\code{type = "contrasts"}. Ignored for term plots.}
+\item{ref}{Named list of reference values for contrast plots, for example,
+\code{list(age = 50)}. See \strong{Contrasts and reference values}.}
 
-\item{terms_seq}{Character scalar, either \code{"data"} or
-\code{"equidistant"}. The first evaluates the fitted function at observed
-covariate values; the second uses an equally spaced grid over the observed
-range. For contrast plots, the default is \code{"equidistant"} when this
-argument is omitted.}
+\item{terms_seq}{Either \code{"data"} or \code{"equidistant"}.
+See \strong{Evaluation values} for their meaning and defaults.}
 
-\item{alpha}{Numeric scalar giving the significance level used to construct
-confidence intervals; for example, \code{alpha = 0.05} gives 95 percent
-intervals.}
+\item{alpha}{Significance level for confidence intervals. The default,
+\code{0.05}, gives 95 percent intervals. See \strong{Confidence intervals}.}
 
-\item{show_titles}{Logical scalar. If \code{TRUE}, add titles describing the
-selected FP or ACD representation, positive-part handling, and any retained
-zero-indicator or spike-at-zero component.}
+\item{show_titles}{Whether to show titles describing the fitted
+transformation or variable representation. Defaults to \code{TRUE}.}
 
-\item{color_points}{Colour used for residual points.}
+\item{color_points}{Colour of component-plus-residual points, for example,
+\code{"grey60"} or \code{"#AAAAAA"}. All colour arguments accept ggplot2 colour
+names or hexadecimal codes. See \link[ggplot2:aes_colour_fill_alpha]{ggplot2::aes_colour_fill_alpha}.}
 
-\item{color_line}{Colour used for fitted curves, binary fitted points, and
-the zero endpoint of a term fitted with \code{zero = TRUE} alone.}
+\item{color_line}{Colour of fitted curves and fitted points for binary
+predictors and factors, for example, \code{"black"} or \code{"blue"}. Also used
+for the zero endpoint of a term fitted with \code{zero = TRUE} alone.}
 
-\item{color_line_spike}{Colour used for the zero-component point of a
-\code{catzero} term or a term assessed with spike-at-zero selection.}
+\item{color_line_spike}{Colour of the separate zero endpoint for a
+\code{catzero} or spike-at-zero term with a continuous component,
+for example, \code{"red"}.}
 
-\item{color_fill}{Fill colour used for confidence ribbons.}
+\item{color_fill}{Fill colour of confidence bands, for example,
+\code{"lightblue"} or \code{"#56B4E9"}.}
 
-\item{shape}{Point shape used for residual observations.}
+\item{shape}{Shape of component-plus-residual points. Common ggplot2
+shape codes include \code{1} for open circles and \code{16} for solid circles.
+The default is \code{1}. See \code{\link[ggplot2:scale_shape]{ggplot2::scale_shape()}}.}
 
-\item{size_points}{Point size used for residual observations.}
+\item{size_points}{Numeric size of component-plus-residual points,
+in millimetres, for example, \code{1} or \code{2}. The default is \code{1}.
+See \code{\link[ggplot2:geom_point]{ggplot2::geom_point()}}.}
 
-\item{size_points_spike}{Point size used for fitted values shown at exactly
-zero for zero-handled covariates.}
+\item{size_points_spike}{Numeric size of fitted points for binary
+predictors, factors, and zero endpoints.
+For example, use \code{3} for larger points. The default is \code{2}.
+See \code{\link[ggplot2:geom_point]{ggplot2::geom_point()}}.}
 
-\item{linetype}{Line type used for fitted curves.}
+\item{linetype}{Line style of fitted curves, for example, \code{"solid"},
+\code{"dashed"}, or \code{"dotted"}. The default is \code{"solid"}.
+See \code{\link[ggplot2:scale_linetype]{ggplot2::scale_linetype()}}.}
 
-\item{linewidth}{Line width used for fitted curves.}
+\item{linewidth}{Numeric width of fitted curves, for example, \code{0.5}
+or \code{1}. Larger values produce thicker lines. The default is \code{1}.
+See \code{\link[ggplot2:geom_line]{ggplot2::geom_line()}}.}
 
-\item{alpha_fill}{Numeric scalar between 0 and 1 controlling confidence-band
-transparency.}
+\item{alpha_fill}{Confidence-band transparency, from \code{0} (transparent)
+to \code{1} (opaque).}
 
-\item{...}{Reserved for compatibility with the base \code{plot()} generic.}
+\item{...}{Additional arguments are not used. Supplying \code{newdata} produces
+an error; other arguments are ignored with a warning.}
 }
 \value{
-A named list of \code{ggplot2} objects, one for each plotted term.
-Individual plots can be printed directly or combined with packages such as
-\pkg{patchwork}.
+A named list of \code{ggplot2} objects, one per plotted variable.
+Individual plots can be printed by name or position and modified using
+\code{ggplot2}.
 }
 \description{
-Produces partial-predictor or contrast plots with confidence intervals for
-selected covariates from a fitted \code{mfp2} model. For term plots, the
-fitted component can be shown alone or combined with residuals.
+Shows how selected variables contribute to the fitted model, with confidence
+intervals. Term plots can also include component-plus-residual points to
+help assess the fitted relationship.
 }
-\details{
-Confidence intervals are based on the variance-covariance matrix of the final
-fitted model. They account for uncertainty in the regression coefficients but
-not for uncertainty introduced by model and power selection. Consequently,
-they may be narrower than intervals obtained from a full bootstrap procedure.
+\section{Choosing the plot type}{
 
-Component-plus-residual plots are available for \code{type = "terms"}.
-Deviance residuals are used for generalized linear models and martingale
-residuals for Cox regression.
-
-For multinomial models each predictor is drawn as a single plot faceted by
-logit, with one facet per non-reference class (labelled
-\code{"<class> vs <reference>"}). Because the fractional-polynomial powers
-are shared across logits but the coefficients are not, each facet shows that
-logit's own partial predictor on the log-odds scale. Component-plus-residual
-overlays use per-logit deviance residuals, treating each non-reference logit
-as a binary sub-problem.
-
-For ordinal term plots, each predictor is faceted by response cutoff. Every
-panel includes that cutoff's intercept in its fitted curve and confidence
-interval, and adds deviance residuals for the same cutoff to observed term
-predictions. These residual overlays are diagnostic and are not an exact
-decomposition on the linear-predictor scale. Contrast plots remain on the
-shared predictor-effect scale.
-
-Binary predictors are displayed at their two fitted levels as point estimates
-with vertical confidence intervals. Only those two levels are labelled on the
-x-axis; no interpolating line or confidence ribbon is drawn. A spike-at-zero
-term retaining only the zero indicator is labelled with categories such as
-\code{x = 0} and \code{x > 0} rather than numeric values.
-
-For a covariate fitted with \code{zero = TRUE} alone, the FP or ACD function
-is evaluated only for \code{x > 0}; its uncentered basis is set to zero at
-\code{x = 0}. If centering is enabled, the complete zero-padded basis is
-centered and the same fitted-sample constant is subtracted from every row,
-including the exact-zero rows. The positive-part curve and confidence ribbon
-are drawn only for \code{x > 0}, while the fitted value at exactly zero is
-shown as a point in the ordinary curve colour. This point comes from the same
-fitted continuous term and does not represent a separately estimated zero
-effect.
-
-A \code{catzero} term additionally estimates a zero indicator. Spike-at-zero
-covariates are displayed according to the representation retained by the
-final model:
+Use \code{type} to choose what the fitted curve or fitted points represent:
 \itemize{
-\item both components: the positive-value FP or ACD function and the
-structural-zero indicator;
-\item positive-part only: the positive-value function without the binary
-zero indicator;
-\item zero-indicator only: the binary structural-zero component without a
-continuous function.
+\item \code{"terms"} (default) shows a variable's fitted contribution, using the
+relationship selected during fitting.
+\item \code{"contrasts"} shows the difference from a reference value. See
+\strong{Contrasts and reference values}.
 }
 
-For \code{catzero} and spike-at-zero terms with a continuous component, the
-curve is likewise drawn only for \code{x > 0}. A fitted value at
-\code{x = 0}, when available, is shown as a separate point with a vertical
-confidence interval and uses \code{color_line_spike}.
+Fitted contributions use the following model scales:
+\itemize{
+\item Gaussian with an identity link: contributions to the mean response,
+in the same units as the response used for fitting. For example, fitting
+log-PSA gives contributions to mean log-PSA.
+\item Binomial with a logit link: log-odds.
+\item Poisson and negative-binomial with a log link: log mean.
+\item Other GLM and GEE models: the scale defined by the fitted link function.
+\item Cox: log relative hazard.
+\item Fine--Gray: log relative subdistribution hazard.
+\item \code{survreg}: the fitted location scale, such as log time for Weibull models.
 }
+
+Term plots include the intercept for GLM, negative-binomial, GEE, and
+\code{survreg} models. Cox and Fine--Gray terms have no intercept. Offsets are
+excluded from fitted term contributions. See \strong{Multinomial and ordinal
+models} for their scales, panels, and intercepts.
+}
+
+\section{Choosing terms}{
+
+Use \code{terms} to select variables kept in the final model. Use their original
+names: \code{"age"} rather than \code{"fp(age)"}, and \code{"race"} rather than individual
+contrast-column names such as \code{"raceB"} and \code{"raceC"}.
+
+For example, for a model containing age, cancer volume, and the factor race:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{# Plot age only.
+age_plots <- plot(fit, terms = "age")
+age_plots[["age"]]
+
+# Create separate plots and combine them using patchwork, if installed.
+plots <- plot(fit, terms = c("age", "cavol"))
+patchwork::wrap_plots(plots, ncol = 2)
+
+# Show all fitted race levels together.
+race_plots <- plot(fit, terms = "race")
+race_plots[["race"]]
+}\if{html}{\out{</div>}}
+}
+
+\section{Evaluation values}{
+
+Use \code{terms_seq} to choose where a numeric variable's fitted effect is
+calculated:
+\itemize{
+\item \code{"data"} uses the observed predictor values in the data used to fit
+the model.
+\item \code{"equidistant"} uses equally spaced values between the smallest and
+largest observed predictor values.
+}
+
+The default is \code{"data"} for term plots and \code{"equidistant"} for contrast
+plots. Both settings use the same fitted model.
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{# Evaluate the curve at observed ages.
+plots <- plot(fit, terms = "age", terms_seq = "data")
+
+# Evaluate it at equally spaced ages over the same range.
+curves <- plot(
+  fit, terms = "age", terms_seq = "equidistant", partial_only = TRUE
+)
+curves[["age"]]
+}\if{html}{\out{</div>}}
+
+See \strong{Binary and categorical predictors} for discrete variables.
+To obtain estimates at specific new values, use \code{\link[=predict.mfp2]{predict.mfp2()}} with
+\code{newdata} and \code{terms_seq = "data"}, then plot its output. An example is
+included below.
+}
+
+\section{Contrasts and reference values}{
+
+A contrast is:
+
+\verb{contribution at the plotted value - contribution at the reference}.
+
+For example, compare each age with age 50:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{plots <- plot(
+  fit, terms = "age", type = "contrasts", ref = list(age = 50)
+)
+plots[["age"]]
+}\if{html}{\out{</div>}}
+
+The contrast is zero at age 50. Above zero, the fitted contribution is
+larger than at age 50; below zero, it is smaller. Intercepts cancel from
+the comparison.
+
+The interpretation follows the model scale: a Gaussian identity-link
+contrast is a difference in mean response; a binomial logit contrast is
+a log odds ratio; and a log-link count-model contrast is a log ratio of
+mean counts. Cox and Fine--Gray contrasts are log hazard ratios and log
+subdistribution hazard ratios, respectively. These comparisons hold the
+other predictors and any offset fixed and, where applicable, use the same
+stratum.
+
+Supply references on the original variable scale. The fitted shift,
+transformation, and centering are applied automatically. For example, if
+age was fitted using \code{log(age + 10)}, supply \code{ref = list(age = 50)}, not
+\code{list(age = 60)} or \code{list(age = log(60))}.
+
+For a formula factor, use a category label available during fitting.
+For example, if race has categories A, B, and C, compare each with race A:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{plots <- plot(
+  fit, terms = "race", type = "contrasts", ref = list(race = "A")
+)
+plots[["race"]]
+}\if{html}{\out{</div>}}
+
+If a reference is omitted, the function uses:
+\itemize{
+\item the smaller value for a numeric predictor with two distinct values;
+\item the observed mean in the fitting data for other numeric predictors;
+\item the first fitted level for a formula factor.
+}
+
+See \strong{Contrasts and reference values} in \code{\link[=predict.mfp2]{predict.mfp2()}} for further
+details.
+}
+
+\section{Component-plus-residual plots}{
+
+By default, term plots add one component-plus-residual point for each
+observation used to fit the model. Each point has:
+\itemize{
+\item a horizontal position given by the observed predictor value;
+\item a height equal to the fitted contribution at that value plus a residual
+from the complete model.
+}
+
+These points leave out the fitted contributions of the other predictors,
+while keeping the plotted predictor's contribution and the residual from
+the complete model. This helps assess the fitted relationship while
+accounting for the other predictors. Residuals are calculated from the
+complete fitted model, including any offsets.
+
+The type of residual added depends on the model:
+\itemize{
+\item GLM, negative-binomial, and \code{survreg}: deviance residuals.
+\item GEE: deviance residuals based on fitted marginal means and prior weights.
+\item Cox: martingale residuals.
+\item Fine--Gray: martingale residuals from the weighted Cox fit, summed over
+each subject's expanded rows.
+\item Multinomial: binary deviance residuals comparing each non-reference
+category with all other categories. This differs from the comparison
+with the reference category shown by the fitted curve.
+\item Ordinal: deviance residuals for the cutoff shown in each panel.
+}
+
+For non-Gaussian models, these points provide a diagnostic display rather
+than an exact adjustment of the observed response for other predictors.
+Points always use observed predictor values, even when the fitted curve
+uses \code{terms_seq = "equidistant"}.
+
+Set \code{partial_only = TRUE} to hide the component-plus-residual points:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{curves <- plot(fit, terms = "age", partial_only = TRUE)
+curves[["age"]]
+}\if{html}{\out{</div>}}
+
+Contrast plots always omit component-plus-residual points.
+}
+
+\section{Confidence intervals}{
+
+Confidence bands and vertical intervals describe uncertainty in the fitted
+contribution or contrast, rather than the spread of component-plus-residual
+points. They use the estimated uncertainty in the final model's coefficients
+and apply to each plotted value individually. They are not prediction
+intervals for future outcomes.
+
+The intervals treat the selected model as fixed. They do not account for
+uncertainty from selecting variables, FP powers, or spike-at-zero
+components. For GEE models, they use the covariance selected for the fit.
+}
+
+\section{Multinomial and ordinal models}{
+
+Multinomial models return one plot per variable, with a panel for each
+non-reference category. A panel labelled \code{"B vs A"} shows the fitted
+contribution to the log-odds of category B versus reference category A,
+including that comparison's intercept for term plots. The fitted
+transformation is shared across panels, but the coefficients differ.
+Contrasts are shown separately for each category comparison.
+
+Ordinal term plots have one panel per response cutoff. For ordered
+categories low, medium, and high, the panels compare medium/high with low,
+and high with low/medium. Each curve and confidence interval includes its
+cutoff intercept. The default logistic link uses cumulative log-odds;
+other ordinal links use their corresponding link scale.
+
+Ordinal contrast plots show the shared predictor effect without cutoff
+intercepts and therefore use a single panel.
+}
+
+\section{Binary and categorical predictors}{
+
+Binary predictors and formula factors are displayed using fitted points
+and vertical confidence intervals rather than a continuous curve.
+Numeric binary predictors use their observed values on the horizontal
+axis; formula factors use their fitted category labels.
+
+For numeric predictors with only two values in multinomial or ordinal
+models, use \code{terms_seq = "data"} to avoid displaying intermediate values.
+}
+
+\section{Predictors containing zeros}{
+
+For a term fitted with \code{zero = TRUE}, the continuous function is defined
+for positive values. Its curve and confidence band are drawn only above
+zero, with the fitted value at exactly zero shown as a separate point.
+Centering can make that contribution nonzero. This point comes from the
+continuous term and does not represent a separately estimated zero effect.
+
+A \code{catzero} term also includes a separately estimated zero indicator.
+A spike-at-zero term follows the representation selected in the final model:
+\itemize{
+\item a positive-value function with a zero indicator;
+\item the positive-value function alone;
+\item the zero indicator alone.
+}
+
+When a continuous component is retained, the positive-value curve is not
+connected to the zero endpoint. For \code{catzero} and spike-at-zero terms,
+that endpoint uses \code{color_line_spike}; for \code{zero = TRUE} alone, it uses
+\code{color_line}.
+
+A binary-only spike term uses labels such as \code{"exposure = 0"} and
+\code{"exposure > 0"}, with fitted points in \code{color_line}.
+}
+
 \examples{
+## Gaussian models: terms and contrasts
 data("prostate")
-x <- as.matrix(prostate[, 2:8])
-y <- as.numeric(prostate$lpsa)
-fit <- mfp2(x, y, verbose = FALSE)
+fit_gaussian <- mfp2(
+  lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+  data = prostate,
+  family = "gaussian",
+  keep = c("age", "cavol"),
+  verbose = FALSE
+)
 
-plots <- plot(fit)
-plots[[1]]
+# Term contributions with component-plus-residual points.
+plots <- plot(fit_gaussian, terms = c("age", "cavol"))
+plots[["age"]]
+
+# The response is lpsa, so the vertical scale remains log-PSA.
+# Show only the fitted contribution and its confidence band.
+curves <- plot(
+  fit_gaussian,
+  terms = "age",
+  partial_only = TRUE,
+  terms_seq = "equidistant"
+)
+curves[["age"]]
+
+# Compare each plotted age with age 50.
+# Supply the reference before any shift or transformation.
+contrasts <- plot(
+  fit_gaussian,
+  terms = "age",
+  type = "contrasts",
+  ref = list(age = 50)
+)
+contrasts[["age"]]
+
+# Modify an individual plot.
+curves[["age"]] + ggplot2::labs(
+  x = "Age (years)",
+  y = "Age contribution to log-PSA"
+)
+
+# To evaluate specific new ages, use predict() and plot its output.
+age_predictions <- predict(
+  fit_gaussian,
+  newdata = data.frame(age = c(40, 50, 60)),
+  type = "contrasts",
+  terms = "age",
+  terms_seq = "data",
+  ref = list(age = 50)
+)[["age"]]
+
+ggplot2::ggplot(
+  age_predictions,
+  ggplot2::aes(x = variable, y = value)
+) +
+  ggplot2::geom_point() +
+  ggplot2::geom_errorbar(
+    ggplot2::aes(ymin = lower, ymax = upper),
+    width = 1
+  ) +
+  ggplot2::labs(y = "Difference from age 50")
+
+\dontrun{
+## Gaussian models: categorical predictors
+fit_factor <- mfp2(
+  Sepal.Length ~ Species,
+  data = iris,
+  family = "gaussian",
+  keep = "Species",
+  verbose = FALSE
+)
+
+# Use the factor name, not individual dummy-column names.
+# Each species has a fitted point and vertical confidence interval.
+factor_plots <- plot(
+  fit_factor,
+  terms = "Species",
+  partial_only = TRUE
+)
+factor_plots[["Species"]]
+
+factor_contrasts <- plot(
+  fit_factor,
+  terms = "Species",
+  type = "contrasts",
+  ref = list(Species = "setosa")
+)
+factor_contrasts[["Species"]]
+
+## Gaussian models: a predictor containing zeros
+set.seed(1)
+d_spike <- data.frame(
+  exposure = c(rep(0, 35), runif(85, 0.1, 8))
+)
+d_spike$y <- with(
+  d_spike,
+  2 * (exposure > 0) + log1p(exposure) + rnorm(120)
+)
+
+fit_spike <- mfp2(
+  y ~ fp(exposure, spike = TRUE),
+  data = d_spike,
+  family = "gaussian",
+  keep = "exposure",
+  verbose = FALSE
+)
+
+# The display follows the selected spike representation.
+# If a continuous component is retained, zero is shown separately
+# from the positive-value curve.
+spike_plots <- plot(
+  fit_spike,
+  terms = "exposure",
+  partial_only = TRUE,
+  color_line_spike = "blue"
+)
+spike_plots[["exposure"]]
+
+spike_contrasts <- plot(
+  fit_spike,
+  terms = "exposure",
+  type = "contrasts",
+  ref = list(exposure = 0)
+)
+spike_contrasts[["exposure"]]
+
+## Binomial models: log-odds contributions
+set.seed(2)
+d_binary <- data.frame(age = runif(150, 30, 75))
+d_binary$event <- rbinom(
+  150,
+  size = 1,
+  prob = plogis(0.06 * (d_binary$age - 50))
+)
+
+fit_binomial <- mfp2(
+  event ~ fp(age, df = 1, select = 1),
+  data = d_binary,
+  family = "binomial",
+  verbose = FALSE
+)
+
+# The curve is on the log-odds scale, not the probability scale.
+binomial_plots <- plot(fit_binomial, partial_only = TRUE)
+binomial_plots[["age"]]
+
+## Poisson models: term plots with a formula offset
+set.seed(3)
+d_count <- data.frame(
+  age = runif(100, 30, 75),
+  exposure = runif(100, 0.5, 3)
+)
+d_count$count <- rpois(
+  100,
+  lambda = with(d_count, exposure * exp(0.03 * (age - 50)))
+)
+
+fit_poisson <- mfp2(
+  count ~ fp(age, select = 1) + offset(log(exposure)),
+  data = d_count,
+  family = "poisson",
+  verbose = FALSE
+)
+
+# The curve includes the intercept and age contribution on the log scale.
+# It does not include the exposure offset or show expected counts.
+poisson_plots <- plot(fit_poisson, partial_only = TRUE)
+poisson_plots[["age"]]
+
+## Negative-binomial models: overdispersed counts
+d_count$overdispersed <- rnbinom(
+  nrow(d_count),
+  mu = with(d_count, exposure * exp(0.03 * (age - 50))),
+  size = 2
+)
+
+fit_negbin <- mfp2(
+  overdispersed ~ fp(age, df = 1, select = 1) +
+    offset(log(exposure)),
+  data = d_count,
+  family = "negbin",
+  verbose = FALSE
+)
+
+# Contrasts are differences on the log-mean scale.
+negbin_plots <- plot(
+  fit_negbin,
+  type = "contrasts",
+  ref = list(age = 50)
+)
+negbin_plots[["age"]]
+
+## GEE models: component-plus-residual plots for grouped observations
+# Illustrate 25 groups with four observations each.
+d_count$id <- rep(seq_len(25), each = 4)
+fit_gee <- mfp2(
+  count ~ fp(age, df = 1, select = 1) + offset(log(exposure)),
+  data = d_count,
+  family = gee_family(poisson(), corstr = "independence"),
+  id = id,
+  verbose = FALSE
+)
+
+# Confidence intervals use the covariance selected for the GEE fit.
+# Points add marginal deviance residuals to the age contribution.
+gee_plots <- plot(fit_gee, terms = "age")
+gee_plots[["age"]]
+
+## Multinomial models: category-specific panels
+d_multi <- iris
+d_multi$wide <- as.integer(d_multi$Sepal.Width > 3)
+
+fit_multinomial <- mfp2(
+  Species ~ fp(Sepal.Length, df = 1, select = 1) + wide,
+  data = d_multi,
+  family = multinomial_family(reference = "setosa"),
+  keep = "wide",
+  verbose = FALSE
+)
+
+# Each panel compares a non-reference species with setosa.
+multinomial_plots <- plot(
+  fit_multinomial,
+  terms = "Sepal.Length",
+  partial_only = TRUE
+)
+multinomial_plots[["Sepal.Length"]]
+
+# For a numeric binary predictor, use observed values explicitly.
+# Compare wide = 1 with wide = 0 within each category comparison.
+binary_contrasts <- plot(
+  fit_multinomial,
+  terms = "wide",
+  type = "contrasts",
+  terms_seq = "data",
+  ref = list(wide = 0)
+)
+binary_contrasts[["wide"]]
+
+## Ordinal models: cutoff panels and shared contrasts
+set.seed(4)
+d_ordinal <- data.frame(age = runif(150, 30, 75))
+d_ordinal$severity <- cut(
+  0.04 * (d_ordinal$age - 50) + rlogis(150),
+  breaks = c(-Inf, -0.5, 0.5, Inf),
+  labels = c("low", "medium", "high"),
+  ordered_result = TRUE
+)
+
+fit_ordinal <- mfp2(
+  severity ~ fp(age, df = 1, select = 1),
+  data = d_ordinal,
+  family = ordinal_family(),
+  verbose = FALSE
+)
+
+# Panels compare medium/high with low, and high with low/medium.
+# Each panel includes its own cutoff intercept.
+ordinal_plots <- plot(fit_ordinal, partial_only = TRUE)
+ordinal_plots[["age"]]
+
+# Contrasts omit cutoff intercepts and show one shared age effect.
+ordinal_contrasts <- plot(
+  fit_ordinal,
+  terms = "age",
+  type = "contrasts",
+  ref = list(age = 50)
+)
+ordinal_contrasts[["age"]]
+
+## Cox models: contributions to log relative hazard
+data("gbsg")
+fit_cox <- mfp2(
+  survival::Surv(rectime, censrec) ~
+    fp(age, df = 1, select = 1) +
+    fp(nodes, df = 1, select = 1) + strata(grade),
+  data = gbsg,
+  family = "cox",
+  verbose = FALSE
+)
+
+# Points add martingale residuals to the fitted age contribution.
+# The strata term is not plotted as a predictor effect.
+cox_plots <- plot(fit_cox, terms = "age")
+cox_plots[["age"]]
+
+# Differences from age 50 are on the log relative-hazard scale.
+# These are not survival probabilities.
+cox_contrasts <- plot(
+  fit_cox,
+  terms = "age",
+  type = "contrasts",
+  ref = list(age = 50)
+)
+cox_contrasts[["age"]]
+
+## Parametric survival models: fitted location contributions
+fit_survreg <- mfp2(
+  survival::Surv(rectime, censrec) ~
+    fp(age, df = 1, select = 1) +
+    fp(nodes, df = 1, select = 1),
+  data = gbsg,
+  family = survreg_family(dist = "weibull"),
+  verbose = FALSE
+)
+
+# For Weibull models, this contribution is on the log-time scale.
+# It is not a survival probability or a predicted time quantile.
+survreg_plots <- plot(
+  fit_survreg,
+  terms = "age",
+  partial_only = TRUE
+)
+survreg_plots[["age"]]
+
+## Fine--Gray models: log subdistribution-hazard contributions
+set.seed(5)
+d_fg <- data.frame(age = runif(180, 30, 75))
+relapse_time <- rexp(
+  180,
+  rate = exp(0.04 * (d_fg$age - 50)) / 1000
+)
+death_time <- rexp(180, rate = 1 / 1800)
+censor_time <- runif(180, 300, 1800)
+d_fg$time <- pmin(relapse_time, death_time, censor_time)
+d_fg$event <- factor(
+  ifelse(
+    d_fg$time == relapse_time, "relapse",
+    ifelse(d_fg$time == death_time, "death", "censored")
+  ),
+  levels = c("censored", "relapse", "death")
+)
+
+fit_finegray <- mfp2(
+  survival::Surv(time, event) ~ fp(age, df = 1, select = 1),
+  data = d_fg,
+  family = finegray_family(etype = "relapse"),
+  verbose = FALSE
+)
+
+# This shows the age contribution to log subdistribution hazard.
+# Cumulative-incidence probabilities require predict(type = "response",
+# times = ...), rather than plot().
+finegray_plots <- plot(
+  fit_finegray,
+  terms = "age",
+  partial_only = TRUE
+)
+finegray_plots[["age"]]
+}
 
 }
 \seealso{

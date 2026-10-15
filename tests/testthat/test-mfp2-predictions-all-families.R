@@ -61,15 +61,17 @@ test_that("newdata missing a required variable gives a clear error", {
   )
 })
 
-test_that("multinomial se.fit = TRUE is rejected for link and response", {
+test_that("multinomial se.fit = TRUE preserves link and response predictions", {
   skip_on_cran()
   dmn <- make_multinomial_data(n = 300, seed = 43)
   fmn <- mfp2(y ~ fp(x1, df = 1, select = 1), data = dmn,
               family = multinomial_family(), control = list(maxit = 300), verbose = FALSE)
-  expect_error(predict(fmn, se.fit = TRUE, type = "link"),
-               regexp = "se.fit", ignore.case = TRUE)
-  expect_error(predict(fmn, se.fit = TRUE, type = "response"),
-               regexp = "se.fit", ignore.case = TRUE)
+  for (type in c("link", "response")) {
+    result <- predict(fmn, se.fit = TRUE, type = type)
+    expect_equal(result$fit, predict(fmn, type = type))
+    expect_identical(dim(result$se.fit), dim(result$fit))
+    expect_true(all(is.finite(result$se.fit) & result$se.fit >= 0))
+  }
 })
 
 test_that("stratified survreg/finegray require strata variable in newdata", {

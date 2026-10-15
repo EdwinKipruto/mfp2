@@ -44,23 +44,45 @@ mfp2_family_is_gee <- function(family_string) {
   identical(family_string, "gee")
 }
 
-# Keep clusters together without changing the observation order within a
-# cluster. The result indexes the fitted sample in its original row order.
-# geepack requires this grouping for both geese.fit() and geeglm().
+#' Group GEE Observations by Cluster
+#'
+#' Returns a row permutation that places observations from each cluster
+#' together, as required by [geepack::geese.fit()] and [geepack::geeglm()].
+#' Clusters follow their order of first appearance in `id`; observations
+#' retain their original order within each cluster.
+#'
+#' @param id Vector of cluster identifiers aligned with the fitted sample.
+#'
+#' @return Integer vector of row indices for reordering the fitted sample.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_gee_cluster_order <- function(id) {
   cluster <- match(id, unique(id))
   order(cluster, seq_along(cluster), method = "radix")
 }
 
-#' Robust Wald test for a coefficient block
+#' Robust Wald Test for a Coefficient Block
 #'
-#' Requires full rank in the tested sandwich covariance block. Rank-deficient
-#' blocks have no valid joint Wald statistic and return missing test values.
-#' @param compute_pvalue Whether to calculate the chi-square tail probability;
-#'   the model-selection score only uses the statistic.
+#' Tests the joint null hypothesis that the coefficients selected by `indices`
+#' are zero, using their supplied sandwich covariance matrix. The statistic
+#' is compared with a chi-square distribution with one degree of freedom per
+#' tested coefficient. A rank-deficient covariance block cannot support this
+#' joint test and produces missing test values.
+#'
+#' @param coefficients Named numeric vector of fitted coefficients.
+#' @param robust_vcov Sandwich covariance matrix in the same coefficient order.
+#' @param indices Integer positions of the coefficients to test.
+#' @param compute_pvalue Logical. If `FALSE`, omit the chi-square tail
+#'   probability; model-selection scoring requires only the statistic.
+#'
+#' @return A list containing `statistic`, `pvalue`, `df`, and `dev_diff`.
+#'   `dev_diff` is an alias for the Wald statistic used by downstream
+#'   comparison code. For an empty block, the statistic and degrees of
+#'   freedom are zero and the p-value is one. Invalid or rank-deficient
+#'   blocks return missing test values.
 #'
 #' @keywords internal
-#' @noRd
 gee_robust_wald_test <- function(coefficients, robust_vcov, indices,
                                  compute_pvalue = TRUE) {
   indices <- unique(as.integer(indices))
@@ -118,17 +140,30 @@ gee_robust_wald_test <- function(coefficients, robust_vcov, indices,
   )
 }
 
-#' Apply Stata's finite-cluster correction to a sandwich covariance
+#' Apply a Finite-Cluster Correction to a Robust Covariance
 #'
-#' Stata's clustered robust covariance multiplies the sandwich middle by
-#' \eqn{K/(K-1)}, where \eqn{K} is the number of independent clusters. geepack
-#' reports the uncorrected asymptotic sandwich covariance.
+#' Multiplies a sandwich covariance matrix by \eqn{K/(K-1)}, where \eqn{K}
+#' is the number of independent clusters. This matches the finite-cluster
+#' multiplier used by Stata's `xtgee` with `vce(robust)`.
+#'
+#' @param robust_vcov Sandwich covariance matrix.
+#' @param n_clusters Number of independent clusters, or `NULL` to leave the
+#'   covariance unchanged.
+#'
+#' @return The corrected covariance matrix. If `n_clusters` is `NULL`,
+#'   returns `robust_vcov` unchanged. If it is invalid or no greater than
+#'   one, returns a matrix of missing values.
 #'
 #' @keywords internal
 #' @noRd
 gee_robust_vcov <- function(robust_vcov, n_clusters = NULL) {
-  if (is.null(n_clusters)) return(robust_vcov)
+  if (is.null(n_clusters)) {
+     return(robust_vcov)
+  }
 
+  # The K/(K - 1) correction requires one finite cluster count greater than 1.
+  # Return a missing covariance matrix when it cannot be calculated. That
+  # prevents a Wald test from using an invalid correction.
   n_clusters <- as.numeric(n_clusters)
   if (length(n_clusters) != 1L || !is.finite(n_clusters) || n_clusters <= 1) {
     corrected <- as.matrix(robust_vcov)
@@ -139,11 +174,21 @@ gee_robust_vcov <- function(robust_vcov, n_clusters = NULL) {
   robust_vcov * (n_clusters / (n_clusters - 1))
 }
 
-#' Select the covariance estimator requested for a GEE fit
+#' Select the Covariance Matrix for a GEE Fit
 #'
-#' The component names follow `geepack::vcov.geeglm()`. The ordinary
-#' sandwich estimator receives the package's documented finite-cluster
-#' correction; jackknife estimators are returned unchanged.
+#' Extracts the covariance estimator requested by `std.err` from a
+#' [geepack::geese.fit()] result. The sandwich estimator (`"san.se"`)
+#' receives the finite-cluster correction when `n_clusters` is supplied;
+#' jackknife estimators are returned unchanged.
+#'
+#' @param geese Fitted `geese` object containing the covariance matrices.
+#' @param std.err Estimator to select: `"san.se"`, `"jack"`, `"j1s"`, or
+#'   `"fij"`.
+#' @param n_clusters Number of independent clusters used to correct
+#'   `"san.se"`, or `NULL` to leave it uncorrected.
+#'
+#' @return The selected covariance matrix. Raises an error if the requested
+#'   estimator was not computed.
 #'
 #' @keywords internal
 #' @noRd
@@ -172,10 +217,18 @@ gee_selected_vcov <- function(geese, std.err = "san.se", n_clusters = NULL) {
   covariance
 }
 
-#' Configure geese.fit() to compute the requested covariance estimator
+#' Configure GEE Covariance Estimation
 #'
-#' This mirrors the flag mapping performed internally by
-#' `geepack::geeglm()`.
+#' Sets the `jack`, `j1s`, and `fij` control flags for
+#' [geepack::geese.fit()] to match the requested standard-error method.
+#' For `"san.se"`, all three flags are zero and the default sandwich
+#' covariance is used. This follows the mapping in [geepack::geeglm()].
+#'
+#' @param control GEE fitting control list.
+#' @param std.err Requested method: `"san.se"`, `"jack"`, `"j1s"`, or
+#'   `"fij"`.
+#'
+#' @return The control list with the three covariance flags set.
 #'
 #' @keywords internal
 #' @noRd
@@ -186,11 +239,25 @@ gee_control_for_std_err <- function(control, std.err) {
   control
 }
 
-# Scale the invariant GEE adjustment columns and the shared FP/ACD basis once
-# per focal search. Each basis column represents the same n observations in
-# every candidate that uses it, so its maximum magnitude is invariant too.
-# The candidate loop replaces only the focal columns and their scale factors.
-# This working design is private: the C++ candidate copier modifies it in place.
+#' Prepare Scaled Matrices for GEE Candidate Fits
+#'
+#' Scales the candidate design template and shared FP/ACD basis once per
+#' focal search. Each non-intercept column is divided by its maximum absolute
+#' value; zero or non-finite maxima use a scale factor of one. Candidate fits
+#' reuse the scaled basis and update only the focal columns of a private
+#' design copy.
+#'
+#' @param design Numeric candidate design template, including any intercept,
+#'   focal placeholders, and adjustment columns.
+#' @param basis Numeric matrix of shared focal transformations, with the same
+#'   number and order of rows as `design`.
+#'
+#' @return A list containing private scaled matrices `design` and `basis`,
+#'   and named vectors `column_scales` and `basis_scales`. The input matrices
+#'   are not modified.
+#'
+#' @keywords internal
+#' @noRd
 prepare_gee_candidate_scaling <- function(design, basis) {
   intercept <- which(colnames(design) == "(Intercept)")
   result <- prepare_gee_candidate_scaling_cpp(
@@ -202,19 +269,49 @@ prepare_gee_candidate_scaling <- function(design, basis) {
   result
 }
 
+#' Calculate GEE Design Column Scales
+#'
+#' Returns the maximum absolute value in each design column. Columns whose
+#' maximum is zero or non-finite receive a scale factor of one. This function
+#' calculates the factors; it does not modify the matrix.
+#'
+#' @param x Numeric design matrix.
+#'
+#' @return Numeric vector of positive scale factors, named by the column
+#'   names of `x` when present.
+#'
+#' @keywords internal
+#' @noRd
 gee_design_column_scales <- function(x) {
-  apply(x, 2L, function(col) {
-    s <- max(abs(col))
+  scales <- vapply(seq_len(ncol(x)), function(j) {
+    s <- max(abs(x[, j]))
     if (!is.finite(s) || s <= 0) 1 else s
-  })
+  }, numeric(1L))
+  names(scales) <- colnames(x)
+  scales
 }
 
-#' Refit a Retained geeglm Object with Exact Integer Wave Distances
+#' Refit a Final GEE Model Using Exact Wave Distances
 #'
-#' `geeglm()` coerces waves to a factor, compressing absent integer levels (for
-#' example, visits 1 and 3 become codes 1 and 2). Construct the native return
-#' object with `geeglm()`, then replace its GEE core when exact integer gaps
-#' require the lower-level `geese.fit()` call.
+#' `geeglm()` converts waves to factor codes, which can collapse gaps between
+#' observed integer waves. For an AR(1) model with such gaps, this function
+#' refits the GEE core with [geepack::geese.fit()] using the original wave
+#' numbers. It then updates the corresponding fields of the retained
+#' `geeglm` object. The caller determines whether a refit is needed.
+#'
+#' @param fit Final model fitted by [geepack::geeglm()].
+#' @param y Response vector aligned with the fitted rows.
+#' @param id Cluster identifiers aligned with `y`.
+#' @param waves Integer wave numbers retaining the intended gaps.
+#' @param offset,weights Offset and case-weight vectors aligned with `y`.
+#' @param control GEE fitting control list.
+#' @param response_family GLM family used for the response.
+#' @param corstr Working correlation structure.
+#' @param scale.fix,scale.value Scale settings passed to
+#'   [geepack::geese.fit()].
+#'
+#' @return The updated `geeglm` object, with its GEE core and fitted-value
+#'   fields calculated using the supplied wave numbers.
 #'
 #' @keywords internal
 #' @noRd
@@ -261,7 +358,21 @@ gee_refit_exact_waves <- function(fit, y, id, waves, offset, weights,
   fit
 }
 
-#' Negative overall robust Wald chi-square used by Stata mfp/xtgee
+#' Calculate the GEE Selection Deviance
+#'
+#' Returns the negative overall Wald chi-square for all coefficients except
+#' the intercept. This follows the `-e(chi2)` scoring convention used by
+#' Stata's `mfp: xtgee`; it is not a likelihood deviance. The Wald statistic
+#' uses the supplied covariance estimator, so results depend on whether
+#' sandwich or jackknife covariance was selected.
+#'
+#' @param coefficients Named vector of fitted coefficients.
+#' @param robust_vcov Covariance matrix in coefficient order.
+#' @param n_clusters Optional number of clusters. When supplied, applies
+#'   the finite-cluster correction to `robust_vcov`.
+#'
+#' @return Numeric scalar: the negative Wald chi-square, zero when there
+#'   are no non-intercept coefficients, or `NA` if the test is invalid.
 #'
 #' @keywords internal
 #' @noRd
@@ -279,24 +390,26 @@ gee_selection_deviance <- function(coefficients,
   if (is.finite(test$statistic)) -test$statistic else NA_real_
 }
 
-#' Quasi-likelihood for a GEE fit
+#' Calculate the Quasi-Likelihood for a GEE Fit
 #'
-#' Computes the quasi-likelihood \eqn{Q(\mu; y)} used by the QIC family of
-#' criteria.  Contributions are multiplied by the effective prior weights;
-#' this also handles grouped-binomial responses, for which the response is a
-#' success proportion and the total number of trials is part of the effective
-#' weight.  The Gamma expression is the quasi-likelihood obtained by integrating
-#' \eqn{(y-\mu)/\mu^2}, namely \eqn{-y/\mu-\log(\mu)}.
+#' Sums the family-specific quasi-likelihood contributions used for GEE
+#' information-criterion selection. Contributions are multiplied by effective
+#' prior weights; zero-weight observations are excluded before evaluation.
+#' For grouped binomial data, `y` is the success proportion and `weights`
+#' includes the number of trials.
 #'
-#' @param y Numeric response vector. For grouped binomial data this is the
-#'   observed proportion of successes, matching the value stored by
-#'   \code{geepack::geeglm()}.
+#' The Gamma contribution is \eqn{-y/\mu-\log(\mu)}, obtained by integrating
+#' \eqn{(y-\mu)/\mu^2}.
+#'
+#' @param y Numeric response vector; a success proportion for grouped
+#'   binomial data.
 #' @param mu Numeric vector of fitted means.
-#' @param weights Numeric vector of effective prior weights.
-#' @param family_string Inner response family: one of \code{"gaussian"},
-#'   \code{"binomial"}, \code{"poisson"}, or \code{"Gamma"}.
+#' @param family_string Response family: `"gaussian"`, `"binomial"`,
+#'   `"poisson"`, or `"Gamma"`.
+#' @param weights Optional vector of finite, nonnegative effective prior
+#'   weights. Defaults to one per observation.
 #'
-#' @return A single numeric value, the quasi-likelihood.
+#' @return Numeric scalar containing the weighted quasi-likelihood.
 #'
 #' @references
 #' Pan, W. (2001). Akaike's information criterion in generalized estimating
@@ -305,13 +418,17 @@ gee_selection_deviance <- function(coefficients,
 #' @keywords internal
 #' @noRd
 gee_quasi_likelihood <- function(y, mu, family_string, weights = NULL) {
-  if (is.null(weights)) weights <- rep.int(1, length(y))
+  if (is.null(weights)) {
+    weights <- rep.int(1, length(y))
+  }
+
   weights <- as.numeric(weights)
 
   if (length(y) != length(mu) || length(y) != length(weights)) {
     stop("Internal error: GEE quasi-likelihood inputs must have equal length.",
          call. = FALSE)
   }
+
   if (anyNA(weights) || any(!is.finite(weights)) || any(weights < 0)) {
     stop("Internal error: GEE quasi-likelihood weights must be finite and non-negative.",
          call. = FALSE)
@@ -364,17 +481,18 @@ gee_quasi_likelihood <- function(y, mu, family_string, weights = NULL) {
   sum(weights * contribution)
 }
 
-#' Normalise a control list for the GEE fitter
+#' Normalise Controls for the GEE Fitter
 #'
-#' Resolves the user-supplied control list to a \code{geepack::geese.control()}
-#' object. GLM-style names are accepted as aliases so that the same
-#' \code{control = list(maxit = ..., epsilon = ...)} works across families:
-#' \code{maxit} maps to the maximum number of Fisher-scoring iterations and
-#' \code{epsilon} to the convergence tolerance.
+#' Passes user-supplied settings to [geepack::geese.control()] and fills
+#' unspecified fields with its defaults. Common settings include `maxit`
+#' for the iteration limit, `epsilon` for the convergence tolerance, and
+#' `trace` for iteration output. Invalid settings raise an error.
 #'
-#' @param control User-supplied control list, or \code{NULL} for GEE defaults.
+#' @param control Named list of settings accepted by
+#'   [geepack::geese.control()], or `NULL` to use its defaults.
 #'
-#' @return A validated list returned by \code{geepack::geese.control()}.
+#' @return A validated control list from [geepack::geese.control()].
+#'
 #' @keywords internal
 #' @noRd
 normalize_gee_control <- function(control = NULL) {
@@ -404,29 +522,28 @@ normalize_gee_control <- function(control = NULL) {
   )
 }
 
-#' Prepare a GEE family once for repeated MFP candidate fits
+#' Prepare a GEE Family for Repeated MFP Fits
 #'
-#' Validates the clustering structure and response, resolves the inner GLM
-#' response family, converts grouped-binomial responses to the proportion /
-#' cluster-weight representation used by \code{geepack::geeglm()}, and caches
-#' every invariant GEE input in \code{family$prepared}. Candidate fits then read
-#' the cached objects and never re-validate clusters, re-parse the family, or
-#' rebuild the control list.
+#' Validates the GEE family, grouped cluster identifiers, optional waves,
+#' weights, and offsets. For a two-column binomial response, converts counts
+#' to success proportions and multiplies prior weights by the trial totals.
+#' It then caches the inputs shared by candidate fits in `family$prepared`,
+#' including cluster sizes and the normalised GEE control list.
 #'
-#' @param family A family object created by \code{gee_family()}; must inherit
-#'   from \code{"mfp2_gee_family"}.
-#' @param y Response accepted by the inner GLM family. For binomial models this
-#'   may be a two-column \code{cbind(successes, failures)} matrix.
-#' @param id Cluster identifier, one value per observation. Observations from
-#'   the same cluster must be contiguous.
-#' @param waves Optional integer-like visit identifier, one value per
-#'   observation, used to order repeated measurements and to represent gaps for
-#'   AR(1) working correlation.
-#' @param weights Optional numeric vector of prior weights.
-#' @param offset Optional numeric offset vector.
-#' @param control Resolved \code{geepack::geese.control()} list.
+#' @param family Object created by [gee_family()].
+#' @param y Response vector, or a two-column matrix of successes and
+#'   failures for grouped binomial data.
+#' @param id Cluster identifier with one non-missing value per observation.
+#'   Observations must already be contiguous within each cluster.
+#' @param waves Optional positive integer-like visit identifiers, unique
+#'   within each cluster.
+#' @param weights Optional finite, nonnegative prior weights.
+#' @param offset Optional finite numeric offset vector.
+#' @param control Optional list of settings accepted by
+#'   [geepack::geese.control()], or `NULL` for its defaults.
 #'
-#' @return The family object with a populated \code{prepared} slot.
+#' @return `family` with a populated `prepared` component.
+#'
 #' @keywords internal
 #' @noRd
 prepare_gee_family <- function(family, y, id, waves = NULL, weights = NULL,
@@ -466,6 +583,7 @@ prepare_gee_family <- function(family, y, id, waves = NULL, weights = NULL,
       call. = FALSE
     )
   }
+
   if (!is.atomic(id) || is.matrix(id) || !is.null(dim(id)) ||
       length(id) != nobs || anyNA(id)) {
     stop(
@@ -605,38 +723,50 @@ prepare_gee_family <- function(family, y, id, waves = NULL, weights = NULL,
   family
 }
 
-#' Fit a GEE model for one MFP candidate or the final retained model
+#' Fit a GEE Candidate or Retained Final Model
 #'
-#' @param x Design matrix (without intercept) for the current candidate.
-#' @param y Response (ignored for the modelling response, which is taken from
-#'   the prepared family so grouped-binomial and weight handling stay
-#'   consistent across candidates; retained only for interface symmetry).
-#' @param family Prepared GEE family (\code{"mfp2_gee_family"} with a populated
-#'   \code{prepared} slot).
-#' @param weights,offset Passed through by \code{fit_model()}; the authoritative
-#'   values live in the prepared family.
-#' @param control Resolved control (also cached in the prepared family).
-#' @param fast Logical: \code{TRUE} uses \code{geepack::geese.fit()} for a
-#'   lightweight candidate fit; \code{FALSE} uses \code{geepack::geeglm()} for
-#'   the retained native fit.
-#' @param calculate_fit_statistics Logical: return null/model deviance.
-#' @param keep_fit Logical: retain the underlying fitted object.
-#' @param keep_fitted_values Logical: retain only the fitted-value vector.
-#' @param has_offset Logical: whether a user offset was supplied.
-#' @param x_has_intercept Logical: whether \code{x} already carries an
-#'   intercept column.
-#' @param alpha_start Optional starting working-correlation parameter for a
-#'   candidate fit. The correlation is still re-estimated for this model.
-#' @param column_scales Optional per-column factors for a GEE FP/ACD candidate
-#'   whose design is already scaled. Other fits scale their own design.
-#' @param selection_criterion AIC/BIC candidate fits use quasi-likelihood only;
-#'   p-value and retained fits still calculate their covariance and Wald score.
-#' @param allow_failed_candidate Whether an unsuccessful candidate can be
-#'   returned with `converged = FALSE` for exclusion by an FP power search.
-#' @param reserved_names Reserved user-facing names for the final formula fit.
+#' Uses [geepack::geese.fit()] for matrix-based MFP candidate fits and
+#' [geepack::geeglm()] for the retained final model. Response, cluster,
+#' weight, offset, and control inputs are reused from `family$prepared`.
+#' The `logl` result contains quasi-likelihood, not a likelihood.
 #'
-#' @return A list following the \code{fit_model()} contract, with \code{logl}
-#'   holding the quasi-likelihood surrogate and \code{is_gee = TRUE}.
+#' @param x Numeric design matrix. It may already contain an intercept when
+#'   `x_has_intercept` is `TRUE`.
+#' @param y Response passed for interface consistency; the fitted response
+#'   is read from the prepared family.
+#' @param family Prepared object created by [gee_family()].
+#' @param weights,offset,control Arguments passed through by `fit_model()`.
+#'   The values cached in the prepared family are used for fitting.
+#' @param fast Logical. Use `geese.fit()` for a candidate when `TRUE`, or
+#'   `geeglm()` for the retained final model when `FALSE`.
+#' @param calculate_fit_statistics Logical. Return the family deviance of
+#'   the fitted model. The final path also fits an intercept-only GEE to
+#'   obtain null deviance; the candidate path returns `NA` for null deviance.
+#' @param keep_fit Logical. Include the underlying fitted object in `fit`.
+#'   Defaults to `!fast`.
+#' @param keep_fitted_values Logical. Include fitted means in
+#'   `fitted_values`.
+#' @param has_offset Logical. Include the prepared offset in the formula
+#'   used for the final `geeglm()` fit.
+#' @param x_has_intercept Logical. Whether `x` already has an intercept
+#'   column.
+#' @param alpha_start Optional starting working-correlation estimate for
+#'   a candidate fit. The correlation is re-estimated; a failed start is
+#'   retried with the fitter's default initialisation.
+#' @param column_scales Optional factors for an already scaled candidate
+#'   design. Otherwise, candidate columns are scaled before fitting.
+#' @param selection_criterion Selection criterion. AIC and BIC candidates
+#'   omit covariance and Wald-score calculations.
+#' @param allow_failed_candidate Logical. If `TRUE`, a failed candidate
+#'   can return `converged = FALSE` for exclusion from the search.
+#' @param reserved_names Names to avoid when creating columns for the
+#'   final formula-based fit.
+#'
+#' @return A list following the `fit_model()` contract, including
+#'   quasi-likelihood in `logl`, coefficients, degrees of freedom,
+#'   convergence status, and `is_gee = TRUE`. Optional components depend
+#'   on the reporting and retention arguments.
+#'
 #' @keywords internal
 #' @noRd
 fit_gee <- function(x,
@@ -1060,12 +1190,18 @@ fit_gee <- function(x,
   result
 }
 
-#' Family deviance for a GEE fit
+#' Calculate Family Deviance for a GEE Fit
 #'
-#' The GLM family deviance evaluated at the GEE fitted means. This equals the
-#' deviance Stata's `xtgee` reports as `e(deviance)` and is retained for model-
-#' fit reporting. It is distinct from Stata `mfp`'s negative-Wald selection
-#' quantity and from the default robust block-Wald tests.
+#' Sums the GLM family's deviance residuals at the GEE fitted means for
+#' model-fit reporting. This is separate from the negative overall Wald
+#' statistic used for GEE p-value selection.
+#'
+#' @param y Response vector used in the GEE fit.
+#' @param mu Vector of fitted means.
+#' @param weights Effective prior weights aligned with `y`.
+#' @param response_family GLM family object providing `dev.resids`.
+#'
+#' @return Unnamed numeric scalar containing the family deviance.
 #'
 #' @keywords internal
 #' @noRd
@@ -1074,7 +1210,24 @@ gee_family_deviance <- function(y, mu, weights, response_family) {
   unname(dev)
 }
 
-#' Intercept-only GEE fitted mean, for the null-model deviance
+#' Fit an Intercept-Only GEE for Null Deviance
+#'
+#' Fits an intercept-only GEE with the supplied offset and the same cluster,
+#' wave, weight, family, and working-correlation settings as the final model.
+#' Returns fitted means for calculating the null-model family deviance.
+#'
+#' @param y Response vector used in the GEE fit.
+#' @param weights Effective prior weights aligned with `y`.
+#' @param offset Numeric offset vector aligned with `y`.
+#' @param id_codes Grouped integer cluster identifiers.
+#' @param waves_int Optional integer wave identifiers, or `NULL`.
+#' @param response_family GLM response family.
+#' @param corstr Working correlation structure.
+#' @param scale.fix,scale.value Scale settings passed to
+#'   [geepack::geese.fit()].
+#' @param control GEE fitting control list.
+#'
+#' @return Numeric vector of fitted means in observation order.
 #'
 #' @keywords internal
 #' @noRd
@@ -1093,38 +1246,34 @@ gee_null_fitted_mean <- function(y, weights, offset, id_codes, waves_int,
   response_family$linkinv(eta)
 }
 
-#' Model metrics for GEE candidate and final fits (parallel to
-#' `calculate_model_metrics()`)
+#' Calculate Selection Metrics for a GEE Fit
 #'
-#' Produces the same named vector as \code{calculate_model_metrics()} so the
-#' shared MFP selection engine can use GEE semantics: \code{logl} holds the
-#' quasi-likelihood \eqn{Q} used for information-criterion selection.
-#' \code{deviance_rs} contains the negative overall robust Wald chi-square
-#' used by \code{mfp: xtgee} for p-value selection; information-criterion
-#' candidate fits omit this Wald calculation. \code{aic} uses the QICu form
-#' \eqn{-2Q/\phi + 2p} of Pan (2001) with the package's extra FP-power df charge.
-#' \code{bic} is the package's BIC-like quasi-likelihood score
-#' \eqn{-2Q/\phi + \log(n)\,p}, where \eqn{\phi} is the shared reference
-#' dispersion and \eqn{n} is the configured number of clusters or observations.
+#' Returns the metric vector used by the shared MFP selection engine.
+#' `logl` stores quasi-likelihood \eqn{Q}, not a log-likelihood. When an
+#' overall Wald statistic was calculated, `deviance_rs` stores its negative
+#' for p-value selection; otherwise it stores \eqn{-2Q}.
 #'
-#' The p-value statistics are kept separate from \eqn{Q}; information criteria
-#' always use \eqn{-2Q/\phi}.
+#' The `aic` entry is the package's QICu-style score
+#' \eqn{-2Q/\phi + 2p}. The `bic` entry is the BIC-like score
+#' \eqn{-2Q/\phi + \log(n)p}. Here \eqn{p} includes any additional FP/ACD
+#' selection degrees of freedom, \eqn{\phi} is the shared reference
+#' dispersion, and \eqn{n} is the configured cluster or observation count.
 #'
-#' @param obj A GEE fit-result list from \code{fit_gee()} (\code{is_gee = TRUE}).
-#' @param n_obs Number of independent clusters \eqn{K}, used for residual
-#'   degrees of freedom and as the fallback QBIC penalty count for legacy fits.
-#' @param df_additional Extra degrees of freedom for FP/ACD power searches,
-#'   added once to the parameter count.
+#' @param obj GEE fit-result list from `fit_gee()`.
+#' @param n_obs Number of independent clusters in the GEE fitting path.
+#'   Also used as the QBIC penalty count if `obj$qbic_n` is absent.
+#' @param df_additional Additional degrees of freedom charged for the
+#'   FP/ACD selection search.
 #'
-#' @return A named numeric vector with entries \code{logl}, \code{df},
-#'   \code{deviance_rs}, \code{deviance_gaussian}, \code{aic}, \code{bic}, and
-#'   \code{df_resid}. \code{deviance_gaussian} is \code{NA}: GEE uses either
-#'   the Stata-compatible negative-Wald calculation rather than the Gaussian
-#'   F-test.
+#' @return Named numeric vector containing `logl`, `df`, `deviance_rs`,
+#'   `deviance_gaussian`, `aic`, `bic`, and `df_resid`.
+#'   `deviance_gaussian` is `NA` because the Gaussian F-test does not
+#'   apply to this GEE selection path.
 #'
 #' @references
 #' Pan, W. (2001). Akaike's information criterion in generalized estimating
 #' equations. \emph{Biometrics}, 57, 120--125.
+#'
 #' @keywords internal
 #' @noRd
 calculate_gee_metrics <- function(obj, n_obs, df_additional = 0) {
@@ -1166,21 +1315,23 @@ calculate_gee_metrics <- function(obj, n_obs, df_additional = 0) {
   )
 }
 
-#' Final Selection Score for a Retained GEE Model
+#' Get the Final GEE Selection Score
 #'
-#' Returns the same criterion-scale value used by the MFP selection engine:
-#' the method-specific p-value statistic, QICu, or QBIC. Keeping this value on
-#' the returned object makes the selected model auditable without recomputing
-#' or guessing which GEE comparison scale was active.
+#' Calculates the retained model's score on the active selection scale:
+#' negative overall Wald chi-square for `"pvalue"`, QICu-style score for
+#' `"aic"`, or the BIC-like quasi-likelihood score for `"bic"`. The value
+#' is stored on the returned MFP model for inspection.
 #'
-#' @param obj The retained GEE fit-result list from `fit_gee()`.
-#' @param criterion The active selection criterion: `"pvalue"`, `"aic"`, or
-#'   `"bic"`.
-#' @param n_clusters Number of independent clusters used for the QBIC penalty.
-#' @param df_additional Additional degrees of freedom for retained FP power
-#'   searches. This does not affect the p-value selection statistic.
+#' @param obj Retained GEE fit-result list from `fit_gee()`.
+#' @param criterion Selection criterion: `"pvalue"`, `"aic"`, or `"bic"`.
+#' @param n_clusters Number of independent clusters. Used as the QBIC
+#'   penalty count when `obj$qbic_n` is absent.
+#' @param df_additional Additional FP selection degrees of freedom for
+#'   the information-criterion penalties. Does not change the Wald score.
 #'
-#' @return The final score on the scale of `criterion`.
+#' @return A finite, unnamed numeric selection score. Raises an error if
+#'   no finite score is available.
+#'
 #' @keywords internal
 #' @noRd
 gee_final_selection_score <- function(obj, criterion, n_clusters,

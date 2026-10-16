@@ -1682,7 +1682,7 @@ mfp2_plot_multinomial_impl <- function(model,
     p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$variable, y = .data$value)) +
       ggplot2::xlab(v) + ggplot2::ylab(ylab) +
       ggplot2::theme_bw() +
-      ggplot2::theme(panel.grid = ggplot2::element_blank())
+      ggplot2::theme(panel.grid = ggplot2::element_blank()) +
       ggplot2::facet_wrap(
         ggplot2::vars(.data$logit), nrow = 1L,
         labeller = ggplot2::as_labeller(facet_labels)

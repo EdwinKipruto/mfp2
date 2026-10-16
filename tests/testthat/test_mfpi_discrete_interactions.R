@@ -22,7 +22,6 @@ test_that("binary linear MFPI matches an explicit Gaussian interaction", {
     data = dat,
     group_var = "group",
     interaction_vars = "binary",
-    interaction_forms = c(binary = "linear"),
     select = 1,
     p_interact = 1,
     center = TRUE,
@@ -110,7 +109,6 @@ test_that("matrix categorical MFPI matches an explicit Gaussian interaction", {
     dat$y,
     group_var = "group",
     interaction_vars = "stage",
-    interaction_forms = c(stage = "linear"),
     term_groups = list(stage = colnames(stage_matrix)),
     select = 1,
     p_interact = 1,
@@ -137,11 +135,11 @@ test_that("matrix categorical MFPI matches an explicit Gaussian interaction", {
   expect_equal(observed, unname(expected), tolerance = 1e-7)
 })
 
-test_that("categorical interaction variables reject FP forms", {
+test_that("categorical FP requests are reset to linear with a warning", {
   dat <- make_discrete_mfpi_data()
 
-  expect_error(
-    mfpi(
+  expect_warning(
+    fit <- mfpi(
       y ~ group + stage + x,
       data = dat,
       group_var = "group",
@@ -149,8 +147,93 @@ test_that("categorical interaction variables reject FP forms", {
       interaction_forms = c(stage = "fp1"),
       verbose = FALSE
     ),
-    "Discrete interaction variable.*must use"
+    "reset to 'linear': stage"
   )
+  expect_identical(fit$interaction_forms, c(stage = "linear"))
+  expect_identical(fit$interaction_specs$stage$form, "linear")
+  expect_equal(fit$all_model_metrics$df_int, 2)
+})
+
+test_that("omitted and partial forms match explicit mixed-variable models", {
+  dat <- make_discrete_mfpi_data()
+  args <- list(
+    y ~ group + binary + stage + x,
+    data = dat,
+    group_var = "group",
+    interaction_vars = c("binary", "stage", "x"),
+    df = 1,
+    select = 1,
+    powers = list(x = c(0, 1)),
+    flex = "flex1",
+    verbose = FALSE
+  )
+  expected_forms <- c(binary = "linear", stage = "linear", x = "fp1")
+  explicit <- do.call(mfpi, c(args, list(interaction_forms = expected_forms)))
+
+  for (forms in list(NULL, c(x = "fp1"))) {
+    expect_no_warning(
+      fit <- do.call(mfpi, c(args, list(interaction_forms = forms)))
+    )
+    expect_identical(fit$interaction_forms, expected_forms)
+    expect_identical(
+      vapply(fit$interaction_specs, `[[`, character(1L), "form"),
+      expected_forms
+    )
+    expect_equal(fit$all_model_metrics, explicit$all_model_metrics)
+    expect_equal(unname(fit$shift[c("binary", "stageII", "stageIII")]),
+                 c(0, 0, 0))
+    expect_equal(unname(fit$scale[c("binary", "stageII", "stageIII")]),
+                 c(1, 1, 1))
+    # Linear adjustment does not force a continuous interaction to be linear.
+    expect_equal(fit$adjustment_model$fp_terms["x", "df_final"], 1)
+    expect_identical(
+      fit$all_model_metrics$type[fit$all_model_metrics$variable == "x"],
+      "fp1"
+    )
+  }
+})
+
+test_that("explicit FP1 and FP2 requests reset all discrete terms together", {
+  dat <- make_discrete_mfpi_data()
+
+  for (form in c("fp1", "fp2")) {
+    expect_warning(
+      fit <- mfpi(
+        y ~ group + binary + stage + x,
+        data = dat,
+        group_var = "group",
+        interaction_vars = c("binary", "stage", "x"),
+        interaction_forms = c(stage = form, binary = form, x = "linear"),
+        df = 1,
+        select = 1,
+        verbose = FALSE
+      ),
+      "reset to 'linear': stage, binary"
+    )
+    expect_identical(
+      fit$interaction_forms,
+      c(binary = "linear", stage = "linear", x = "linear")
+    )
+    expect_equal(
+      fit$all_model_metrics$df_int[
+        match(c("binary", "stage", "x"), fit$all_model_metrics$variable)
+      ],
+      c(1, 2, 1)
+    )
+  }
+})
+
+test_that("form validation rejects malformed requests before resetting", {
+  specs <- list(binary = list(discrete = TRUE), x = list(discrete = FALSE))
+  resolve <- function(forms) resolve_mfpi_interaction_forms(forms, specs)
+
+  expect_error(resolve(list(binary = "fp1")), "named character vector")
+  expect_error(resolve("fp1"), "Every entry.*must be named")
+  expect_error(resolve(setNames("fp1", NA_character_)), "must be named")
+  expect_error(resolve(c(binary = "fp1", binary = "fp2")), "must be unique")
+  expect_error(resolve(c(other = "fp1")), "not in `interaction_vars`")
+  expect_error(resolve(c(binary = NA_character_)), "Invalid value")
+  expect_error(resolve(c(binary = "spline")), "Invalid value")
 })
 
 test_that("categorical interaction df scales across multinomial logits", {

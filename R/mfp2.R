@@ -334,7 +334,8 @@
 #' The default `link = "logistic"` fits a proportional-odds model. It uses
 #' the same fitted function for each predictor when comparing higher outcome
 #' categories with lower ones. The final fit is an `orm` object and requires
-#' the optional `rms` package. See [ordinal_family()] for other links and
+#' the optional `rms` package (version 7.0-0 or later). See [ordinal_family()]
+#' for case weights, other links, and
 #' how to interpret coefficient signs.
 #'
 #' @section Compatibility with the `mfp` package:
@@ -476,7 +477,7 @@
 #' as the list name. To allow only a linear effect, set `df = 1`. Powers
 #' supplied inside `fp()` or `fp2()` take precedence over this list.
 #' @param ties Method for handling tied event times in Cox and Fine-Gray models.
-#' Supported values are `"breslow"` (default) and `"efron"`. `"exact"` is not
+#' Supported values are `"efron"` (default) and `"breslow"`. `"exact"` is not
 #' supported. The argument has no effect for other families. See
 #' [survival::coxph()] for details.
 #' @param strata Optional stratification for Cox, parametric survival, and
@@ -1814,7 +1815,7 @@ mfp2.default <- function(x,
                          keep = NULL,
                          xorder = c("ascending", "descending", "original"),
                          powers = NULL,
-                         ties = c("breslow", "efron"),
+                         ties = c("efron", "breslow"),
                          strata = NULL,
                          nocenter = c(-1, 0, 1),
                          acd_vars = NULL,
@@ -2978,7 +2979,7 @@ mfp2.formula <- function(formula,
                          keep = NULL,
                          xorder = c("ascending", "descending", "original"),
                          powers = NULL,
-                         ties = c("breslow", "efron"),
+                         ties = c( "efron", "breslow"),
                          strata = NULL,
                          nocenter = c(-1, 0, 1),
                          ftest = FALSE,

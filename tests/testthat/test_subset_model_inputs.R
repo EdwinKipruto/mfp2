@@ -51,9 +51,9 @@ test_that("24.20 formula subset preserves full-data shift and scale", {
 })
 
 
-# Test purpose: Externally supplied weights and offsets must follow the exact
-# retained-row order in both formula methods.
-test_that("24.21 formula subset aligns external weights and offsets", {
+# Test purpose: Weights and offsets must follow the exact retained-row order
+# for both formula methods. MFPI offsets are supplied in the formula.
+test_that("24.21 formula subset aligns weights and offsets", {
   set.seed(2421)
   n <- 150L
   dat <- data.frame(
@@ -97,11 +97,10 @@ test_that("24.21 formula subset aligns external weights and offsets", {
   expect_equal(unname(fitted(fit_mfp2)), unname(fitted(reference)), tolerance = 1e-8)
 
   fit_mfpi <- mfpi(
-    y ~ trt + x + z,
+    y ~ trt + x + z + offset(off),
     data = dat,
     subset = rows,
     weights = dat$w,
-    offset = dat$off,
     group_var = "trt",
     interaction_vars = "x",
     interaction_forms = c(x = "linear"),

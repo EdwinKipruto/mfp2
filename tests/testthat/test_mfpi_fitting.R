@@ -83,24 +83,42 @@ test_that("mfpi.formula() rejects a direct strata argument", {
 })
 
 
-# Formula observation arguments follow the same data-mask lookup rule as the
-# underlying standard model functions. The bare names below exist only as
-# columns of `dat`, so this also guards against accidentally forcing them in the
-# test/function environment before formula evaluation.
-test_that("mfpi.formula() resolves weights and offset in data", {
+test_that("mfpi.formula() rejects offset arguments without evaluating them", {
+  dat <- data.frame(
+    y = seq_len(8L), x = seq_len(8L),
+    group = factor(rep(c("A", "B"), 4L)), off = rep(0, 8L)
+  )
+  for (formula in list(y ~ group + x, y ~ group + x + offset(off))) {
+    expect_error(
+      mfpi(
+        formula, data = dat, group_var = "group", interaction_vars = "x",
+        offset = stop("The offset argument must not be evaluated"),
+        verbose = FALSE
+      ),
+      paste0(
+        "`offset` is not supported as an argument to `mfpi.formula()`. ",
+        "Include `offset(...)` in the formula instead."
+      ),
+      fixed = TRUE
+    )
+  }
+})
+
+
+# Weights and formula offsets resolve bare names in the model data.
+test_that("mfpi.formula() resolves weights and formula offsets in data", {
   data("prostate", package = "mfp2")
   dat <- prostate
   dat$case_weight <- seq(0.8, 1.2, length.out = nrow(dat))
   dat$external_offset <- seq(-0.1, 0.1, length.out = nrow(dat))
 
   fit <- mfpi(
-    lpsa ~ svi + age + cavol,
+    lpsa ~ svi + age + cavol + offset(external_offset),
     data = dat,
     group_var = "svi",
     interaction_vars = "cavol",
     interaction_forms = c(cavol = "linear"),
     weights = case_weight,
-    offset = external_offset,
     flex = "flex1",
     p_interact = 1,
     cycles = 1,
@@ -124,6 +142,34 @@ test_that("mfpi.formula() resolves weights and offset in data", {
     dat$external_offset,
     tolerance = 0
   )
+
+  reference <- stats::glm(
+    lpsa ~ svi * cavol + age + offset(external_offset),
+    data = dat, weights = case_weight
+  )
+  stored <- fit$all_interaction_models$cavol$fit
+  expect_equal(as.numeric(stats::logLik(stored)),
+               as.numeric(stats::logLik(reference)), tolerance = 1e-8)
+  expect_equal(unname(stored$offset), dat$external_offset, tolerance = 0)
+
+  nd <- dat[1:8, c("svi", "age", "cavol", "external_offset")]
+  got <- predict(fit, newdata = nd, terms = "cavol", model = "all",
+                  type = "link", se.fit = FALSE)
+  expect_equal(got$predictions$fit,
+               unname(stats::predict(reference, newdata = nd)), tolerance = 1e-8)
+
+  # The default interface still accepts an explicit offset vector.
+  matrix_fit <- mfpi(
+    as.matrix(dat[, c("svi", "age", "cavol")]), dat$lpsa,
+    group_var = "svi", interaction_vars = "cavol",
+    interaction_forms = c(cavol = "linear"),
+    weights = dat$case_weight, offset = dat$external_offset,
+    df = 1, select = 1, alpha = 1, cycles = 1,
+    shift = 0, scale = 1, center = FALSE, xorder = "original",
+    p_interact = 1, verbose = FALSE
+  )
+  expect_equal(matrix_fit$all_model_metrics, fit$all_model_metrics,
+               tolerance = 1e-8)
 })
 
 
@@ -358,7 +404,7 @@ test_that("mfpi.formula() fits a binary linear interaction", {
   )
 })
 
-test_that("mfpi() rejects FP forms for binary interaction variables", {
+test_that("mfpi() resets binary FP requests to linear with a warning", {
   dat <- data.frame(
     y = rnorm(80),
     group = rep(0:1, each = 40),
@@ -366,8 +412,8 @@ test_that("mfpi() rejects FP forms for binary interaction variables", {
     x = runif(80, 1, 5)
   )
 
-  expect_error(
-    mfpi(
+  expect_warning(
+    fit <- mfpi(
       y ~ group + binary_x + x,
       data = dat,
       group_var = "group",
@@ -375,8 +421,10 @@ test_that("mfpi() rejects FP forms for binary interaction variables", {
       interaction_forms = c(binary_x = "fp1"),
       verbose = FALSE
     ),
-    "Discrete interaction variable.*must use"
+    "reset to 'linear': binary_x"
   )
+  expect_identical(fit$interaction_forms, c(binary_x = "linear"))
+  expect_identical(fit$interaction_specs$binary_x$form, "linear")
 })
 
 

@@ -390,7 +390,7 @@ multinomial_family <- function(reference = NULL) {
 #' Use \code{ordinal_family()} with [mfp2()] or [mfpi()] when the outcome
 #' has categories with a meaningful order, such as low, medium, and high.
 #' The default \code{"logistic"} link gives a proportional-odds model.
-#' The optional \pkg{rms} package must be installed to use this family.
+#' The optional \pkg{rms} package (version 7.0-0 or later) is required.
 #'
 #' @param link Relationship used to model the ordered outcome. Choose
 #'   \code{"logistic"} (default), \code{"probit"}, \code{"loglog"},
@@ -404,8 +404,10 @@ multinomial_family <- function(reference = NULL) {
 #' intended order, convert the outcome to an ordered factor before fitting.
 #'
 #' A positive predictor coefficient indicates an association with higher
-#' outcome categories. Case weights are not supported; omit them or use
-#' weights that are all equal to one.
+#' outcome categories. Optional case weights must be finite and strictly
+#' positive. They are used without normalisation in selection and final fitting.
+#' Integer weights are equivalent to repeating observations for likelihood
+#' calculations. BIC uses the number of fitted rows as its sample size.
 #'
 #' @return A family specification to supply as the \code{family} argument
 #'   of [mfp2()] or [mfpi()].
@@ -1328,9 +1330,8 @@ mfp2_multinomial_offset <- function(offset, family, nobs, has_offset) {
 #'   from `"mfp2_ordinal_family"`.
 #' @param y Ordinal response. An ordered factor is recommended so that the
 #'   category order is explicit.
-#' @param weights Optional numeric vector of observation weights. Ordinal
-#'   models currently accept only omitted weights or an explicit all-ones
-#'   vector.
+#' @param weights Optional finite, strictly positive numeric case weights.
+#'   They are cached without normalisation; NULL uses unit weights.
 #' @param offset Optional numeric offset vector.
 #' @param has_offset Logical flag indicating whether an offset was supplied.
 #'
@@ -1352,16 +1353,17 @@ prepare_ordinal_family <- function(family, y, weights, offset = NULL,
     )
   }
 
-  # Ordinal likelihoods are currently unweighted. Validate this once while the
-  # response is prepared instead of scanning the invariant weight vector for
-  # every FP candidate fit.
-  if (!is.null(weights) && any(as.numeric(weights) != 1)) {
+  if (utils::packageVersion("rms") < "7.0-0") {
     stop(
-      "! `family = ordinal_family()` does not support case weights, ",
-      "because `rms::orm()` fits an unweighted ordinal model.",
+      "! `family = ordinal_family()` requires `rms` version 7.0-0 or later. ",
+      "Update it with install.packages(\"rms\").",
       call. = FALSE
     )
   }
+
+  # Validate once and reuse the same unnormalised case weights in every fit.
+  validate_model_weights(weights, nobs = NROW(y))
+  if (is.null(weights)) weights <- rep.int(1, NROW(y))
 
   if (!is.null(dim(y))) {
     stop("! The ordinal response must be a vector, not a matrix.", call. = FALSE)
@@ -1416,6 +1418,7 @@ prepare_ordinal_family <- function(family, y, weights, offset = NULL,
     link = family$link,
     inferred_order = inferred_order,
     n_original = length(codes),
+    weights = weights,
     has_offset = isTRUE(has_offset),
     offset = if (isTRUE(has_offset)) as.numeric(offset) else NULL
   )

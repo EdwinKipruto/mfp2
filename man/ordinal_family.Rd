@@ -19,7 +19,7 @@ of \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}}.
 Use \code{ordinal_family()} with \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} when the outcome
 has categories with a meaningful order, such as low, medium, and high.
 The default \code{"logistic"} link gives a proportional-odds model.
-The optional \pkg{rms} package must be installed to use this family.
+The optional \pkg{rms} package (version 7.0-0 or later) is required.
 }
 \details{
 Supply the outcome as an ordered factor to specify the category order.
@@ -29,8 +29,10 @@ reports the order it has assumed. If alphabetical order is not the
 intended order, convert the outcome to an ordered factor before fitting.
 
 A positive predictor coefficient indicates an association with higher
-outcome categories. Case weights are not supported; omit them or use
-weights that are all equal to one.
+outcome categories. Optional case weights must be finite and strictly
+positive. They are used without normalisation in selection and final fitting.
+Integer weights are equivalent to repeating observations for likelihood
+calculations. BIC uses the number of fitted rows as its sample size.
 }
 \examples{
 ordinal_family()

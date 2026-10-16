@@ -1545,7 +1545,7 @@ mfp2_with_ordinal_convergence_guard <- function(expr, fast = TRUE) {
 #'   `coefficients`, the predictor coefficients without the ordinal
 #'   intercepts; `rank`, the number of predictor coefficients; and `df`,
 #'   the number of predictor coefficients plus ordinal intercepts.
-#'   `weights` and `residuals` are `NULL`.
+#'   `weights` contains the supplied case weights; `residuals` is `NULL`.
 #'
 #'   When `keep_fit = TRUE`, the list also contains `fit`, an `rms::orm()`
 #'   object. When `calculate_fit_statistics = TRUE`, it contains
@@ -1567,6 +1567,7 @@ fit_ordinal <- function(x,
   k <- prepared$n_classes
   n_int <- k - 1L
   nobs <- prepared$n_original
+  weights <- prepared$weights
   has_offset <- isTRUE(prepared$has_offset)
   offset <- prepared$offset
 
@@ -1596,6 +1597,8 @@ fit_ordinal <- function(x,
     x = xx,
     y = ycodes,
     family = link,
+    weights = weights,
+    normwt = FALSE,
     maxit = control$maxit,
     eps = control$eps,
     tol = control$tol,
@@ -1647,7 +1650,7 @@ fit_ordinal <- function(x,
     coefficients = betas,
     rank = rank,
     df = df,
-    weights = NULL,
+    weights = weights,
     residuals = NULL
   )
   validate_mfp_fit_result(
@@ -1687,10 +1690,19 @@ fit_ordinal <- function(x,
       }
     }
     formula <- stats::as.formula(paste(response_col, "~", rhs))
+    # Pass weights as values so a predictor named "weights" cannot mask them
+    # during the formula fitter's model-frame evaluation.
+    fit_args <- list(
+      formula = formula, data = dfm, family = link, x = TRUE, y = TRUE,
+      normwt = FALSE,
+      maxit = control$maxit, eps = control$eps, tol = control$tol,
+      trace = isTRUE(control$trace)
+    )
+    # Explicit unit weights trigger rms's weighted-validation warning even
+    # though the fit is unweighted. Omit that argument for this equivalent case.
+    if (any(weights != 1)) fit_args$weights <- weights
     fitobj <- mfp2_with_ordinal_convergence_guard(
-      rms::orm(formula, data = dfm, family = link, x = TRUE, y = TRUE,
-               maxit = control$maxit, eps = control$eps, tol = control$tol,
-               trace = isTRUE(control$trace)),
+      do.call(rms::orm, fit_args),
       fast = FALSE
     )
     if (isTRUE(fitobj$fail)) {

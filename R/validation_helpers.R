@@ -81,7 +81,7 @@ validate_logical_vector <- function(arg, name, allowed_lengths,
 #'
 #' @keywords internal
 #' @noRd
-resolve_mfp_ties <- function(ties = c("breslow", "efron")) {
+resolve_mfp_ties <- function(ties = c("efron", "breslow")) {
   # Exact Cox ties are intentionally unsupported for MFP-based selection.
   if (identical(ties, "exact")) {
     stop(

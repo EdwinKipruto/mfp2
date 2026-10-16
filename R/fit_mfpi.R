@@ -120,202 +120,116 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 # fit_mfpi() ------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Fit the Full MFPI Model
+#' Fit MFPI Adjustment and Interaction Models
 #'
-#' Core workhorse called by \code{mfpi()} after argument validation and
-#' pre-processing. Runs the three-step MFPI algorithm: data pre-processing,
-#' adjustment-model selection via MFP, and univariable interaction evaluation.
+#' Selects an adjustment model and evaluates each specified interaction with
+#' the grouping variable separately. Uses inputs prepared by \code{mfpi()}.
 #'
-#' This function performs **no argument checking**. All inputs are assumed to
-#' have been validated, expanded to full-length named vectors, shifted, and
-#' scaled by the calling \code{mfpi()} function.
+#' The selected adjustment terms and transformations are reused in each
+#' interaction analysis, excluding the variable being tested. Each interaction
+#' uses its resolved functional form; the function does not select between
+#' linear, FP1, and FP2 forms.
 #'
-#' @param x Numeric matrix (\eqn{n \times p}) of predictors including
-#'   \code{group_var}. Shift and scale have already been applied; no intercept
-#'   column.
-#' @param y Response vector or \code{survival::Surv()} object.
-#' @param family Resolved likelihood-GLM, negative-binomial, Cox, or survreg
-#'   family specification.
-#' @param family_string Same as \code{family} but always a plain character
-#'   string. Required separately by \code{fit_mfp()} for internal
-#'   branching.
-#' @param weights Numeric vector of observation weights, length \eqn{n}.
-#' @param offset Numeric vector of linear-predictor offsets, length \eqn{n}.
-#' @param cycles Positive integer. Maximum MFP backfitting iterations.
-#' @param center Named logical vector of length \eqn{p}. Whether to center
-#'   each predictor before fitting.
-#' @param criterion Character string; \code{"pvalue"}, \code{"aic"}, or
-#'   \code{"bic"}. Governs two distinct selection steps:
-#'   \enumerate{
-#'     \item \strong{Adjustment-model selection} (Step 1): controls variable
-#'       elimination and FP degree selection in \code{fit_mfp()}.
-#'     \item \strong{Interaction test} (Step 2): tests the pre-specified
-#'       functional form from \code{interaction_forms} against its main-effects
-#'       counterpart in \code{evaluate_interactions()}.
-#'   }
-#'   In the internal \code{fit_mfp()} calls within \code{flex1()} and
-#'   \code{flex4()} - used only to estimate FP powers for \code{cont_var} -
-#'   the user criterion is passed alongside \code{force_max_fp = TRUE}, which
-#'   prevents p-value, AIC, or BIC selection from simplifying the functional
-#'   form below the requested degree. The best power combination within that
-#'   degree is still selected by the criterion (equivalently, by deviance
-#'   minimization at fixed df). For an eligible SAZ adjustment term, forcing
-#'   also retains the binary zero indicator and bypasses Stage 2 reduction.
-#' @param select Named numeric vector of length \eqn{p}. Nominal significance
-#'   levels used by the MFP variable-selection tests for adjustment terms.
-#' @param alpha Named numeric vector of length \eqn{p}. Significance levels
-#'   for FP degree selection. Under \code{criterion = "pvalue"}, \code{alpha = 1}
-#'   guarantees the most complex FP degree is always accepted. Ignored under
-#'   \code{criterion = "aic"} or \code{"bic"}.
-#' @param keep Character vector naming conceptual adjustment terms or raw
-#'   member columns that are forced into the adjustment model. Naming one
-#'   member of a grouped categorical term retains the complete block.
-#' \code{force_max_fp} is a named logical vector already subsetted by
-#' \code{fit_mfpi()} to match the adjustment-model columns of \code{x}.
-#' Under p-value selection, the corresponding \code{select} and \code{alpha}
-#' values have already been set to \code{1} by \code{mfpi.default()}. Under
-#' AIC/BIC, this vector directly prevents simplification of the named
-#' adjustment variables.
-#' @param df Named integer vector of length \eqn{p}. Degrees of freedom per
-#'   predictor (1 = linear, 2m = FP of degree m), after cardinality-based
-#'   overrides by \code{assign_df()}.
-#' @param xorder Character string; order of covariate entry into MFP
-#'   backfitting - \code{"ascending"}, \code{"descending"}, or
-#'   \code{"original"}.
-#' @param fp_powers Named list of candidate FP power sets, one per predictor.
-#' @param ties Character string; tie-handling method for Cox models.
-#' @param strata Optional normalized survival-model stratification object passed
-#'   through from \code{mfpi.default()}.
-#' @param nocenter Numeric vector passed to \code{survival::coxph()} to
-#'   suppress centring for specific predictors.
-#' @param acd_vars Named logical vector of length \eqn{p}. Whether each
-#'   predictor undergoes the ACD transformation. Must be \code{FALSE} for all
-#'   variables in \code{interaction_vars}.
-#' @param zero_vars Named logical vector of length \eqn{p}. Whether each
-#'   predictor treats exact-zero values as structural zero before transformation.
-#' @param catzero_vars Named logical vector of length \eqn{p}. Whether each
-#'   predictor is semi-continuous and requires a binary indicator alongside
-#'   its FP transformation.
-#' @param spike_vars Named logical vector of length \eqn{p}. Whether each
-#'   predictor is subject to spike-at-zero (SAZ) modelling.
-#' @param min_saz_prop Numeric in \eqn{(0, 0.5)}. Minimum required
-#'   proportion in each component of a spike-at-zero covariate: the
-#'   zero component and the positive component. Only
-#'   affects variables in the adjustment model, since spike-at-zero handling is
-#'   suppressed for variables in \code{interaction_vars}.
-#' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"},
-#'   use an F-test (via \code{calculate_f_test()}) rather than a
-#'   chi-square likelihood-ratio test for the interaction p-value. Also
-#'   passed to \code{fit_mfp()} for adjustment-variable selection.
-#'   Ignored for non-Gaussian families.
-#' @param control List of fitting control parameters.
-#' @param group_var Character string. Name of the grouping variable in \code{x}.
-#' @param include_group_var Logical. Whether \code{group_var} is included as a
-#'   covariate in the adjustment model.
-#' @param flex Character string; \code{"flex1"}, \code{"flex2"},
+#' @param x Numeric predictor matrix, including \code{group_var}, with shifts
+#'   and scales already applied and no intercept column.
+#' @param y Response vector, response matrix, or \code{survival::Surv()} object.
+#' @param family Resolved model-family specification.
+#' @param family_string Character string giving the canonical family name.
+#' @param weights Numeric vector of observation weights.
+#' @param offset Linear-predictor offsets: a numeric vector or, for multinomial
+#'   models, a matrix with one column per non-reference outcome category.
+#' @param has_offset Logical indicating whether an offset was supplied.
+#' @param cycles Maximum number of MFP backfitting cycles.
+#' @param center Named logical vector controlling predictor centring.
+#' @param criterion Selection criterion: \code{"pvalue"}, \code{"aic"}, or
+#'   \code{"bic"}. Used for adjustment selection and interaction comparisons.
+#' @param select Named numeric vector of significance levels for adjustment
+#'   variable selection under \code{criterion = "pvalue"}.
+#' @param alpha Named numeric vector of significance levels for adjustment
+#'   FP degree selection under \code{criterion = "pvalue"}.
+#' @param keep Character vector naming adjustment terms or columns to retain.
+#'   Naming a column of a categorical term retains the complete term.
+#' @param force_max_fp Named logical vector identifying adjustment variables
+#'   whose maximum permitted FP degree must be retained. Powers are still
+#'   selected within that degree.
+#' @param df Named integer vector of adjustment degrees of freedom, after
+#'   restrictions based on the number of distinct values.
+#' @param xorder Order of adjustment terms during MFP backfitting:
+#'   \code{"ascending"}, \code{"descending"}, or \code{"original"}.
+#' @param fp_powers Named list of candidate FP powers for each predictor.
+#' @param ties Method for handling tied event times in Cox models.
+#' @param strata Optional prepared survival-model stratification information.
+#' @param nocenter Numeric values excluded from automatic centring by
+#'   \code{survival::coxph()}.
+#' @param acd_vars Named logical vector identifying predictors to receive an
+#'   approximate cumulative distribution transformation.
+#' @param zero_vars Named logical vector identifying predictors whose exact
+#'   zeros are handled separately during transformation.
+#' @param catzero_vars Named logical vector identifying predictors requiring
+#'   a zero indicator alongside their transformed positive values.
+#' @param spike_vars Named logical vector identifying predictors eligible for
+#'   spike-at-zero modelling.
+#' @param min_saz_prop Minimum proportion required in both the zero and
+#'   positive components of a spike-at-zero adjustment variable.
+#' @param use_ftest Whether to use F-tests instead of likelihood-ratio
+#'   chi-square tests for Gaussian p-value comparisons in both fitting stages.
+#'   Ignored for other families.
+#' @param control List of model-fitting control parameters.
+#' @param group_var Character string naming the grouping variable.
+#' @param include_group_var Whether to include group main effects during
+#'   adjustment-model selection.
+#' @param flex Interaction procedure: \code{"flex1"}, \code{"flex2"},
 #'   \code{"flex3"}, or \code{"flex4"}.
-#' @param interaction_vars Character vector of continuous, binary, or
-#'   categorical variables to test for interaction with \code{group_var}.
-#' @param interaction_specs Named list mapping each interaction term to its
-#'   fitted design columns and recording whether it is continuous or discrete.
-#' @param interaction_forms Named character vector with names matching
-#'   \code{interaction_vars} and values in \code{c("linear", "fp1", "fp2")}.
-#'   Specifies the functional form to use for each variable. Constructed and
-#'   validated by \code{mfpi.default()} before being passed here.
-#' @param p_interact Numeric. Significance threshold for
+#' @param interaction_vars Character vector naming terms to test for
+#'   interaction with \code{group_var}.
+#' @param interaction_forms Named character vector of resolved interaction
+#'   forms: \code{"linear"}, \code{"fp1"}, or \code{"fp2"}.
+#' @param interaction_specs Named list describing each interaction term's
+#'   type and predictor columns.
+#' @param p_interact Significance threshold for retaining interactions under
 #'   \code{criterion = "pvalue"}.
-#' @param min_improvement Numeric. Minimum criterion improvement required to
-#'   retain an interaction.
-#' @param show_models Logical. If \code{TRUE} and \code{verbose = TRUE},
-#'   prints the full regression coefficient table for each selected
-#'   interaction model. Has no effect when \code{verbose = FALSE}.
-#'   Nothing is printed when no variable is selected.
-#' @param verbose Logical. Whether to print progress messages.
-#' @param quiet Logical. Reserved internal control for non-verbose diagnostics.
-#' @param center_type Character string; \code{"grand"} (default) or
-#'   \code{"group"}. Passed to \code{create_z_variables()} to control the
-#'   centering strategy when \code{center = TRUE}. The constants are stored
-#'   in \code{center_vals_list} on the returned list.
-#' @param scale Named numeric vector of per-variable scale factors (one per
-#'   column of \code{x}), as computed and applied in \code{mfpi.default()}.
-#'   Passed to \code{flex_fit()} as \code{scale_var} so the continuous
-#'   covariate is backscaled (multiplied by the scale factor) before the final
-#'   FP transformation. This ensures interaction model coefficients are on the
-#'   \eqn{\phi(x + \text{shift})} scale, matching the adjustment model and
-#'   standalone \pkg{mfp2}. \code{NULL} or 1 means no backscaling.
-#' @param shift Named numeric vector of per-variable shift factors (one per
-#'   column of \code{x}), as computed and applied in \code{mfpi.default()}.
-#'   Passed through to fitted-function generation so displayed x-values can be
-#'   returned on the original raw scale.
-#' @param digits Positive integer. Decimal places for printed output other than
-#'   fractional-polynomial powers and degrees of freedom.
-#' @param p_adjust_method Character string. Method for adjusting p-values
-#'   across all variables in \code{interaction_vars} when \code{criterion = "pvalue"}.
-#'   Passed to \code{\link[stats]{p.adjust}}. Default \code{"none"}.
-#' @param term_to_columns Complete named lookup created by
-#'   \code{mfpi.default()}. Each name is a conceptual adjustment term and each
-#'   value is its raw predictor column vector. Multi-column entries are fixed
-#'   linear categorical blocks selected and cached jointly. This is required
-#'   internal metadata, not a user-facing tuning argument.
-#' @return A list with top-level fields (accessible as \code{fit$field}) and
-#'   two retained sub-objects. Top-level fields:
+#' @param min_improvement Minimum AIC or BIC improvement required to retain
+#'   an interaction.
+#' @param show_models Whether to print coefficient tables for selected
+#'   interaction models when \code{verbose = TRUE}.
+#' @param verbose Whether to print progress messages.
+#' @param digits Number of decimal places for printed numerical results.
+#' @param scale Named numeric vector of predictor scale factors.
+#' @param shift Named numeric vector of predictor shifts.
+#' @param quiet Internal verbosity flag, reset according to \code{verbose}.
+#' @param center_type Centring method for interaction transformations:
+#'   \code{"grand"} or \code{"group"}.
+#' @param p_adjust_method Method passed to \code{stats::p.adjust()} for
+#'   interaction p-values under \code{criterion = "pvalue"}.
+#' @param group_input_levels Numeric group values in the input matrix.
+#' @param group_levels_original Original labels corresponding to
+#'   \code{group_input_levels}.
+#' @param term_to_columns Named list mapping adjustment terms to predictor
+#'   columns. Categorical terms are selected jointly.
+#' @param fitter Model-fitting backend.
+#'
+#' @return A list containing:
 #' \describe{
-#'   \item{\code{best_model_metrics}}{Data frame of metrics for the best
-#'     interaction model per selected variable.}
-#'   \item{\code{all_model_metrics}}{Tibble of metrics for the interaction
-#'     model evaluated for each variable in \code{interaction_vars}, using the form
-#'     specified by \code{interaction_forms}.}
-#'   \item{\code{best_interaction_model}}{Named list of fitted interaction model
-#'     objects for the **winning** model per selected variable.}
-#'   \item{\code{all_interaction_models}}{Named list. Names are \code{interaction_vars};
-#'     each element is the fitted model object for that variable using the form
-#'     specified in \code{interaction_forms}, stored directly without an additional
-#'     form-named candidate-list layer, regardless of whether it was selected or
-#'     not.}
-#'   \item{\code{center_vals_list}}{Named list (one element per
-#'     \code{cont_var}) of centering constants used when fitting the interaction
-#'     model. \code{NULL} when \code{center = FALSE}.}
-#'   \item{\code{adjust_terms}}{The \code{fp_terms} table from the adjustment
-#'     model.}
-#'   \item{\code{group_var}, \code{flex}, \code{family}, \code{nobs},
-#'     \code{show_models}, \code{group_levels_new},
-#'     \code{group_levels_original}}{Metadata fields.}
-#'   \item{\code{adjustment_model}}{Full grouped adjustment model object.}
-#'   \item{\code{adjustment_term_to_columns}}{Named mapping from conceptual
-#'     adjustment terms to the raw columns used during fitting and prediction.}
-#'   \item{\code{p_adjust_method}}{The multiplicity adjustment method used.}
-#'   \item{\code{var_winners}}{Named list of per-variable best candidates
-#'     (regardless of selection). See \code{evaluate_interactions()}.}
-#'   \item{\code{univariable_interactions}}{Full list from
-#'     \code{evaluate_interactions()}.}
-#'   \item{\code{x_train_internal}}{Numeric matrix containing the
-#'     post-preprocessing training predictor matrix. It contains shifted/scaled
-#'     predictors and the internally remapped \code{group_var} codes produced by
-#'     \code{preprocess_data()}. This matrix is used by \code{predict.mfpi()}
-#'     when manual reconstruction of training-data predictions is required.}
+#'   \item{\code{best_model_metrics}, \code{all_model_metrics}}{Data frames
+#'     of comparison metrics for selected and evaluated interactions,
+#'     respectively.}
+#'   \item{\code{best_interaction_model},
+#'     \code{all_interaction_models}}{Named lists of fitted models for selected
+#'     and evaluated interactions, respectively.}
+#'   \item{\code{center_vals_list}}{Centring constants for selected interactions.}
+#'   \item{\code{adjustment_model}, \code{adjust_terms}}{The adjustment-model
+#'     results and its selected-term table.}
+#'   \item{\code{adjustment_term_to_columns}}{Mapping of adjustment terms to
+#'     predictor columns.}
+#'   \item{\code{var_winners}, \code{univariable_interactions}}{Per-variable
+#'     results and the complete interaction-analysis results.}
+#'   \item{\code{x_train_internal}}{Prepared training predictors, including
+#'     shifted and scaled values and recoded groups.}
 #' }
+#' The list also contains the family, fitting settings, group labels and
+#' mappings, interaction specifications, and transformation information.
 #'
-#' @section Algorithm:
-#' \strong{Pre-processing.} Levels of \code{group_var} are remapped to
-#' consecutive integers. Group dummies are computed once and stored in
-#' \code{cat_info$dummies}. When \code{include_group_var = TRUE}, dummies are
-#' appended to \code{x}. All parameter vectors are synchronized silently.
-#'
-#' \strong{Step 1 - Adjustment model.} \code{fit_mfp()} selects
-#' conceptual adjustment terms and FP transformations using \code{criterion}.
-#' Continuous singleton terms follow the ordinary MFP procedure. Multi-column
-#' categorical terms enter as fixed linear blocks and are retained or removed
-#' by one joint test. Selected terms, their transformations, and spike decisions
-#' are fixed for the remainder of the algorithm.
-#'
-#' \strong{Step 2 - Univariable interactions.} For each variable in
-#' \code{interaction_vars}, the interaction model is fitted using the form
-#' pre-specified in \code{interaction_forms} and compared to its main-effects
-#' model via \code{evaluate_interactions()}. No data-driven selection among
-#' functional forms is performed.
-#'
-#' @seealso \code{mfpi()}, \code{preprocess_data()},
-#'   \code{fit_adjustment_model()}, \code{evaluate_interactions()}
+#' @seealso \code{mfpi()}
 #'
 #' @keywords internal
 #' @noRd
@@ -676,69 +590,56 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
 # preprocess_data() -----------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Pre-process Predictor Data for the MFPI Adjustment Model
+#' Prepare Predictors for the MFPI Adjustment Model
 #'
-#' Removes \code{group_var} from the predictor matrix and, when
-#' \code{include_group_var = TRUE}, appends dummy variables for the non-reference
-#' levels of \code{group_var}. All modelling-parameter vectors and lists
-#' (\code{select}, \code{alpha}, \code{df}, \code{center}, \code{fp_powers},
-#' etc.) are synchronised with the modified column set so that downstream
-#' functions receive consistently aligned inputs.
+#' Removes the grouping variable from the adjustment predictors and optionally
+#' replaces it with dummy variables for its non-reference levels. Aligns the
+#' modelling settings and term-to-column mapping with the resulting matrix.
 #'
-#' The grouping variable is internally remapped to consecutive integer levels
-#' \code{0, 1, ..., K - 1}. This is important because later MFPI helper
-#' functions build and parse column names using the group value as a suffix.
-#' The original grouping values and the internal mapping are retained in
-#' \code{cat_info} for reporting and interpretation.
+#' Group values are recoded as consecutive integers starting at zero.
+#' Original labels and their mapping to these codes are retained.
 #'
-#' This function is called at the start of \code{fit_mfpi()} and its output is
-#' threaded through the adjustment-model and interaction-model stages. It assumes
-#' that public-facing validation and scalar expansion have already been handled
-#' by \code{mfpi.default()}.
-#'
-#' @param x Numeric matrix of predictors including \code{group_var}.
-#' @param group_var Character string. Name of the categorical grouping variable.
-#' @param include_group_var Logical. If \code{TRUE}, dummy variables derived
-#'   from \code{group_var} are appended to the filtered predictor matrix so that
-#'   group membership can be adjusted for in the MFP step.
-#' @param select Named numeric vector of selection levels, one per column of
-#'   \code{x}.
-#' @param alpha Named numeric vector of FP-degree significance levels, one per
-#'   column of \code{x}.
-#' @param df Named numeric vector of degrees of freedom, one per column of
-#'   \code{x}.
-#' @param center Named logical vector. Whether to centre each predictor.
-#' @param acd_vars Named logical vector. Whether each predictor undergoes the
-#'   ACD transformation.
-#' @param fp_powers Named list of candidate FP power sets, one per predictor.
-#' @param zero_vars Named logical vector. Whether each predictor should treat
-#'   exact-zero values as structural zero.
-#' @param catzero_vars Named logical vector. Whether each predictor should add a
-#'   zero indicator.
-#' @param spike_vars Named logical vector. Whether each predictor should be
-#'   assessed for spike-at-zero handling.
-#' @param keep Character vector of variable names always retained in the
+#' @param x Numeric predictor matrix including \code{group_var}.
+#' @param group_var Character string naming the grouping variable.
+#' @param include_group_var Whether to include group dummy variables in the
 #'   adjustment model.
-#' @param force_max_fp Named logical vector of length \eqn{p}. Sliced to
-#'   adjustment columns and stored in \code{updated_params$force_max_fp}. When
-#'   \code{include_group_var = TRUE}, dummy columns receive \code{FALSE}
-#'   because they have \code{df = 1} and no FP form to force.
-#' @param term_to_columns Named list mapping each conceptual adjustment term to
-#'   one raw predictor column or a complete categorical contrast block.
+#' @param select Named numeric vector of variable-selection significance levels.
+#' @param alpha Named numeric vector of FP-degree significance levels.
+#' @param df Named numeric vector of adjustment degrees of freedom.
+#' @param center Named logical vector controlling predictor centring.
+#' @param acd_vars Named logical vector identifying predictors to receive an
+#'   approximate cumulative distribution transformation.
+#' @param fp_powers Named list of candidate FP powers for each predictor.
+#' @param zero_vars Named logical vector identifying predictors whose exact
+#'   zeros are handled separately during transformation.
+#' @param catzero_vars Named logical vector identifying predictors requiring
+#'   a zero indicator alongside their transformed positive values.
+#' @param spike_vars Named logical vector identifying predictors eligible for
+#'   spike-at-zero modelling.
+#' @param keep Character vector naming adjustment terms or columns to retain.
+#' @param force_max_fp Named logical vector identifying predictors whose
+#'   maximum permitted FP degree must be retained.
+#' @param group_input_levels Numeric group values in \code{x}, in group order.
+#'   If \code{NULL}, uses the sorted observed values.
+#' @param group_levels_original Original labels corresponding to
+#'   \code{group_input_levels}. If \code{NULL}, uses the numeric group values
+#'   as labels.
+#' @param term_to_columns Named list mapping adjustment terms to predictor
+#'   columns.
 #'
-#' @return A list with five components:
+#' @return A list containing:
 #' \describe{
-#'   \item{\code{x}}{Numeric matrix with \code{group_var} removed and,
-#'     optionally, group dummy columns appended.}
-#'   \item{\code{original_x}}{Internal predictor matrix with \code{group_var}
-#'     remapped to consecutive integer levels \code{0, 1, ..., K - 1}.}
-#'   \item{\code{cat_info}}{List of metadata for \code{group_var}, including
-#'     remapped values, original values, original levels, internal levels, the
-#'     level map, the group variable name, and the dummy matrix.}
-#'   \item{\code{dummy_names}}{Character vector of appended dummy column names,
-#'     or \code{NULL} if \code{include_group_var = FALSE}.}
-#'   \item{\code{updated_params}}{Named list of parameter vectors/lists aligned
-#'     with the columns of the returned \code{x}.}
+#'   \item{\code{x}}{Adjustment predictor matrix, with optional group dummy
+#'     columns.}
+#'   \item{\code{original_x}}{Input predictor matrix with recoded group values.}
+#'   \item{\code{cat_info}}{Group values, labels, level mappings, and dummy
+#'     matrix.}
+#'   \item{\code{dummy_names}}{Names of appended group dummy columns, or
+#'     \code{NULL} when group main effects are excluded.}
+#'   \item{\code{term_to_columns}}{Updated mapping of adjustment terms to
+#'     predictor columns.}
+#'   \item{\code{updated_params}}{Modelling settings aligned with the adjustment
+#'     predictors.}
 #' }
 #'
 #' @keywords internal
@@ -1040,27 +941,24 @@ preprocess_data <- function(x, group_var, include_group_var,
 }
 
 # -----------------------------------------------------------------------------
-# restore_mfpi_adjustment_shifts() -------------------------------------------
+# restore_mfpi_adjustment_shifts()
 # -----------------------------------------------------------------------------
 
-#' Restore MFPI Shifts on the Returned Stage-1 Adjustment Model
+#' Restore Predictor Shifts in the MFPI Adjustment Model
 #'
-#' The matrix passed from \code{mfpi.default()} to Stage 1 has already been
-#' shifted and scaled. Stage 1 therefore calls \code{fit_mfp()} with zero
-#' shifts to avoid applying the MFPI shifts twice. After fitting, those internal
-#' zero shifts must be replaced by the original MFPI shifts so that the returned
-#' \code{mfp2} adjustment model reports the preprocessing actually applied to
-#' raw covariates and can transform raw \code{newdata} correctly in
-#' \code{predict.mfp2()}.
+#' Records the original predictor shifts in the fitted adjustment model so
+#' that reported transformations and predictions from new data use the correct
+#' values. The predictors are already shifted before fitting, so the adjustment
+#' model is initially fitted with zero shifts.
 #'
-#' @param adjustment_model Fitted Stage-1 \code{mfp2} model.
-#' @param shift Named numeric vector of MFPI-level shifts indexed by raw
-#'   predictor columns.
-#' @param term_to_columns Conceptual-term to raw-column mapping used by the
-#'   Stage-1 adjustment model.
+#' @param adjustment_model Fitted \code{mfp2} adjustment model.
+#' @param shift Named numeric vector of predictor shifts.
+#' @param term_to_columns Named list mapping adjustment terms to predictor
+#'   columns.
 #'
-#' @return \code{adjustment_model} with the \code{shift} column of
-#'   \code{$transformations} restored to the MFPI-level values.
+#' @return The adjustment model with the \code{shift} column of
+#'   \code{transformations} updated to the original predictor shifts.
+#'
 #' @keywords internal
 #' @noRd
 restore_mfpi_adjustment_shifts <- function(adjustment_model,
@@ -1133,84 +1031,58 @@ restore_mfpi_adjustment_shifts <- function(adjustment_model,
 
 #' Fit the MFP Adjustment Model
 #'
-#' A thin wrapper around `fit_mfp()` that selects adjustment variables
-#' and their FP transformations. The working matrix has already been shifted
-#' and scaled by \code{mfpi()}. Stage 1 therefore passes zero shifts to
-#' \code{fit_mfp()} to avoid shifting twice, while retaining the MFPI scale
-#' factors so \code{fit_mfp()} can backscale before constructing the final FP
-#' terms. The actual MFPI shifts are restored on the returned adjustment model
-#' after fitting.
+#' Selects adjustment terms and their fractional-polynomial transformations
+#' using \code{fit_mfp()}. Categorical terms are selected jointly.
 #'
-#' @param x Numeric matrix of predictor variables passed to
-#'   \code{fit_mfp()} for adjustment-variable selection. It is the
-#'   filtered matrix produced by \code{preprocess_data()}, which means:
-#'   \itemize{
-#'     \item \code{group_var} has been \strong{removed} - it is not adjusted
-#'       for here because it is the variable whose interaction with
-#'       \code{interaction_vars} is being tested.
-#'     \item If \code{include_group_var = TRUE} in \code{mfpi()},
-#'       \code{preprocess_data()} has already re-added \code{group_var} as a
-#'       set of binary dummy columns (one per non-reference level), with
-#'       \code{select = 1} to force them into the adjustment model.
-#'     \item All columns have already been shifted and scaled by
-#'       \code{mfpi.default()}. Zero shifts are passed to \code{fit_mfp()} to
-#'       prevent a second shift, while the MFPI scale factors are retained so
-#'       the final selected terms can be backscaled before model fitting.
-#'   }
-#' @param y Response vector or Surv object.
+#' @param x Prepared numeric adjustment predictor matrix, optionally including
+#'   group dummy variables.
+#' @param y Response vector, response matrix, or \code{survival::Surv()} object.
 #' @param weights Numeric vector of observation weights.
-#' @param offset Numeric vector of linear-predictor offsets.
-#' @param cycles Positive integer. Maximum MFP backfitting iterations.
-#' @param family Resolved likelihood-GLM, negative-binomial, Cox, or `survreg`
-#'   family passed directly to \code{fit_mfp()}.
-#' @param family_string Normalized character family name. Required separately by
-#'   \code{fit_mfp()} for internal branching.
-#' @param criterion Character string; \code{"pvalue"}, \code{"aic"}, or
-#'   \code{"bic"}. Governs full MFP selection: variable elimination, FP
-#'   degree selection, and functional form for adjustment variables. Unlike
-#'   the internal \code{fit_mfp()} calls in \code{flex1()} and
-#'   \code{flex4()}, \code{force_max_fp} is not passed here - it defaults to
-#'   \code{FALSE} so the user criterion fully controls degree selection, which
-#'   is the correct behaviour for adjustment-model fitting.
-#' @param updated_params Named list of per-variable modelling parameters as
-#'   returned by \code{preprocess_data()}. Must contain \code{df},
-#'   \code{center}, \code{select}, \code{alpha}, \code{keep},
-#'   \code{fp_powers}, \code{acd_vars}, \code{zero_vars},
-#'   \code{catzero_vars}, and \code{spike_vars}.
-#' @param xorder Character string; entry order for MFP backfitting.
-#' @param ties Character string; tie-handling for Cox models.
-#' @param strata Optional normalized survival stratum.
-#' @param nocenter Numeric vector passed to proportional-hazards fitters.
-#' @param min_saz_prop Numeric in \eqn{(0, 0.5)}. Minimum required
-#'   proportion in each component of a spike-at-zero covariate, passed to
-#'   \code{fit_mfp()} for adjustment-model fitting.
-#' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"}, use an F-test rather than a chi-square test. Applied to both adjustment-variable selection and the interaction test.
-#' @param control Fitting control list.
-#' @param term_to_columns Named lookup used by the grouped MFP core to map
-#'   each conceptual adjustment term to one or more raw design columns.
-#' @param verbose Logical. Passed directly to \code{fit_mfp()}.
-#'
-#' @return The fitted model object returned by \code{fit_mfp()}, which
-#'   includes \code{fp_terms} (a data frame of selected variables and their FP
-#'   powers) and the underlying model fit.
+#' @param offset Linear-predictor offsets: a numeric vector or, for multinomial
+#'   models, a matrix with one column per non-reference outcome category.
+#' @param cycles Maximum number of MFP backfitting cycles.
+#' @param family Resolved model-family specification.
+#' @param family_string Character string giving the canonical family name.
+#' @param criterion Adjustment selection criterion: \code{"pvalue"},
+#'   \code{"aic"}, or \code{"bic"}.
+#' @param updated_params Named list of modelling settings returned by
+#'   \code{preprocess_data()}, including selection levels, degrees of freedom,
+#'   candidate powers, transformation options, and retention settings.
+#' @param xorder Order of adjustment terms during MFP backfitting:
+#'   \code{"ascending"}, \code{"descending"}, or \code{"original"}.
+#' @param ties Method for handling tied event times in Cox models.
+#' @param strata Optional prepared survival-model stratification information.
+#' @param nocenter Numeric values excluded from automatic centring by
+#'   \code{survival::coxph()}.
+#' @param min_saz_prop Minimum proportion required in both the zero and
+#'   positive components of a spike-at-zero adjustment variable.
+#' @param use_ftest Whether to use F-tests instead of likelihood-ratio
+#'   chi-square tests for Gaussian p-value comparisons. Ignored for other
+#'   families.
+#' @param control List of model-fitting control parameters.
+#' @param force_max_fp Retained internal argument. The settings used for
+#'   fitting are read from \code{updated_params$force_max_fp}.
+#' @param scale Named numeric vector of predictor scale factors.
+#' @param has_offset Logical indicating whether an offset was supplied.
+#' @param term_to_columns Named list mapping adjustment terms to predictor
+#'   columns.
+#' @param verbose Whether to print fitting progress.
+#' @param fitter Model-fitting backend.
 #'
 #' @details
-#' The real per-variable \code{scale} factors are now passed to
-#' \code{fit_mfp()} so that it can backscale \code{x} before the final model
-#' fit (step 4 of \code{fit_mfp()}), giving adjustment model coefficients on
-#' the \eqn{\phi(x + \text{shift})} scale, matching standalone \code{mfp2()}.
-#' \code{shift} is set to 0 because shifting was already applied upstream in
-#' \code{mfpi.default()}.
+#' Predictors have already been shifted and scaled. Zero shifts are passed to
+#' \code{fit_mfp()} to avoid applying shifts twice. Scale factors are retained
+#' so that selected terms are constructed on the shifted, unscaled predictor
+#' scale. The caller restores the original shifts in the fitted model.
 #'
-#' \code{force_max_fp} is a named logical vector already subsetted by
-#' \code{fit_mfpi()} to match the columns of \code{x} (i.e. with
-#' \code{group_var} removed). When the user supplies \code{force_max_fp = FALSE}
-#' (the default), all elements are \code{FALSE} and \code{select_ic()} runs its
-#' normal degree competition - correct behaviour for full adjustment-model
-#' selection. \code{force_max_fp = TRUE} for specific variables forces the most
-#' complex functional form for those variables in the adjustment model. If such
-#' a variable is an eligible spike-at-zero term, the full maximum continuous +
-#' binary representation is retained and SAZ Stage 2 is skipped.
+#' Variables marked in \code{updated_params$force_max_fp} retain their maximum
+#' permitted FP degree, with powers selected within that degree. For eligible
+#' spike-at-zero terms, both the zero indicator and the maximum-degree
+#' continuous component are retained.
+#'
+#' @return The adjustment-model results returned by \code{fit_mfp()}, including
+#'   the selected-term table \code{fp_terms} and the underlying fitted model.
+#'
 #' @keywords internal
 #' @noRd
 fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
@@ -1298,14 +1170,15 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
 # format_type_label() ---------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Format a functional form type string for display
+#' Format Functional Form Labels
 #'
-#' Converts the internal lowercase type string to a display label:
-#' \code{"linear"} -> \code{"Linear"}, \code{"fp1"} -> \code{"FP1"},
-#' \code{"fp2"} -> \code{"FP2"}. Vectorised over character vectors.
+#' Converts \code{"linear"}, \code{"fp1"}, and \code{"fp2"} to
+#' \code{"Linear"}, \code{"FP1"}, and \code{"FP2"}, respectively.
 #'
-#' @param type Character vector of type strings.
+#' @param type Character vector of functional form names.
+#'
 #' @return Character vector of display labels.
+#'
 #' @keywords internal
 #' @noRd
 format_type_label <- function(type) {
@@ -1320,43 +1193,31 @@ format_type_label <- function(type) {
 # format_candidate_table() ----------------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Format and Print a Table of Interaction Candidates for One Variable
+#' Print an Interaction Comparison Table
 #'
-#' Assembles a compact summary table from the per-candidate metric rows
-#' collected during the interaction evaluation loop and prints it to the
-#' console. The displayed columns adapt to the active \code{criterion}:
-#'
+#' Prints comparison metrics for one interaction variable. Displayed columns
+#' depend on the selection criterion:
 #' \itemize{
-#'   \item \code{criterion = "pvalue"}: shows \code{deviance_int}
-#'     (deviance of the interaction model, \eqn{-2\ell_{\mathrm{int}}}),
-#'     \code{deviance_diff} (likelihood-ratio statistic
-#'     \eqn{-2\ell_{\mathrm{main}} + 2\ell_{\mathrm{int}}}),
-#'     \code{df} (interaction degrees of freedom), and \code{pvalue}.
-#'   \item \code{criterion = "aic"}: shows \code{AIC_main},
-#'     \code{AIC_interaction}, and \code{dAIC}.
-#'   \item \code{criterion = "bic"}: shows \code{BIC_main},
-#'     \code{BIC_interaction}, and \code{dBIC}.
+#'   \item \code{"pvalue"}: interaction-model deviance, deviance difference,
+#'     interaction degrees of freedom, and p-value.
+#'   \item \code{"aic"}: main-effects and interaction-model AIC values and
+#'     their difference.
+#'   \item \code{"bic"}: main-effects and interaction-model BIC values and
+#'     their difference.
 #' }
 #'
-#' The table also includes two power columns to help the user distinguish
-#' the FP powers from the pooled main-effects model (\code{main_power}) and
-#' the FP powers used in the interaction model (\code{int_power}). For
-#' flex1-3, interaction powers are shown as a single tuple, e.g.
-#' \code{(1, 2)}. For flex4, per-group powers are shown separately, e.g.
-#' \code{(1, 2), (0.5)}.
+#' Also displays FP powers for the main-effects and interaction models.
+#' For FLEX4, interaction powers are shown separately for each group.
+#' AIC and BIC differences are calculated as main-effects minus interaction
+#' values, so positive differences favour the interaction model.
 #'
-#' @param rows Named list of one-row data frames, one per fitted type. With
-#'   pre-specified forms this will always contain exactly one entry. Each row
-#'   must contain fields \code{pvalue},
-#'   \code{AIC_main}, \code{AIC_interaction}, \code{AIC_main_minus_int},
-#'   \code{BIC_main}, \code{BIC_interaction}, \code{BIC_main_minus_int},
-#'   \code{fp_powers_main}, and \code{fp_powers_int}.
-#' @param criterion Character string: \code{"pvalue"}, \code{"aic"}, or
+#' @param rows Named list of one-row data frames containing comparison metrics
+#'   and FP powers for the evaluated interaction form.
+#' @param criterion Selection criterion: \code{"pvalue"}, \code{"aic"}, or
 #'   \code{"bic"}.
-#' @param digits Integer; number of decimal places for displayed statistics.
+#' @param digits Number of decimal places for displayed statistics.
 #'
-#' @return Invisible \code{NULL}. The function prints to the console as a
-#'   side effect.
+#' @return Invisibly returns \code{NULL} after printing the table.
 #'
 #' @keywords internal
 #' @noRd
@@ -1456,144 +1317,102 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 # evaluate_interactions() -----------------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Evaluate Univariable Interactions Between a Grouping and Continuous Variables
+#' Evaluate Separate MFPI Interactions
 #'
-#' For each variable in `interaction_vars`, fits the interaction model using the
-#' pre-specified functional form from `interaction_forms` and tests it against
-#' the corresponding main-effects model according to `criterion`. Variables
-#' whose model does not meet the selection threshold are excluded from the
-#' output. No data-driven selection among functional forms is performed.
+#' Evaluates each specified interaction with the grouping variable, adjusting
+#' for the selected adjustment terms other than the variable being tested.
+#' Continuous, binary, and categorical interaction terms are supported.
 #'
-#' Optionally, a precomputed adjustment matrix can be supplied via `xadj` with
-#' `skip_adjustment = TRUE` to avoid redundant transformation of the adjustment
-#' predictors when the function is called repeatedly with the same adjustment set.
+#' Each variable uses its resolved interaction form; no selection between
+#' linear, FP1, and FP2 forms is performed. Results are retained for all
+#' evaluated interactions, with selected interactions also stored separately.
 #'
-#' @param y Response vector or Surv object.
+#' @param y Response vector, response matrix, or \code{survival::Surv()} object.
 #' @param processed_data List returned by \code{preprocess_data()}.
-#' @param selected_vars Character vector of variable names retained by the
-#'   adjustment model.
-#' @param adj_fp_powers Named list of canonical FP/ACD powers for the
-#'   selected adjustment variables. Structural \code{NA} slots for ACD terms
-#'   are retained.
-#' @param adj_zero Named logical vector for selected adjustment variables,
-#'   giving the final post-fit zero-handling flags from
-#'   \code{adjustment_model$zero}. These are used when rebuilding the selected
-#'   adjustment matrix inside \code{evaluate_interactions()}.
-#' @param adj_catzero Named logical vector for selected adjustment variables,
-#'   giving the final post-fit zero indicator flags from
-#'   \code{adjustment_model$catzero}.
-#' @param adj_spike Named logical vector for selected adjustment variables,
-#'   giving the final post-fit spike-at-zero flags from
-#'   \code{adjustment_model$spike}.
-#' @param adj_spike_decision Named numeric vector of spike-at-zero decisions
-#'   for the selected adjustment variables, as stored in
-#'   \code{adjustment_model$spike_dec} by \code{fit_mfp()}. Values:
-#'   \code{1} = FP term + binary indicator, \code{2} = FP term only,
-#'   \code{3} = binary indicator only. Used together with \code{adj_spike}
-#'   when re-transforming adjustment variables via \code{transform_matrix()}.
-#' @param interaction_vars Character vector of continuous, binary, or
-#'   categorical variables to test.
-#' @param interaction_specs Named list of validated interaction-term design
-#'   specifications constructed by \code{mfpi.default()}.
-#' @param interaction_forms Named character vector of length \code{length(interaction_vars)}.
-#'   Names are variable names from \code{interaction_vars}; values are one of
-#'   \code{"linear"}, \code{"fp1"}, or \code{"fp2"}. Each variable is tested
-#'   using exactly its pre-specified form; no selection among forms is performed.
-#'   Constructed and validated by \code{mfpi.default()} before being passed here.
-#' @param flex Character string; `"flex1"`, `"flex2"`, `"flex3"`, or
-#'   `"flex4"`.
+#' @param selected_vars Character vector naming selected adjustment terms.
+#' @param adj_fp_powers Named list of selected adjustment powers, including
+#'   structural \code{NA} entries for ACD terms.
+#' @param adj_zero Named logical vector of fitted zero-handling flags.
+#' @param adj_catzero Named logical vector of fitted zero-indicator flags.
+#' @param adj_spike Named logical vector of fitted spike-at-zero flags.
+#' @param adj_spike_decision Named numeric vector of fitted spike-at-zero
+#'   decisions: \code{1} for continuous and binary components, \code{2} for
+#'   the continuous component only, and \code{3} for the binary component only.
+#' @param adj_acd_parameter Fitted ACD transformation parameters for adjustment
+#'   terms.
+#' @param interaction_vars Character vector naming terms to test for
+#'   interaction with the grouping variable.
+#' @param interaction_forms Named character vector of resolved interaction
+#'   forms: \code{"linear"}, \code{"fp1"}, or \code{"fp2"}.
+#' @param interaction_specs Named list describing each interaction term's type
+#'   and predictor columns.
+#' @param flex Interaction procedure: \code{"flex1"}, \code{"flex2"},
+#'   \code{"flex3"}, or \code{"flex4"}.
 #' @param weights Numeric vector of observation weights.
-#' @param offset Numeric vector of linear-predictor offsets.
-#' @param xorder Character string; entry order for MFP backfitting.
-#' @param ties Character string; tie-handling for Cox models.
-#' @param strata Optional high-level Cox stratification object, or `NULL`.
-#'   Passed through to interaction-model fits without converting ordinary
-#'   vector/factor strata to integer codes.
-#' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"}, use an F-test rather than a chi-square test. Applied to both adjustment-variable selection and the interaction test.
-#' @param control Fitting control list.
-#' @param nocenter Numeric vector for Cox centring suppression.
-#' @param family Character string; regression family.
-#' @param fp_powers Named list of candidate FP power sets for all predictors.
-#' @param cycles Positive integer. Maximum MFP backfitting iterations.
-#' @param criterion Character string; `"pvalue"`, `"aic"`, or `"bic"`.
-#' @param digits Positive integer. Number of decimal places for printed output
-#'   other than fractional-polynomial powers and degrees of freedom.
-#' @param scale Named numeric vector of per-variable scale factors. These are
-#'   the same scale factors applied to \code{x} upstream in
-#'   \code{mfpi.default()}. Passed to \code{fit_adjustment_model()} so that
-#'   \code{fit_mfp()} can backscale before the final model fit (giving
-#'   coefficients on the \eqn{\phi(x + \text{shift})} scale), and to
-#'   \code{evaluate_interactions()} for the same purpose in the interaction
-#'   model. Default \code{NULL} (no backscaling).
-#' @param shift Named numeric vector of per-variable shift factors. Passed to
-#'   fitted-function generation so x coordinates can be returned/displayed on
-#'   the original raw scale. Default \code{NULL} (no shift correction).
-#' @param center_type Character string; \code{"grand"} (default) or
-#'   \code{"group"}. Centering strategy for FP-transformed interaction
-#' @param show_models Logical. If \code{TRUE} and \code{verbose = TRUE},
-#'   prints the full regression coefficient table for each selected
-#'   interaction model. Has no effect when \code{verbose = FALSE}.
-#'   Nothing is printed when no variable is selected.
-#' @param group_var Character string. Name of the grouping variable.
-#' @param p_interact Numeric. Significance threshold for `criterion = "pvalue"`.
-#' @param min_improvement Numeric. Minimum criterion improvement to retain an
-#'   interaction.
-#' @param xadj Optional numeric matrix of pre-transformed adjustment predictors.
-#'   Used when `skip_adjustment = TRUE`.
-#' @param skip_adjustment Logical. If `TRUE`, `xadj` is used directly and
-#'   adjustment variables are not re-transformed. Default is `FALSE`.
-#' @param p_adjust_method Character string. Method for adjusting p-values,
-#'   passed to [stats::p.adjust()]. Only applied when `criterion = "pvalue"`.
-#'   Default `"none"`. Adjusted p-values are applied across all variables in
-#'   \code{interaction_vars} (one test per variable).
-#' @param quiet Logical. Reserved internal control for non-verbose diagnostics.
+#' @param offset Linear-predictor offsets: a numeric vector or, for multinomial
+#'   models, a matrix with one column per non-reference outcome category.
+#' @param xorder Order of terms during MFP backfitting:
+#'   \code{"ascending"}, \code{"descending"}, or \code{"original"}.
+#' @param ties Method for handling tied event times in Cox models.
+#' @param strata Optional survival-model stratification information.
+#' @param use_ftest Whether to use F-tests instead of likelihood-ratio
+#'   chi-square tests for Gaussian p-value comparisons. Ignored for other
+#'   families.
+#' @param control List of model-fitting control parameters.
+#' @param nocenter Numeric values excluded from automatic centring by
+#'   \code{survival::coxph()}.
+#' @param family Resolved model-family specification.
+#' @param family_string Character string giving the canonical family name.
+#' @param fp_powers Named list of candidate FP powers for each predictor.
+#' @param cycles Maximum number of MFP backfitting cycles.
+#' @param criterion Interaction selection criterion: \code{"pvalue"},
+#'   \code{"aic"}, or \code{"bic"}.
+#' @param digits Number of decimal places for printed numerical results.
+#' @param scale Named numeric vector of predictor scale factors.
+#' @param shift Named numeric vector of predictor shifts.
+#' @param center_type Centring method for interaction transformations:
+#'   \code{"grand"} or \code{"group"}.
+#' @param show_models Whether to print coefficient tables for selected
+#'   interaction models when \code{verbose = TRUE}.
+#' @param group_var Character string naming the grouping variable.
+#' @param p_interact Significance threshold for p-value selection.
+#' @param min_improvement Minimum AIC or BIC improvement required for selection.
+#' @param min_saz_prop Minimum proportion required in both components of a
+#'   spike-at-zero variable.
+#' @param xadj Optional matrix of transformed adjustment predictors, used when
+#'   \code{skip_adjustment = TRUE}.
+#' @param skip_adjustment Whether to use \code{xadj} without rebuilding the
+#'   adjustment transformations.
+#' @param p_adjust_method Method passed to \code{stats::p.adjust()} for
+#'   interaction p-values. Used only under \code{criterion = "pvalue"}.
+#' @param has_offset Logical indicating whether an offset was supplied.
+#' @param quiet Internal diagnostic-output control.
+#' @param verbose Whether to print progress messages.
+#' @param fitter Model-fitting backend.
 #'
-#' @return A list with the following components:
+#' @section Selection:
+#' Each interaction is compared with its corresponding main-effects model.
+#' Under \code{criterion = "pvalue"}, selection requires a p-value strictly
+#' below \code{p_interact}. If requested, p-values are adjusted across all
+#' interaction variables before selection.
+#'
+#' Under \code{"aic"} or \code{"bic"}, selection requires the main-effects
+#' criterion minus the interaction criterion to exceed \code{min_improvement}.
+#' P-value adjustment does not affect AIC or BIC selection.
+#'
+#' @return A list containing:
 #' \describe{
-#'   \item{`best_model_metrics`}{Data frame of evaluation metrics for the
-#'     selected interaction model per selected variable. Empty if none selected.}
-#'   \item{`all_model_metrics`}{Data frame of metrics for the interaction model
-#'     evaluated for each variable in `interaction_vars`, using the form specified
-#'     by `interaction_forms`.}
-#'   \item{`best_interaction_model`}{Named list of fitted model objects for
-#'     selected variables.}
-#'   \item{`all_interaction_models`}{Named list (one element per `cont_var`)
-#'     of model objects, each fitted using the form from `interaction_forms` and
-#'     stored directly without an additional form-named list layer.}
-#'   \item{`center_vals_list`}{Named list of centering constants per
-#'     selected variable.}
-#'   \item{`var_winners`}{Named list (one element per `cont_var`) storing
-#'     the fitted result for each variable regardless of selection.}
-#'   \item{`group_var`}{Name of the grouping variable.}
-#'   \item{`show_models`}{Value of the `show_models` argument.}
-#'   \item{`group_levels_new`}{Integer-coded levels used internally.}
-#'   \item{`group_levels_original`}{Original levels of `group_var`.}
-#'   \item{`flex`}{The chosen flexibility level.}
-#'   \item{`criterion`}{The selection criterion used.}
-#'   \item{`family`}{The regression family.}
-#'   \item{`nobs`}{Number of observations.}
-#'   \item{`p_adjust_method`}{The multiplicity adjustment method used.}
+#'   \item{\code{best_model_metrics}, \code{all_model_metrics}}{Data frames of
+#'     comparison metrics for selected and evaluated interactions, respectively.}
+#'   \item{\code{best_interaction_model},
+#'     \code{all_interaction_models}}{Named lists of fitted models for selected
+#'     and evaluated interactions, respectively.}
+#'   \item{\code{center_vals_list}}{Centring constants for selected interactions.}
+#'   \item{\code{var_winners}}{Fitted results for each interaction variable,
+#'     regardless of selection.}
 #' }
-#'
-#' @section Selection logic:
-#' For each variable in \code{interaction_vars}, exactly one interaction model is
-#' fitted using the form pre-specified in \code{interaction_forms}. The model is
-#' tested against its main-effects counterpart:
-#'
-#' \describe{
-#'   \item{\code{"pvalue"}}{The interaction is selected if its (possibly
-#'     adjusted) p-value is strictly below \code{p_interact}.}
-#'   \item{\code{"aic"}}{Interaction is selected if
-#'     \code{AIC_main - AIC_interaction > min_improvement}.}
-#'   \item{\code{"bic"}}{Interaction is selected if
-#'     \code{BIC_main - BIC_interaction > min_improvement}.}
-#' }
-#'
-#' When \code{p_adjust_method != "none"} and \code{criterion = "pvalue"},
-#' selection is deferred until all variables are processed: raw p-values are
-#' collected, adjusted via \code{\link[stats]{p.adjust}}, and the adjusted
-#' p-values are compared to \code{p_interact}. For AIC/BIC criteria,
-#' multiplicity adjustment does not affect the selection decision.
+#' The list also contains group labels and mappings, the family, observation
+#' count, selection settings, and predictor shifts and scales.
 #'
 #' @keywords internal
 #' @noRd
@@ -1748,15 +1567,15 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       selected_adj_vars      = selected_adj_vars,
       skip_adjustment        = skip_adjustment,
       xadj                   = xadj,
-      interaction_forms         = interaction_forms,
-      interaction_specs         = interaction_specs,
+      interaction_forms      = interaction_forms,
+      interaction_specs      = interaction_specs,
       degree_lookup          = degree_lookup,
       processed_data         = processed_data,
       criterion              = criterion,
       ties                   = ties,
       family                 = family,
       family_string          = family_string,
-      fitter                = fitter,
+      fitter                 = fitter,
       use_ftest              = use_ftest,
       center_type            = center_type,
       xorder                 = xorder,
@@ -1766,7 +1585,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       control                = control,
       nocenter               = nocenter,
       cycles                 = cycles,
-      min_saz_prop = min_saz_prop,
+      min_saz_prop           = min_saz_prop,
       flex                   = flex,
       scale                  = scale,
       shift                  = shift,
@@ -1850,7 +1669,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   if (verbose && criterion %in% c("aic", "bic") && !adjusting_pvals) {
     print_interaction_step3_summary(
       var_winners            = var_winners,
-      interaction_vars              = interaction_vars,
+      interaction_vars       = interaction_vars,
       mode                   = "ic",
       ic_col                 = ic_col,
       ic_label               = ic_label,
@@ -1864,7 +1683,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   if (verbose && criterion == "pvalue" && !adjusting_pvals) {
     print_interaction_step3_summary(
       var_winners            = var_winners,
-      interaction_vars              = interaction_vars,
+      interaction_vars       = interaction_vars,
       mode                   = "pvalue",
       p_interact             = p_interact,
       p_adjust_method        = p_adjust_method,
@@ -1884,7 +1703,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       var_winners      = var_winners,
       all_metrics_list = all_metrics_list,
       all_idx          = all_idx,
-      interaction_vars        = interaction_vars,
+      interaction_vars = interaction_vars,
       n_vars           = n_vars,
       n_types          = n_types,
       p_adjust_method  = p_adjust_method,
@@ -1902,7 +1721,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     if (verbose) {
       print_interaction_step3_summary(
         var_winners            = var_winners,
-        interaction_vars              = interaction_vars,
+        interaction_vars       = interaction_vars,
         mode                   = "pvalue",
         p_interact             = p_interact,
         p_adjust_method        = p_adjust_method,
@@ -1986,63 +1805,42 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
 # evaluate_interactions() helpers --------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Evaluate the Pre-Specified Interaction Candidate for One Variable
+#' Evaluate One MFPI Interaction
 #'
-#' Internal helper used by \code{evaluate_interactions()}. Fits the single
-#' pre-specified interaction form (linear, FP1, or FP2, per
-#' \code{interaction_forms[[var_name]]}) for one continuous variable against the
-#' grouping variable, resolves the AIC/BIC or p-value winner (trivial here
-#' since there is only one candidate form), prints the verbose per-variable
-#' candidate table, and, when p-value multiplicity adjustment is not in play,
-#' makes the immediate retain/drop decision for this variable.
+#' Fits the resolved interaction form for one continuous, binary, or
+#' categorical term and compares it with the corresponding main-effects model.
+#' Makes the selection decision immediately unless p-value adjustment is
+#' requested, in which case selection is deferred.
 #'
-#' This was previously inlined in the body of \code{evaluate_interactions()}'s
-#' main \code{for (var_name in interaction_vars)} loop. Extracting it isolates the
-#' per-variable fitting and decision logic from the loop's bookkeeping (the
-#' running \code{all_idx}/\code{best_idx} counters and pre-allocated result
-#' containers, which remain in the caller since they span all variables).
-#' This makes it possible to test or debug a single variable's interaction
-#' evaluation without needing to drive the full \code{interaction_vars} loop.
+#' @inheritParams evaluate_interactions
 #'
-#' @param var_name Character scalar. Name of the continuous variable being
-#'   tested for interaction with the grouping variable.
-#' @param var_idx,n_vars Integers used only for the verbose per-variable
-#'   header (\code{"[var_idx/n_vars] Variable: ..."}).
-#' @param x,y Predictor matrix and response, as used throughout
-#'   \code{evaluate_interactions()}.
-#' @param cat_info Group metadata list from \code{processed_data$cat_info}.
-#' @param adjustment_cache,selected_adj_vars,skip_adjustment,xadj Adjustment-
-#'   matrix inputs. \code{xadj_current} for this variable is assembled
-#'   internally via \code{mfpi_make_xadj_current()}.
-#' @param interaction_forms Named character vector; \code{interaction_forms[[var_name]]}
-#'   gives the pre-specified interaction form (\code{"linear"}, \code{"fp1"},
-#'   or \code{"fp2"}).
-#' @param degree_lookup Named integer vector mapping form name to FP degree,
-#'   e.g. \code{c(linear = 0L, fp1 = 1L, fp2 = 2L)}.
-#' @param processed_data,criterion,ties,family,family_string,use_ftest,
-#'   center_type,xorder,weights,offset,strata,control,nocenter,cycles,
-#'   min_saz_prop,flex,scale,shift,has_offset Passed through to
-#'   \code{flex_fit()}.
-#' @param ic_col,ic_label Column name and display label for the active
-#'   information criterion (\code{NULL} when \code{criterion == "pvalue"}).
-#' @param adjusting_pvals Logical. \code{TRUE} when p-value multiplicity
-#'   adjustment is requested, in which case the immediate retain/drop decision
-#'   is deferred to \code{finalize_adjusted_pvalue_selection()}.
-#' @param p_interact,min_improvement Selection thresholds for the immediate
-#'   (non-adjusted) decision.
-#' @param verbose,quiet,show_models,digits Verbose-printing controls.
+#' @param var_name Character string naming the interaction term.
+#' @param var_idx,n_vars Current variable index and total number of interaction
+#'   variables, used in progress messages.
+#' @param x Prepared numeric predictor matrix.
+#' @param cat_info Group metadata from \code{preprocess_data()}.
+#' @param adjustment_cache Cached transformed adjustment terms.
+#' @param selected_adj_vars Character vector naming selected adjustment terms,
+#'   excluding group dummy variables.
+#' @param degree_lookup Named integer vector mapping interaction forms to
+#'   FP degrees: \code{linear = 0}, \code{fp1 = 1}, and \code{fp2 = 2}.
+#' @param ic_col,ic_label Metric column name and display label for the active
+#'   information criterion, or \code{NULL} for p-value selection.
+#' @param adjusting_pvals Whether selection is deferred until interaction
+#'   p-values have been adjusted across variables.
 #'
-#' @return A list with:
-#'   * \code{candidate_metrics}: named list of metrics data frames, one per
-#'     evaluated candidate form (currently always length 1).
-#'   * \code{candidate_models}: named list of fitted interaction models, one
-#'     per evaluated candidate form.
-#'   * \code{best_fit}, \code{best_metric}, \code{best_type}, \code{best_score}:
-#'     the winning candidate for this variable (trivial selection here, since
-#'     there is only one candidate form).
-#'   * \code{retained}: logical. \code{TRUE}/\code{FALSE} if an immediate
-#'     retain/drop decision was made (\code{adjusting_pvals == FALSE});
-#'     \code{NA} if the decision is deferred (\code{adjusting_pvals == TRUE}).
+#' @return A list containing:
+#' \describe{
+#'   \item{\code{candidate_metrics}}{Named list containing the comparison
+#'     metrics for the evaluated form.}
+#'   \item{\code{candidate_models}}{Named list containing the fitted
+#'     interaction model.}
+#'   \item{\code{best_fit}, \code{best_metric}, \code{best_type},
+#'     \code{best_score}}{The fitted result, comparison metrics, form, and
+#'     comparison score for the evaluated interaction.}
+#'   \item{\code{retained}}{Selection decision, or \code{NA} when selection
+#'     is deferred for p-value adjustment.}
+#' }
 #'
 #' @keywords internal
 #' @noRd
@@ -2164,37 +1962,37 @@ evaluate_interaction_for_variable <- function(var_name,
     degree <- degree_lookup[[interaction_type]]
 
     fit_result <- flex_fit(
-      x             = x,
-      y             = y,
-      cont_var      = var_name,
-      interaction_columns = interaction_spec$columns,
-      interaction_kind = interaction_spec$kind,
-      group_var     = cat_info$group_var,
-      group_dummies = cat_info$dummies,
-      xadj          = xadj_current,
-      criterion     = criterion,
-      ties          = ties,
-      degree        = degree,
-      family        = family,
-      family_string = family_string,
-      fitter        = fitter,
-      fp_cand       = if (isTRUE(interaction_spec$discrete)) 1 else
+      x                     = x,
+      y                     = y,
+      cont_var              = var_name,
+      interaction_columns   = interaction_spec$columns,
+      interaction_kind      = interaction_spec$kind,
+      group_var             = cat_info$group_var,
+      group_dummies         = cat_info$dummies,
+      xadj                  = xadj_current,
+      criterion             = criterion,
+      ties                  = ties,
+      degree                = degree,
+      family                = family,
+      family_string         = family_string,
+      fitter                = fitter,
+      fp_cand               = if (isTRUE(interaction_spec$discrete)) 1 else
         processed_data$updated_params$fp_powers[[var_name]],
-      use_ftest     = use_ftest,
-      center        = if (isTRUE(interaction_spec$discrete)) FALSE else
+      use_ftest             = use_ftest,
+      center                = if (isTRUE(interaction_spec$discrete)) FALSE else
         processed_data$updated_params$center[var_name],
-      center_type   = center_type,
-      xorder        = xorder,
-      weights       = weights,
-      offset        = offset,
-      strata        = strata,
-      control       = control,
-      nocenter      = nocenter,
-      cycles        = cycles,
-      zero_var      = if (isTRUE(interaction_spec$discrete)) FALSE else
+      center_type           = center_type,
+      xorder                = xorder,
+      weights               = weights,
+      offset                = offset,
+      strata                = strata,
+      control               = control,
+      nocenter              = nocenter,
+      cycles                = cycles,
+      zero_var              = if (isTRUE(interaction_spec$discrete)) FALSE else
         processed_data$updated_params$zero_vars[var_name],
-      spike_var     = FALSE,
-      min_saz_prop = min_saz_prop,
+      spike_var             = FALSE,
+      min_saz_prop          = min_saz_prop,
       flex          = flex,
       scale_var     = if (isTRUE(interaction_spec$discrete)) 1 else if (!is.null(scale)) unname(scale[var_name]) else 1,
       shift_var     = if (isTRUE(interaction_spec$discrete)) 0 else if (!is.null(shift)) unname(shift[var_name]) else 0,
@@ -2324,47 +2122,34 @@ evaluate_interaction_for_variable <- function(var_name,
   )
 }
 
-#' Finalize Interaction Selection Under P-value Multiplicity Adjustment
+#' Select Interactions Using Adjusted P-values
 #'
-#' Internal helper used by \code{evaluate_interactions()}. When
-#' \code{criterion == "pvalue"} and \code{p_adjust_method != "none"}, retain/
-#' drop decisions cannot be made per-variable as each candidate is fit,
-#' because the multiplicity adjustment needs every planned test's raw p-value
-#' first. This function performs that adjustment once, after the main
-#' candidate-fitting loop has completed: it collects all raw p-values,
-#' computes adjusted p-values via \code{stats::p.adjust()}, copies the
-#' adjusted values back into each variable's winner record, and rebuilds the
-#' retained-model containers (\code{best_metrics_list},
-#' \code{best_interaction_model}, \code{center_vals_list}) from the adjusted
-#' decisions.
+#' Adjusts interaction p-values using \code{stats::p.adjust()} and selects
+#' interactions whose adjusted p-values are strictly below \code{p_interact}.
+#' Updates the per-variable results and selected-model lists.
 #'
-#' This was previously inlined in \code{evaluate_interactions()}. Extracting
-#' it makes the multiplicity-adjustment logic testable on its own, with a
-#' small hand-built \code{var_winners}/\code{all_metrics_list}, instead of
-#' requiring a full multi-variable \code{mfpi()} fit to exercise it.
+#' @param var_winners Named list of per-variable fitted results and comparison
+#'   metrics.
+#' @param all_metrics_list List of comparison-metric data frames.
+#' @param all_idx Number of populated entries in \code{all_metrics_list}.
+#' @param interaction_vars Character vector naming interaction terms in
+#'   evaluation order.
+#' @param n_vars Number of interaction variables.
+#' @param n_types Number of evaluated forms per variable.
+#' @param p_adjust_method Adjustment method passed to \code{stats::p.adjust()}.
+#' @param p_interact Significance threshold for adjusted p-values.
 #'
-#' @param var_winners Named list, one element per tested variable, each with
-#'   \code{fit}, \code{metric}, \code{type}, \code{score}, and
-#'   \code{center_vals}, as produced by
-#'   \code{evaluate_interaction_for_variable()}.
-#' @param all_metrics_list,all_idx The pre-allocated all-model metrics list and
-#'   the running count of rows written into it by the main candidate-fitting
-#'   loop.
-#' @param interaction_vars,n_vars,n_types Used to size containers and iterate in a
-#'   stable order.
-#' @param p_adjust_method Multiplicity-adjustment method passed to
-#'   \code{stats::p.adjust()} (e.g. \code{"BH"}, \code{"bonferroni"}).
-#' @param p_interact P-value threshold for the final (adjusted) retain/drop
-#'   decision.
-#'
-#' @return A list with:
-#'   * \code{var_winners}: updated with adjusted \code{metric}/\code{score}.
-#'   * \code{all_candidate_metrics}: the full table of candidate metrics with
-#'     an added \code{p_adjusted} column; becomes the authoritative all-model
-#'     metric table.
-#'   * \code{best_idx}, \code{best_metrics_list}, \code{best_interaction_model},
-#'     \code{center_vals_list}: rebuilt retained-model containers reflecting
-#'     the adjusted-p-value decisions.
+#' @return A list containing:
+#' \describe{
+#'   \item{\code{var_winners}}{Per-variable results updated with adjusted
+#'     p-values and scores.}
+#'   \item{\code{all_candidate_metrics}}{Complete comparison-metric table,
+#'     including a \code{p_adjusted} column.}
+#'   \item{\code{best_idx}}{Number of selected interactions.}
+#'   \item{\code{best_metrics_list}, \code{best_interaction_model},
+#'     \code{center_vals_list}}{Comparison metrics, fitted models, and centring
+#'     constants for selected interactions.}
+#' }
 #'
 #' @keywords internal
 #' @noRd
@@ -2446,40 +2231,28 @@ finalize_adjusted_pvalue_selection <- function(var_winners,
   )
 }
 
-#' Print the Step 3 Interaction Summary Table
+#' Print the Final Interaction Summary
 #'
-#' Internal helper used by \code{evaluate_interactions()}. Prints the final,
-#' ranked/selected-set summary after all tested variables have been
-#' evaluated. The table has two possible layouts, controlled by \code{mode}:
+#' Prints a summary of interaction comparisons. For AIC or BIC selection,
+#' shows criterion improvements for selected interactions. For p-value
+#' selection, shows p-values and selection decisions, including adjusted
+#' p-values when applicable.
 #'
-#' * \code{mode = "ic"}: used for \code{criterion \%in\% c("aic", "bic")}
-#'   without p-value multiplicity adjustment. Columns are Variable, Type, and
-#'   the active information-criterion improvement (dAIC or dBIC).
-#' * \code{mode = "pvalue"}: used for p-value selection. Without multiplicity
-#'   adjustment, columns are Variable, Type, p-value, and the final Yes/No
-#'   decision. With adjustment, separate raw and adjusted p-value columns are
-#'   printed.
+#' @param var_winners Named list of per-variable fitted results and comparison
+#'   metrics.
+#' @param interaction_vars Character vector of tested terms in display order.
+#' @param mode Summary format: \code{"ic"} or \code{"pvalue"}.
+#' @param ic_col,ic_label Metric column name and display label for AIC or BIC
+#'   improvements. Used when \code{mode = "ic"}.
+#' @param min_improvement Selection threshold for AIC or BIC improvements.
+#' @param p_interact Significance threshold for p-value selection.
+#' @param p_adjust_method P-value adjustment method.
+#' @param digits Number of decimal places for displayed statistics.
+#' @param show_models Whether to print selected-model summaries after the table.
+#' @param best_interaction_model Named list of selected interaction models.
 #'
-#' Final decisions are printed only in this summary. The preceding candidate
-#' loop reports observed statistics without provisional selection labels.
+#' @return Invisibly returns \code{NULL} after printing the summary.
 #'
-#' @param var_winners Named list of per-variable winner records (see
-#'   \code{evaluate_interaction_for_variable()}).
-#' @param interaction_vars Character vector of tested variable names, in display
-#'   order.
-#' @param mode One of \code{"ic"} or \code{"pvalue"}.
-#' @param ic_col,ic_label Used only when \code{mode == "ic"}: the metrics
-#'   column name and short display label for the active information
-#'   criterion.
-#' @param min_improvement Used only when \code{mode == "ic"}: the final
-#'   selection threshold.
-#' @param p_interact,p_adjust_method Used only when \code{mode == "pvalue"}:
-#'   the final selection threshold and multiplicity-adjustment method.
-#' @param digits Number of displayed decimal places for comparison statistics.
-#' @param show_models,best_interaction_model Optional per-model summaries,
-#'   printed after the table when \code{show_models = TRUE}.
-#'
-#' @return Invisibly \code{NULL}. Called for its printed side effect.
 #' @keywords internal
 #' @noRd
 print_interaction_step3_summary <- function(var_winners,
@@ -2630,88 +2403,45 @@ print_interaction_step3_summary <- function(var_winners,
 # MFPI adjustment-block cache helpers -----------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Build a Cache of Transformed Adjustment Blocks for MFPI
+#' Cache Transformed MFPI Adjustment Terms
 #'
-#' Builds the transformed adjustment design blocks used during MFPI interaction
-#' evaluation. Each selected adjustment variable is transformed exactly once and
-#' stored in a named list keyed by the original source-variable name.
+#' Transforms each selected adjustment term once and stores its complete
+#' design block by term name. Group dummy terms are excluded because
+#' interaction models add group main effects separately.
 #'
-#' @details
-#' During \code{evaluate_interactions()}, the selected adjustment model is fixed
-#' across all tested continuous variables. For each tested variable
-#' \code{var_name}, the only required change is to remove \code{var_name} from
-#' its own adjustment set if it was selected by the adjustment model.
+#' The cached blocks allow \code{mfpi_make_xadj_current()} to assemble each
+#' interaction's adjustment matrix while excluding the term being tested.
+#' Categorical contrasts and multiple transformed columns belonging to one
+#' term are kept together.
 #'
-#' Rebuilding the full transformed adjustment matrix inside every
-#' \code{interaction_vars} loop iteration is therefore unnecessary. This helper avoids
-#' that repeated work by transforming each conceptual adjustment term once.
-#' The companion helper \code{mfpi_make_xadj_current()} then assembles the
-#' current adjustment matrix by dropping complete term blocks.
+#' @param x Numeric predictor matrix with shifts and scales already applied.
+#' @param selected_vars Character vector naming selected adjustment terms.
+#' @param group_dummy_names Names of group dummy columns to exclude, or
+#'   \code{NULL}.
+#' @param group_dummy_term Character string naming the group dummy term.
+#' @param term_to_columns Named list mapping adjustment terms to predictor
+#'   columns.
+#' @param skip_adjustment Whether to skip transformation and return an empty
+#'   cache.
+#' @param scale Named numeric vector of scale factors used to restore shifted,
+#'   unscaled predictor values before transformation, or \code{NULL}.
+#' @param adj_fp_powers Named list of selected adjustment powers.
+#' @param center Named logical vector controlling adjustment-term centring.
+#' @param acd_vars Named logical vector identifying ACD adjustment terms.
+#' @param adj_zero Named logical vector of fitted zero-handling flags.
+#' @param adj_catzero Fitted zero-indicator settings for adjustment terms.
+#' @param adj_spike Named logical vector of fitted spike-at-zero flags.
+#' @param adj_spike_decision Named integer vector of fitted spike-at-zero
+#'   decisions.
+#' @param adj_acd_parameter Named list of fitted ACD transformation parameters,
+#'   or \code{NULL}.
 #'
-#' The cache is keyed by conceptual term name, not by transformed column name.
-#' A continuous singleton may expand into FP, ACD, or structural-zero columns,
-#' while a categorical term contributes all of its contrast columns. Dropping
-#' by conceptual term preserves both kinds of block without relying on fragile
-#' transformed-name matching.
-#'
-#' @param x Numeric matrix. The processed predictor matrix used by MFPI
-#'   interaction fitting. It must contain all selected adjustment variables.
-#'   Columns are assumed to have already been shifted and scaled upstream.
-#'
-#' @param selected_vars Character vector of conceptual terms selected by the
-#'   adjustment model before excluding the group-dummy term and the current
-#'   \code{cont_var}.
-#'
-#' @param group_dummy_names Character vector or \code{NULL}. Names of internal
-#'   group dummy columns that must not be included in the adjustment matrix,
-#'   because the flex models add group dummies separately.
-#'
-#' @param group_dummy_term Character scalar naming the conceptual group-dummy
-#'   term when \code{include_group_var = TRUE}.
-#' @param term_to_columns Named list mapping each selected conceptual adjustment
-#'   term to its raw predictor columns.
-#'
-#' @param skip_adjustment Logical scalar. If \code{TRUE}, no adjustment blocks
-#'   are transformed and an empty cache is returned.
-#'
-#' @param scale Named numeric vector or \code{NULL}. Per-variable scale factors.
-#'   The incoming \code{x} columns are on the shifted/scaled scale; multiplying
-#'   by the scale factor restores the shifted-but-not-scaled \code{x + shift}
-#'   scale before FP transformation.
-#'
-#' @param adj_fp_powers Named list. Selected FP powers for adjustment variables,
-#'   usually extracted from the adjustment model.
-#'
-#' @param center Named logical vector. Per-variable centering flags to pass to
-#'   \code{transform_matrix()}.
-#'
-#' @param acd_vars Named logical vector. Per-variable ACD flags to pass to
-#'   \code{transform_matrix()}.
-#'
-#' @param adj_zero Named logical vector. Per-variable zero-handling flags for
-#'   adjustment variables.
-#'
-#' @param adj_catzero Named logical vector or named list. Per-variable catzero
-#'   information for adjustment variables, passed through to
-#'   \code{transform_matrix()}.
-#'
-#' @param adj_spike Named logical vector. Per-variable spike-at-zero flags for
-#'   adjustment variables.
-#'
-#' @param adj_spike_decision Named integer vector. Per-variable spike-at-zero
-#'   decisions, passed through to \code{transform_matrix()}.
-#'
-#' @param adj_acd_parameter Named list or \code{NULL}. Stored ACD parameters for
-#'   ACD adjustment variables.
-#'
-#' @return
-#' A named list with two elements:
+#' @return A list containing:
 #' \describe{
-#'   \item{\code{selected_adj_vars}}{Character vector of selected conceptual
-#'     adjustment terms after excluding the group-dummy term.}
-#'   \item{\code{adj_blocks}}{Named list keyed by conceptual term. Each
-#'     element contains every transformed column for that term. For a categorical
-#'     block this is the complete set of fixed-linear contrast columns.}
+#'   \item{\code{selected_adj_vars}}{Selected adjustment term names after
+#'     excluding group dummy terms.}
+#'   \item{\code{adj_blocks}}{Named list containing the complete transformed
+#'     predictor block for each adjustment term.}
 #' }
 #'
 #' @keywords internal
@@ -2882,40 +2612,21 @@ mfpi_build_adjustment_block_cache <- function(x,
   )
 }
 
-
-#' Assemble the Current MFPI Adjustment Matrix from a Block Cache
+#' Assemble the MFPI Adjustment Matrix for One Interaction
 #'
-#' Builds the adjustment matrix for one tested continuous variable in
-#' \code{evaluate_interactions()} by combining precomputed adjustment blocks and
-#' excluding the block belonging to the current tested variable.
+#' Combines cached adjustment blocks, excluding the complete block for the
+#' term being tested.
 #'
-#' @details
-#' This helper is intentionally small. The expensive work is done once by
-#' \code{mfpi_build_adjustment_block_cache()}. Here we only choose which cached
-#' source-variable blocks to bind together.
-#'
-#' If the current \code{var_name} was selected by the adjustment model, its
-#' entire transformed block is excluded. This prevents the same continuous
-#' variable from appearing both in the interaction model and as an adjustment
-#' covariate.
-#'
-#' @param var_name Character scalar. The continuous variable currently being
-#'   tested for interaction.
-#'
+#' @param var_name Character string naming the interaction term.
 #' @param adjustment_cache List returned by
 #'   \code{mfpi_build_adjustment_block_cache()}.
+#' @param skip_adjustment Whether to return \code{xadj} unchanged instead of
+#'   assembling cached blocks.
+#' @param xadj Existing adjustment matrix or \code{NULL}, used when
+#'   \code{skip_adjustment = TRUE}.
 #'
-#' @param skip_adjustment Logical scalar. If \code{TRUE}, return the supplied
-#'   \code{xadj} unchanged.
-#'
-#' @param xadj Numeric matrix or \code{NULL}. Existing adjustment matrix to
-#'   return when adjustment is skipped. In ordinary use this is \code{NULL}, but
-#'   the argument is retained so the helper behaves like the old branch inside
-#'   \code{evaluate_interactions()}.
-#'
-#' @return
-#' A numeric matrix of transformed adjustment variables for \code{var_name}, or
-#' \code{NULL} if no adjustment variables remain.
+#' @return A numeric adjustment matrix, or \code{NULL} if no adjustment terms
+#'   remain. When \code{skip_adjustment = TRUE}, returns \code{xadj} unchanged.
 #'
 #' @keywords internal
 #' @noRd

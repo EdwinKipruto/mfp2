@@ -26,7 +26,7 @@ mfp2(x, ...)
   keep = NULL,
   xorder = c("ascending", "descending", "original"),
   powers = NULL,
-  ties = c("breslow", "efron"),
+  ties = c("efron", "breslow"),
   strata = NULL,
   nocenter = c(-1, 0, 1),
   acd_vars = NULL,
@@ -64,7 +64,7 @@ mfp2(x, ...)
   keep = NULL,
   xorder = c("ascending", "descending", "original"),
   powers = NULL,
-  ties = c("breslow", "efron"),
+  ties = c("efron", "breslow"),
   strata = NULL,
   nocenter = c(-1, 0, 1),
   ftest = FALSE,
@@ -196,7 +196,7 @@ as the list name. To allow only a linear effect, set \code{df = 1}. Powers
 supplied inside \code{fp()} or \code{fp2()} take precedence over this list.}
 
 \item{ties}{Method for handling tied event times in Cox and Fine-Gray models.
-Supported values are \code{"breslow"} (default) and \code{"efron"}. \code{"exact"} is not
+Supported values are \code{"efron"} (default) and \code{"breslow"}. \code{"exact"} is not
 supported. The argument has no effect for other families. See
 \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
@@ -765,7 +765,8 @@ severity <- factor(
 The default \code{link = "logistic"} fits a proportional-odds model. It uses
 the same fitted function for each predictor when comparing higher outcome
 categories with lower ones. The final fit is an \code{orm} object and requires
-the optional \code{rms} package. See \code{\link[=ordinal_family]{ordinal_family()}} for other links and
+the optional \code{rms} package (version 7.0-0 or later). See \code{\link[=ordinal_family]{ordinal_family()}}
+for case weights, other links, and
 how to interpret coefficient signs.
 }
 

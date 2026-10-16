@@ -23,13 +23,12 @@ test_that("17.1.9b Cox MFPI offsets and references match stored coxph", {
   dat$status <- as.integer(event_time <= censor_time)
 
   fit <- mfpi(
-    survival::Surv(time, status) ~ age + sex,
+    survival::Surv(time, status) ~ age + sex + offset(log(exposure)),
     data = dat,
     family = "cox",
     group_var = "sex",
     interaction_vars = "age",
     interaction_forms = c(age = "linear"),
-    offset = log(dat$exposure),
     flex = "flex1",
     df = 1,
     select = 1,

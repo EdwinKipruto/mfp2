@@ -333,449 +333,261 @@ build_group_fp_basis <- function(cont_mat,
   x_out
 }
 
-
 #' Predict from an MFPI Model
 #'
-#' Obtain group-specific fitted curves, differences between group curves, or
-#' predictions for individual observations from a model fitted with [mfpi()].
-#'
-#' @details
-#' MFPI fits a separate interaction model for each variable examined
-#' through `interaction_vars`. Predictions are therefore produced separately for each
-#' requested variable. Predictions for two different terms come from two
-#' different term-specific models; they are not parts of one combined model.
-#'
-#' Supply continuous predictors on their original scale. Supply binary and
-#' categorical predictors using their fitted values/levels. Stored shifts, scales,
-#' fractional-polynomial functions, centering values, zero handling, and
-#' Winsorisation limits are applied automatically.
-#' For every fitted term retaining `zero`, `catzero`, or `spike` handling,
-#' prediction values must be nonnegative: `x = 0` is the zero component and
-#' `x > 0` is the positive component. Negative values are rejected, including
-#' for binary-only SAZ terms, and must be explicitly recoded if they should
-#' represent the zero group.
-#'
-#' The default `type = NULL` is equivalent to `type = "both"`. Supplying
-#' `newdata` by itself does not change this default. To obtain one prediction per
-#' row, explicitly use `type = "link"`, `"response"`, or a supported
-#' proportional-hazards prediction type.
-#'
-#' @section Common calls:
-#' - `predict(fit, terms = "age")` returns the fitted group curves for age and
-#'   their differences.
-#' - `predict(fit, terms = "age", type = "function", grid = TRUE)` returns
-#'   group-specific fitted curves on an equally spaced grid.
-#' - `predict(fit, terms = "age", type = "difference", grid = TRUE)` returns
-#'   differences between each comparison-group curve and the reference-group
-#'   curve.
-#' - `predict(fit, terms = "age", type = "response", newdata = new_data)`
-#'   returns one response-scale prediction per row for a GLM.
-#' - `predict(fit, terms = "age", type = "risk", newdata = new_data)` returns
-#'   one relative-risk prediction per row for a Cox model.
-#'
-#' @section Selecting terms and models:
-#' Use `terms` to select interaction variables that were examined by [mfpi()].
-#' These are normally names supplied through `interaction_vars`, not adjustment-variable
-#' names.
-#'
-#' MFPI stores one term-specific interaction model for each evaluated
-#' variable. The `model` argument determines which of these models can be used:
-#'
-#' - `model = "best"` uses only variables whose interaction was retained by the
-#'   MFPI selection criterion. This is the default.
-#' - `model = "all"` uses the stored model for every evaluated interaction
-#'   variable for which a model is available, including interactions that were
-#'   not retained.
-#'
-#' `model = "all"` does not return every candidate model considered during
-#' fitting. It returns the stored term-specific model for each evaluated
-#' interaction variable.
-#'
-#' When `terms = NULL`, all terms available under the selected `model` setting
-#' are used. If no interactions were retained, `model = "best"` has no models
-#' available; use `model = "all"` to inspect the evaluated terms.
-#'
-#' @section Choosing the prediction type:
-#' Use the following types for fitted curves:
-#'
-#' - `type = "function"` returns the fitted curve for each group.
-#' - `type = "difference"` returns each comparison-group curve minus the
-#'   reference-group curve or point set at the same interaction-variable value.
-#' - `type = "both"` returns both fitted curves and their differences. This is
-#'   the default when `type = NULL`.
-#'
-#' Use the following types for predictions for individual observations:
-#'
-#' - For every supported likelihood GLM, `type = "link"` returns the linear
-#'   predictor and `type = "response"` applies the inverse link function.
-#'   `"lp"` is accepted as another name for `"link"`.
-#' - For parametric `survreg` models, `type = "link"` returns the fitted
-#'   location and `type = "response"` transforms it back to the response scale.
-#' - For Cox models, `type = "lp"` returns the relative log-hazard,
-#'   `type = "risk"` returns relative hazard, `type = "expected"` returns the
-#'   predicted cumulative hazard up to the supplied follow-up time, and
-#'   `type = "survival"` returns the estimated survival probability at that
-#'   time. `"link"` is accepted as another name for `"lp"`.
-#' - For ordinal models, `type = "link"` returns the common covariate linear
-#'   predictor without cut-point intercepts, `type = "response"` returns
-#'   category probabilities, and `type = "mean"` returns the expected category
-#'   value. Numeric category values are used when possible; otherwise the
-#'   category scores are `1, ..., K`.
-#' - For multinomial models, `type = "link"` returns the non-reference logits
-#'   and `type = "response"` returns the class probabilities.
-#'
-#' For Cox models, `type = "risk"` is not the same as a GLM response
-#' prediction.
-#'
-#' @section Fitted curves and group differences:
-#' For `type = "function"`, `"difference"`, or `"both"`, only the requested
-#' interaction variable is required in `newdata`. The grouping variable and
-#' adjustment variables are not required because the function is evaluated for
-#' every fitted group at each supplied value.
-#'
-#' A group-specific partial fitted curve comprises the model intercept (when
-#' present), group main effect, and group-specific FP function estimated from
-#' the adjusted interaction model.
-#'
-#' A fitted difference is the comparison-group curve minus the reference-group
-#' curve at the same value. It therefore includes both the group main-effect
-#' difference and any difference in the fitted interaction-variable functions.
-#'
-#' The reference group is the reference level used when [mfpi()] was fitted.
-#' For more than two groups, one difference is returned for every non-reference
-#' group. Original group labels are used in the returned tables when available.
-#'
-#' Fitted curves and differences are always reported on the model's
-#' linear-predictor scale. With the standard links, this is:
-#'
-#' - the outcome scale for a Gaussian identity-link model;
-#' - the log-odds scale for a binomial logit model;
-#' - the log-mean scale for log-link GLMs;
-#' - the common cumulative-link predictor scale for ordinal models;
-#' - a reference-category logit scale for multinomial models;
-#' - the fitted location scale for a `survreg` model;
-#' - a partial log-hazard scale for Cox models.
-#'
-#' For Cox models, these fitted curves do not include the baseline hazard and
-#' are not survival probabilities.
-#'
-#' @section Evaluation values and grids:
-#' When `grid = FALSE`, fitted curves are evaluated at the requested variable
-#' values in `newdata`, or at the values used to fit the model when
-#' `newdata = NULL`.
-#'
-#' When `grid = TRUE`, an equally spaced grid is created between the smallest
-#' and largest available values. The range is based on `newdata` when supplied
-#' and on the fitting data otherwise. `n_grid` controls the number of grid
-#' points.
-#'
-#' For a variable fitted with structural-zero handling, the grid is constructed
-#' over the positive values. A zero point is also included when structural zeros
-#' are present, so the result can contain `n_grid + 1` distinct values.
-#'
-#' If Winsorisation was used during fitting, the same limits are applied to new
-#' values before prediction. Values outside the fitted limits are replaced by
-#' the relevant limit. The returned `x` column shows the value actually used for
-#' prediction after Winsorisation.
-#'
-#' Binary and categorical interaction terms are evaluated once at each fitted
-#' level; `n_grid` is ignored for those terms. Their returned `x` values are the
-#' original level labels. Discrete terms retain their uncentered treatment
-#' coding and are not shifted, scaled, or Winsorised.
-#'
-#' `grid` is used only for fitted curves. It is ignored with a warning for
-#' predictions for individual observations.
-#'
-#' @section Predictions for individual observations:
-#' For `type = "link"`, `"response"`, `"mean"`, `"lp"`, `"risk"`,
-#' `"expected"`, or `"survival"`, one prediction row is returned for each
-#' observation. Multinomial logits/probabilities and ordinal probabilities are
-#' represented by one output column per response class.
-#'
-#' These predictions use the complete term-specific interaction model. Supply:
-#'
-#' - the interaction variable named in `terms`;
-#' - the grouping variable used in the MFPI analysis;
-#' - every adjustment variable retained in that term-specific model;
-#' - any offset, strata, or follow-up information required for the selected
-#'   prediction type.
-#'
-#' Different terms can require different prediction columns because the tested
-#' interaction variable is removed from its own adjustment set.
-#'
-#' For a model fitted with a formula, normally supply the original variables.
-#' Factors and retained formula expressions are reconstructed automatically.
-#'
-#' For a model fitted from a matrix, supply the required columns with the same
-#' names and coding used during fitting. If adjustment columns were grouped with
-#' `term_groups`, every member column of a required group must be supplied.
-#'
-#' New group levels and new factor levels are not supported. Required prediction
-#' values must not be missing and numeric values must be finite. Extra columns
-#' not used by the selected term-specific model are ignored.
-#'
-#' Stored transformations and Winsorisation limits are applied automatically.
-#' Do not create transformed or group-interaction columns yourself.
-#'
-#' When `newdata = NULL`, predictions are returned for the observations used to
-#' fit each term-specific model.
-#'
-#' @section Reproducing predictions for individual observations manually:
-#' Ordinary predictions use the complete term-specific interaction design, not
-#' only the partial fitted-function block. To reproduce an ordinary prediction,
-#' reconstruct each row with the same group dummy coding, group-specific FP
-#' columns for the requested term, selected adjustment-variable columns,
-#' transformations, centering constants, strata information, and offset used by
-#' the stored interaction model. Column names and coding must match the fitted
-#' coefficient vector exactly.
-#'
-#' For a GLM or `survreg` model, if `X_i` is the reconstructed row excluding the intercept and
-#' `o_i` is the prediction offset, the linear predictor is the usual fitted
-#' model quantity
-#'
-#' `eta_i = beta_0 + X_i %*% beta + o_i`,
-#'
-#' with the intercept omitted for a model fitted without one. `type = "link"`
-#' returns this value and `type = "response"` applies the fitted inverse-link
-#' function. MFPI delegates these predictions to the stored fitted model when
-#' possible, so manual calculations should use the same coefficient ordering and
-#' offset convention.
-#'
-#' For an ordinal model, the reconstructed design and common slope coefficients
-#' give the covariate linear predictor. Category probabilities additionally use
-#' the fitted cut-point intercepts and inverse cumulative-link function. For a
-#' multinomial model, the reconstructed design is combined with each
-#' non-reference logit's coefficient vector, and the resulting logits are
-#' normalized to obtain class probabilities.
-#'
-#' For a Cox model, let `eta_i` denote the subject's fitted linear
-#' predictor on the proportional-hazards scale. `type = "lp"` returns it relative to the
-#' reference selected by `cox_reference`, and `type = "risk"` is its
-#' exponential. Thus, using the same reference convention,
-#'
-#' `risk_i = exp(lp_i)`.
-#'
-#' `cox_reference = "zero"`, `"sample"`, and `"strata"` correspond to the
-#' same reference conventions used by `predict.coxph()`. Reproducing `lp` or
-#' `risk` numerically therefore requires using the same reference centering.
-#'
-#' Absolute Cox predictions additionally use the fitted baseline cumulative
-#' hazard in the appropriate stratum and the row's follow-up time. In the usual
-#' Cox notation,
-#'
-#' `H_i(t) = H_0,s(t) * exp(eta_i)`
-#'
-#' and
-#'
-#' `S_i(t) = exp(-H_i(t))`.
-#'
-#' Accordingly, `type = "expected"` returns the predicted cumulative hazard
-#' `H_i(t)` and `type = "survival"` returns `S_i(t)`. Exact numerical
-#' reproduction should use the baseline-hazard and centering conventions of the
-#' stored `coxph` fit; `predict.mfpi()` delegates these calculations to
-#' `predict.coxph()`.
-#'
-#' When `predict.mfpi()` reconstructs an ordinary prediction design, the
-#' returned `design` component contains the aligned numeric design columns used
-#' for prediction, excluding the model intercept. It can be compared with the
-#' coefficient names of the stored interaction model when auditing a manual
-#' calculation. The prediction metadata records whether an offset was used and,
-#' for `lp` or `risk`, which Cox reference convention was requested.
-#'
-#' @section Offsets:
-#' Offsets are used only for predictions for individual observations. They are
-#' not included in fitted curves or fitted differences.
-#'
-#' When `newdata = NULL`, the fitted offset is used unless `newoffset` is
-#' supplied to replace it. A replacement offset must contain one value for each
-#' fitting observation.
-#'
-#' When `newdata` is supplied:
-#'
-#' - If the fitted formula contains `offset(...)`, include the source variable
-#'   or variables needed by that expression in `newdata`. The offset is
-#'   evaluated automatically.
-#' - If the offset was supplied through the separate `offset` argument, supply
-#'   the offset for the new rows through `newoffset`.
-#' - A supplied `newoffset` takes precedence over a formula offset.
-#'
-#' Supply one finite `newoffset` value for each prediction row. `newoffset`
-#' cannot be used when the relevant interaction model was fitted without an
-#' offset. Prediction reuses the collision-safe internal offset name stored by
-#' each term-specific fitted model, so user predictor names are left untouched.
-#' Formula-based prediction requires the internal-name metadata written at fit
-#' time; fitted objects without that metadata must be refitted with the current
-#' package version.
-#'
-#' @section Proportional-hazards predictions:
-#' Cox predictions with `type = "lp"` and `type = "risk"` are
-#' relative quantities. They are not absolute hazards or survival probabilities.
-#'
-#' Use `cox_reference` to choose the covariate reference for these predictions:
-#'
-#' - `"zero"` uses zero on the fitted predictor scale and is the default.
-#' - `"sample"` uses the fitted-sample predictor means.
-#' - `"strata"` uses fitted-sample means within each stratum.
-#'
-#' Changing `cox_reference` changes the displayed linear predictors and risks,
-#' but comparisons made using the same reference remain unchanged.
-#'
-#' Stratified prediction likewise reuses the stored internal strata-column name;
-#' predictor columns named `strata_` or beginning with `..mfp2_` are not
-#' reserved.
-#'
-#' `cox_reference` does not change the group used by
-#' `type = "difference"`. It applies only to observation-level proportional-hazards predictions
-#' with `type = "lp"` or `type = "risk"`.
-#'
-#' Cox predictions with `type = "expected"` or `type = "survival"` also need
-#' follow-up information for every prediction row.
-#'
-#' For a model fitted with a formula, include the variables used in the fitted
-#' `Surv()` response. Alternatively, include exactly one column that is a
-#' right-censored `Surv` object. Wrap it in `I()` when constructing a data frame,
-#' for example:
-#'
-#' `data.frame(age = age, group = group, followup = I(survival::Surv(time, event)))`.
-#'
-#' Do not use `cox_reference` with `type = "expected"` or
-#' `type = "survival"`.
-#'
-#' For a stratified Cox model, each prediction row must have valid stratum
-#' information. If `strata()` was included in the fitted formula, include its
-#' original variable or variables in `newdata`; the fitted strata term is
-#' reconstructed automatically, so do not also supply the `strata` argument.
-#' If strata were supplied separately when fitting through the matrix
-#' interface, supply new stratum values through `strata`. Prediction strata are
-#' matched as categorical labels
-#' to the strata observed in the term-specific fitted Cox model; previously
-#' unseen strata are rejected. For several stratification variables, preserve
-#' the same variable order used for fitting.
-#'
-#' @section Standard errors and confidence intervals:
-#' For fitted curves and fitted differences, `se.fit = TRUE` returns pointwise
-#' standard errors and confidence intervals with confidence level `level`.
-#'
-#' For predictions for individual observations, `se.fit = TRUE` requests the
-#' standard errors supported by the underlying GLM, Cox, or `survreg`
-#' prediction method. Link-scale ordinal predictions can also return standard
-#' errors. Standard errors are not currently available for ordinal
-#' response/mean predictions; availability for multinomial predictions depends
-#' on the requested result stored by the fitted model.
-#' The `level` argument is not used for these predictions.
-#'
-#' All standard errors and confidence intervals are conditional on the selected
-#' term-specific model. They do not include uncertainty from adjustment-variable
-#' selection, function selection, interaction selection, or selection among the
-#' evaluated terms.
+#' Returns group-specific fitted curves, differences between groups, or
+#' predictions for individual observations from a model fitted by [mfpi()].
+#'
+#' MFPI fits a separate interaction model for each examined variable.
+#' Predictions for different terms therefore come from different models.
 #'
 #' @param object An object of class `"mfpi"` returned by [mfpi()].
-#'
-#' @param newdata An optional data frame or matrix containing values at which to
-#'   predict.
-#'
-#'   For fitted curves or discrete point sets, only the requested interaction
-#'   variables are required.
-#'   For predictions for individual observations, also supply the grouping
-#'   variable, retained adjustment variables, and any required offset, strata,
-#'   or Cox follow-up variables. See **Predictions for individual
-#'   observations**.
-#'
-#' @param terms An optional character vector naming interaction variables examined
-#'   by [mfpi()]. If `NULL`, all terms available under the selected `model`
-#'   setting are used.
-#'
-#' @param model A character value selecting the available term-specific models.
-#'   `"best"` uses only interactions retained by the MFPI selection criterion.
-#'   `"all"` uses the stored model for every evaluated interaction variable.
-#'   The default is `"best"`.
-#'
-#' @param type The prediction type. Use `"function"`, `"difference"`, or
-#'   `"both"` for fitted curves. For predictions for individual observations,
-#'   likelihood GLMs and `survreg` models support `"link"` and `"response"`;
-#'   Cox models support `"lp"`, `"risk"`, `"expected"`, and `"survival"`;
-#'   ordinal models support `"link"`, `"response"`, and `"mean"`; and
-#'   multinomial models support `"link"` and `"response"`. If `NULL`, `"both"`
-#'   is used.
-#'
-#' @param se.fit A single `TRUE` or `FALSE` value indicating whether standard
-#'   errors should be returned. The default is `TRUE`.
-#'
-#' @param level A number between 0 and 1 giving the confidence level for
-#'   pointwise fitted-curve and fitted-difference intervals. The default is
-#'   0.95. This argument is not used for predictions for individual
-#'   observations.
-#'
-#' @param grid A single `TRUE` or `FALSE` value. If `TRUE`, fitted curves are
-#'   evaluated on an equally spaced grid. If `FALSE`, supplied or fitted data
-#'   values are used. This argument is ignored for predictions for individual
-#'   observations.
-#'
-#' @param n_grid An integer of at least 2 giving the number of grid points when
-#'   `grid = TRUE`. The default is 200. A structural-zero point can be added in
-#'   addition to these grid points.
-#'
-#' @param strata Optional stratum information for predictions for individual
-#'   observations from a stratified Cox or `survreg` model fitted through the
-#'   matrix interface with externally supplied strata. For one stratification variable,
-#'   supply one value per prediction row as a character, factor, numeric/integer,
-#'   or logical vector. For several variables, supply a matrix or data frame
-#'   with one row per prediction row. Values are matched as categorical labels
-#'   to the strata observed during fitting; previously unseen strata are
-#'   rejected.
-#'
-#'   For a model fitted with `strata(...)` in its formula, do not use this
-#'   argument. Include the original strata variable or variables in `newdata`;
-#'   they are reconstructed automatically. This argument is not used for other
-#'   models, unstratified models, or fitted-curve predictions.
-#'
-#' @param cox_reference A character value selecting the covariate reference for
-#'   Cox observation-level predictions with `type = "lp"` or `type = "risk"`.
-#'   Use `"zero"`, `"sample"`, or `"strata"`. The default is `"zero"`.
-#'
-#' @param newoffset An optional finite numeric vector containing one offset value
-#'   per prediction row. It can be used only for predictions for individual
-#'   observations from a term-specific model fitted with an offset.
-#'
-#' @param ... Reserved for future extensions. Currently, supplied arguments are
+#' @param newdata Optional data frame or matrix containing predictor values
+#'   at which to obtain predictions. Required variables depend on `type`;
+#'   see **Supplying prediction data**.
+#' @param terms Character vector naming interaction variables to predict.
+#'   If `NULL`, uses all terms available under `model`.
+#' @param model Models to use: `"best"` for retained interactions or `"all"`
+#'   for all evaluated interactions. Default: `"best"`.
+#' @param type Prediction type. The default, `NULL`, means `"both"`.
+#'   See **Prediction types**.
+#' @param se.fit Whether to return standard errors. Default: `TRUE`.
+#'   See **Uncertainty** for availability.
+#' @param level Confidence level for fitted-curve and group-difference
+#'   intervals. Default: `0.95`.
+#' @param grid Whether to evaluate fitted curves on an equally spaced grid.
+#'   Default: `FALSE`.
+#' @param n_grid Integer of at least 2 specifying the number of grid points
+#'   when `grid = TRUE`. Default: `200`.
+#' @param strata Optional prediction strata for a survival model fitted with
+#'   separately supplied strata. See **Stratified models**.
+#' @param cox_reference Covariate reference for Cox `"lp"` and `"risk"`
+#'   predictions: `"zero"`, `"sample"`, or `"strata"`, as described for the
+#'   `reference` argument of [survival::predict.coxph()]. If `NULL`, uses `"zero"`.
+#' @param newoffset Optional replacement offsets for predictions for individual
+#'   observations. See **Offsets**.
+#' @param ... Reserved for future extensions. Supplied arguments are currently
 #'   ignored with a warning.
 #'
+#' @section Selecting interaction models:
+#' Use `terms` to specify which interaction variables to predict. These must
+#' be variables examined for interaction by [mfpi()], rather than adjustment
+#' variables.
+#'
+#' The `model` argument determines which interaction models are available:
+#' \describe{
+#'   \item{`"best"`}{Only interactions retained by the selection criterion.
+#'     This is the default.}
+#'   \item{`"all"`}{All evaluated interactions, including those not retained.
+#'     Use this setting if no interactions were retained.}
+#' }
+#'
+#' If `terms = NULL`, predictions are returned for all variables available
+#' under the chosen `model` setting.
+#'
+#' Each variable has a separate fitted interaction model with its retained
+#' adjustment terms. Predictions for different variables therefore come from
+#' different models.
+#'
+#' @section Prediction types:
+#' For fitted curves and group comparisons, use:
+#' \describe{
+#'   \item{`"function"`}{Fitted curves for every group.}
+#'   \item{`"difference"`}{Each comparison-group curve minus the reference-group
+#'     curve at the same predictor values.}
+#'   \item{`"both"`}{Both fitted curves and group differences. This is the
+#'     default, including when `newdata` is supplied.}
+#' }
+#'
+#' For predictions for individual observations, choose a type supported by
+#' the fitted family:
+#' \describe{
+#'   \item{GLMs}{`"link"` returns the linear predictor; `"response"` applies
+#'     the inverse link.}
+#'   \item{Parametric survival models}{`"link"` returns the fitted location;
+#'     `"response"` transforms it to the response scale.}
+#'   \item{Cox models}{`"lp"` returns the relative log-hazard; `"risk"` returns
+#'     its exponential; `"expected"` returns cumulative hazard up to the
+#'     supplied follow-up time; `"survival"` returns survival probability
+#'     at that time.}
+#'   \item{Ordinal models}{`"link"` returns the common covariate linear
+#'     predictor without cut-point intercepts; `"response"` returns category
+#'     probabilities; `"mean"` returns the expected category value. Numeric
+#'     category values are used when possible, otherwise scores `1, ..., K`
+#'     are used.}
+#'   \item{Multinomial models}{`"link"` returns logits relative to the reference
+#'     response category; `"response"` returns class probabilities.}
+#' }
+#'
+#' `"lp"` is accepted as an alias for `"link"` in non-Cox models, and
+#' `"link"` as an alias for `"lp"` in Cox models.
+#'
+#' @section Interpreting fitted curves and differences:
+#' A fitted curve shows the contribution of the interaction variable for each
+#' group, including the group main effect and model intercept where applicable.
+#' Curves are estimated from the adjusted model, but exclude contributions
+#' from other adjustment variables and offsets.
+#'
+#' A fitted difference is the comparison-group curve minus the reference-group
+#' curve at the same predictor value. It includes both the group main-effect
+#' difference and any difference between the fitted predictor functions.
+#' The reference group is the one used during fitting. With more than two
+#' groups, each other group is compared with this reference.
+#'
+#' Curves and differences are reported on the linear-predictor scale:
+#' \describe{
+#'   \item{Gaussian models with an identity link}{Outcome scale.}
+#'   \item{Binomial models with a logit link}{Log-odds scale.}
+#'   \item{GLMs with a log link}{Log-mean scale.}
+#'   \item{Ordinal models}{Common cumulative-link predictor scale, excluding
+#'     cut-point intercepts.}
+#'   \item{Multinomial models}{Log-odds relative to the reference response
+#'     category, with separate curves for each non-reference category.}
+#'   \item{Parametric survival models}{Fitted location scale.}
+#'   \item{Cox models}{Partial log-hazard scale, excluding the baseline hazard.
+#'     These curves are not survival probabilities.}
+#' }
+#'
+#' @section Supplying prediction data:
+#' Supply `newdata` as a data frame or matrix. The required variables depend
+#' on the prediction type:
+#' \describe{
+#'   \item{Fitted curves and differences}{
+#'     For `"function"`, `"difference"`, or `"both"`, only the requested
+#'     interaction variables are needed. Curves are evaluated for every
+#'     fitted group.
+#'   }
+#'   \item{Predictions for individual observations}{
+#'     Supply the interaction variable, grouping variable, and adjustment
+#'     variables retained in the relevant interaction model. Also include any
+#'     required offset, strata, or follow-up information; see **Offsets**,
+#'     **Stratified models**, and **Cox predictions**.
+#'     Required adjustment variables can differ between interaction models.
+#'   }
+#' }
+#'
+#' For a model fitted using a formula, supply the original variables.
+#' Factor coding and formula expressions are reconstructed automatically.
+#' For a model fitted using a matrix, use the same column names and coding
+#' as during fitting. If `term_groups` was used, supply every column of each
+#' required adjustment group.
+#'
+#' Supply continuous predictors on their original scale and binary or
+#' categorical predictors using the values or levels used during fitting.
+#' Transformations, centring, zero handling, and Winsorisation are applied
+#' automatically.
+#'
+#' Predictors fitted with `zero`, `catzero`, or `spike` handling must be
+#' nonnegative. Zero represents the zero component, and positive values
+#' represent the positive component. This requirement also applies when only
+#' the binary component of a spike-at-zero term was retained.
+#'
+#' Required values must not be missing, and numeric values must be finite.
+#' New group or factor levels are not supported.
+#'
+#' If `newdata = NULL`, predictions use the observations used for fitting.
+#'
+#' @section Evaluation values and grids:
+#' For continuous fitted curves, `grid = FALSE` uses the values in `newdata`,
+#' or the fitting data if `newdata = NULL`. With `grid = TRUE`, curves are
+#' evaluated at `n_grid` equally spaced points over the corresponding range.
+#' For predictors with structural zeros, the grid covers positive values,
+#' with zero included separately when present.
+#'
+#' Binary and categorical terms are evaluated at every fitted level;
+#' `n_grid` is ignored.
+#'
+#' Fitted Winsorisation limits also apply to prediction values. The returned
+#' `x` column shows the values used after applying these limits.
+#'
+#' `grid` does not apply to predictions for individual observations.
+#'
+#' @section Offsets:
+#' Offsets apply only to predictions for individual observations.
+#'
+#' When `newdata = NULL`, the fitted offsets are reused unless replaced by
+#' `newoffset`.
+#'
+#' For new observations, include the variables needed to evaluate any
+#' `offset(...)` expression in the fitted formula. If offsets were supplied
+#' separately through the matrix interface, supply them using `newoffset`.
+#' A supplied `newoffset` overrides a formula offset.
+#'
+#' Replacement offsets must be finite and contain one value per prediction
+#' row. For multinomial models, supply a matrix with one row per observation
+#' and either one column per response category or one per non-reference
+#' category, using the same category convention as during fitting.
+#'
+#' `newoffset` can be supplied only when the interaction model was fitted
+#' with an offset.
+#'
+#' @section Cox predictions:
+#' `"lp"` and `"risk"` are relative predictions. Their covariate reference
+#' is controlled by `cox_reference`:
+#' \describe{
+#'   \item{`"zero"`}{Zero on the fitted predictor scale; the default.}
+#'   \item{`"sample"`}{Fitted-sample predictor means.}
+#'   \item{`"strata"`}{Fitted-sample predictor means within each stratum.}
+#' }
+#'
+#' For the same reference, `risk = exp(lp)`. This reference does not change
+#' the reference group used for fitted-curve differences.
+#'
+#' `"expected"` and `"survival"` additionally require follow-up information
+#' for each prediction row. For formula-based fits, include the variables
+#' used in the fitted `Surv()` response. Alternatively, supply exactly one
+#' column containing a right-censored `Surv` object, for example
+#' `data.frame(age, group, followup = I(survival::Surv(time, event)))`.
+#'
+#' Do not supply `cox_reference` for `"expected"` or `"survival"`.
+#'
+#' @section Stratified models:
+#' If `strata(...)` was included in the fitted formula, include its original
+#' variables in `newdata`. Do not also supply the `strata` argument.
+#'
+#' If strata were supplied separately through the matrix interface, use
+#' `strata` to provide new values. For one stratification variable, supply a
+#' vector with one value per prediction row. For several variables, supply
+#' a matrix or data frame in the same variable order used for fitting.
+#'
+#' Stratum values are matched to the labels observed during fitting.
+#' Previously unseen strata are rejected. Strata are not needed for partial
+#' fitted curves or group differences.
+#'
+#' @section Uncertainty:
+#' For fitted curves and differences, `se.fit = TRUE` returns pointwise
+#' standard errors and confidence intervals at the requested `level`.
+#'
+#' For predictions for individual observations, standard errors follow the
+#' supported prediction method. They are available for multinomial logits and
+#' probabilities and for ordinal link predictions. For ordinal `"response"`
+#' or `"mean"` predictions, use `se.fit = FALSE`.
+#'
+#' `level` applies only to fitted-curve and group-difference intervals.
+#' All uncertainty estimates are conditional on the fitted model and exclude
+#' uncertainty from variable, transformation, and interaction selection.
+#'
 #' @return
-#' When one term is requested, an object of class `"mfpi_prediction"` is
-#' returned. When several terms are requested, the result is a named list of
-#' `"mfpi_prediction"` objects with class `"mfpi_prediction_list"`.
+#' For one term, a list containing the requested predictions. For several
+#' terms, a named list with one prediction result per term.
 #'
-#' Each result comes from the term-specific interaction model named by `term`.
+#' Each result identifies its interaction variable in `term` and contains
+#' the components requested by `type`:
+#' \describe{
+#'   \item{`functions`}{Data frame with `term`, `x`, `group`, and `fit`.
+#'     When requested, includes `se.fit`, `lower`, and `upper`.}
+#'   \item{`differences`}{Data frame with `term`, `x`, `contrast`, `group`,
+#'     `reference`, and `fit`. Here `fit` is the comparison-group curve minus
+#'     the reference-group curve. When requested, includes `se.fit`, `lower`,
+#'     and `upper`.}
+#'   \item{`predictions`}{Data frame with one row per observation, containing
+#'     `term`, `fit`, and, when requested and available, `se.fit`.
+#'     Results with several response categories use `fit.<class>` and
+#'     `se.fit.<class>` columns.}
+#' }
 #'
-#' For `type = "function"` or `type = "both"`, the `functions` component is a
-#' data frame containing:
-#'
-#' - `term`: the interaction-variable name;
-#' - `x`: the value used to evaluate the fitted curve;
-#' - `group`: the group label;
-#' - `fit`: the fitted curve value;
-#' - `se.fit`, `lower`, and `upper`: the pointwise standard error and confidence
-#'   limits when `se.fit = TRUE`.
-#'
-#' For `type = "difference"` or `type = "both"`, the `differences` component is
-#' a data frame containing:
-#'
-#' - `term`: the interaction-variable name;
-#' - `x`: the value used to evaluate the curves;
-#' - `contrast`: a label identifying the comparison;
-#' - `group`: the comparison group;
-#' - `reference`: the reference group;
-#' - `fit`: the comparison-group curve minus the reference-group curve;
-#' - `se.fit`, `lower`, and `upper`: the pointwise standard error and confidence
-#'   limits when `se.fit = TRUE`.
-#'
-#' For predictions for individual observations, the `predictions` component is a
-#' data frame containing `term` and `fit`, with `se.fit` added when requested and
-#' available. Matrix-valued multinomial or ordinal results instead use columns
-#' named `fit.<class>` and, when available, `se.fit.<class>`.
-#'
-#' Other components contain information used by plotting and internal
-#' prediction checks and should not be treated as a stable public interface.
+#' Multinomial `functions` and `differences` also contain a `class` column
+#' identifying the non-reference response category.
 #'
 #' @examples
 #' data("prostate")
@@ -792,178 +604,75 @@ build_group_fp_basis <- function(cont_mat,
 #'   verbose = FALSE
 #' )
 #'
-#' # Return fitted curves and differences for all evaluated terms.
-#' # This is robust when the selection criterion retains no interaction.
-#' predict(fit, model = "all")
-#'
-#' # Inspect the stored model for an evaluated term even if it was not retained.
+#' # Curves and differences, including interactions not retained by selection.
 #' curves <- predict(
-#'   fit,
-#'   terms = "cavol",
-#'   model = "all",
-#'   type = "both",
-#'   grid = TRUE
+#'   fit, terms = "cavol", model = "all", grid = TRUE
 #' )
-#'
 #' curves$functions
 #' curves$differences
 #'
-#' # Evaluate fitted curves at selected values. Only cavol is required here.
-#' selected_values <- predict(
+#' # Evaluate curves at specific values.
+#' predict(
 #'   fit,
 #'   newdata = data.frame(cavol = c(0.2, 1, 3)),
 #'   terms = "cavol",
 #'   model = "all",
-#'   type = "function",
-#'   grid = FALSE
+#'   type = "function"
 #' )
 #'
-#' selected_values$functions
-#'
-#' # Obtain one prediction per observation from the cavol interaction model.
-#' row_predictions <- predict(
+#' # One response prediction per observation.
+#' rows <- predict(
 #'   fit,
-#'   newdata = prostate[1:10, ],
+#'   newdata = prostate[1:5, ],
 #'   terms = "cavol",
 #'   model = "all",
 #'   type = "response"
 #' )
+#' rows$predictions
 #'
-#' row_predictions$predictions
-#'
-#' # Several terms return a named list. Each element uses a different
-#' # term-specific interaction model.
-#' several_curves <- predict(
-#'   fit,
-#'   terms = c("cavol", "age"),
-#'   model = "all",
-#'   type = "function",
-#'   grid = TRUE
+#' # Several terms return separate prediction objects.
+#' several <- predict(
+#'   fit, terms = c("cavol", "age"), model = "all",
+#'   type = "function", grid = TRUE
 #' )
-#'
-#' several_curves$cavol$functions
-#' several_curves$age$functions
+#' several$cavol$functions
+#' several$age$functions
 #'
 #' \donttest{
-#' # A formula offset is evaluated automatically from newdata.
-#' set.seed(1)
-#' d <- data.frame(
-#'   y = rpois(100, 2),
-#'   group = factor(sample(c("control", "treated"), 100, replace = TRUE)),
-#'   age = runif(100, 30, 75),
-#'   exposure = runif(100, 0.5, 3)
-#' )
-#'
-#' fit_offset <- mfpi(
-#'   y ~ age + group + offset(log(exposure)),
-#'   data = d,
-#'   family = "poisson",
-#'   group_var = "group",
-#'   interaction_vars = "age",
-#'   interaction_forms = c(age = "linear"),
-#'   flex = "flex1",
-#'   p_interact = 1,
-#'   verbose = FALSE
-#' )
-#'
-#' predict(
-#'   fit_offset,
-#'   newdata = d[1:5, c("age", "group", "exposure")],
-#'   terms = "age",
-#'   model = "all",
-#'   type = "response"
-#' )
-#'
-#' # Cox survival-model predictions using advanced_prostate_cancer.
 #' data("advanced_prostate_cancer")
+#' d <- advanced_prostate_cancer
+#' d$rx <- factor(d$rx, levels = c(0, 1),
+#'                labels = c("Placebo", "Treatment"))
 #'
-#' advanced_prostate_cancer$rx <- factor(
-#'   advanced_prostate_cancer$rx,
-#'   levels = c(0, 1),
-#'   labels = c("Placebo", "Treatment")
-#' )
-#'
-#' # Fit an age-by-treatment interaction model adjusted for several prognostic
-#' # variables. select = 1 keeps the adjustment variables in the Step 1 model,
-#' # so the ordinary-prediction examples below have a stable set of covariates.
 #' fit_cox <- mfpi(
 #'   survival::Surv(survtime, cens) ~
 #'     rx + fp(age) + fp(wt) + fp(hg) + stage + strata(pf),
-#'   data = advanced_prostate_cancer,
+#'   data = d,
 #'   family = "cox",
 #'   group_var = "rx",
 #'   interaction_vars = "age",
 #'   interaction_forms = c(age = "linear"),
 #'   flex = "flex1",
 #'   select = 1,
-#'   p_interact = 1,
 #'   verbose = FALSE
 #' )
 #'
-#' # Fitted-function predictions vary the selected continuous term only.
-#' # Weight, haemoglobin, and stage remain part of the adjusted interaction
-#' # model, but their contribution is held constant for these partial curves.
-#' curve_data <- data.frame(age = c(50, 60, 70))
-#'
-#' # Group-specific partial fitted functions on the linear-predictor scale.
+#' # Group differences require only the interaction variable.
 #' predict(
-#'   fit_cox, newdata = curve_data, terms = "age", model = "all",
-#'   type = "function"
+#'   fit_cox, newdata = data.frame(age = c(50, 60, 70)),
+#'   terms = "age", model = "all", type = "difference"
 #' )
 #'
-#' # Treatment-minus-reference fitted-function differences at each age.
+#' # Relative hazards require the complete predictor profile and strata.
 #' predict(
-#'   fit_cox, newdata = curve_data, terms = "age", model = "all",
-#'   type = "difference"
-#' )
-#'
-#' # Return both the fitted functions and their group differences.
-#' predict(
-#'   fit_cox, newdata = curve_data, terms = "age", model = "all",
-#'   type = "both"
-#' )
-#'
-#' # Ordinary Cox predictions are observation-level predictions. Supply the
-#' # group and all adjustment variables required by the age interaction model.
-#' relative_data <- advanced_prostate_cancer[
-#'   1:5, c("age", "rx", "wt", "hg", "stage", "pf")
-#' ]
-#'
-#' # Relative log-hazard for each covariate profile. Because strata(pf) was
-#' # included in the fitted formula, pf is supplied in newdata and its fitted
-#' # stratum labels are reconstructed automatically.
-#' predict(
-#'   fit_cox,
-#'   newdata = relative_data,
-#'   terms = "age", model = "all", type = "lp"
-#' )
-#'
-#' # Relative hazard for the same covariate profiles.
-#' predict(
-#'   fit_cox,
-#'   newdata = relative_data,
+#'   fit_cox, newdata = d[1:5, ],
 #'   terms = "age", model = "all", type = "risk",
 #'   cox_reference = "strata"
 #' )
 #'
-#' # Absolute Cox predictions additionally need follow-up information from the
-#' # Surv() response. The adjustment profile is otherwise the same.
-#' absolute_data <- advanced_prostate_cancer[
-#'   1:5,
-#'   c("survtime", "cens", "age", "rx", "wt", "hg", "stage", "pf")
-#' ]
-#'
-#' # Predicted cumulative hazard up to each row's follow-up time.
+#' # Survival probabilities also use the follow-up variables in newdata.
 #' predict(
-#'   fit_cox,
-#'   newdata = absolute_data,
-#'   terms = "age", model = "all", type = "expected"
-#' )
-#'
-#' # Estimated survival probability at each row's follow-up time.
-#' predict(
-#'   fit_cox,
-#'   newdata = absolute_data,
+#'   fit_cox, newdata = d[1:5, ],
 #'   terms = "age", model = "all", type = "survival"
 #' )
 #' }

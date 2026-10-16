@@ -3,7 +3,7 @@
 # (integer-coded response) for speed, and the retained model is a native orm
 # object so coef/vcov/logLik/AIC/predict work.
 
-skip_if_no_rms <- function() skip_if_not_installed("rms")
+skip_if_no_rms <- function() skip_if_not_installed("rms", minimum_version = "7.0-0")
 
 make_ordinal_data <- function(n = 500, seed = 21) {
   set.seed(seed)
@@ -158,23 +158,12 @@ test_that("response contract matches rms with a guard message for unordered inpu
   expect_true(any(grepl("order inferred", msg)))
 })
 
-test_that("two-level response and case weights are rejected", {
+test_that("two-level ordinal responses are rejected", {
   skip_on_cran(); skip_if_no_rms()
   set.seed(5); n <- 300; age <- runif(n, 20, 80)
   expect_error(
     mfp2(y ~ fp(age, df = 1), data = data.frame(y = ordered(rbinom(n, 1, .5)), age = age),
          family = ordinal_family(), verbose = FALSE)
-  )
-  dm <- make_ordinal_data()
-  expect_error(
-    mfp2(y ~ fp(age, df = 1, select = 1), data = dm, family = ordinal_family(),
-         weights = runif(nrow(dm), 1, 2), verbose = FALSE),
-    "does not support case weights"
-  )
-  expect_error(
-    mfp2(y ~ fp(age, df = 1, select = 1), data = dm, family = ordinal_family(),
-         weights = rep(2, nrow(dm)), verbose = FALSE),
-    "does not support case weights"
   )
 })
 
@@ -191,11 +180,14 @@ test_that("ordinal preparation drops unused response levels", {
   expect_false(prepared$has_offset)
   expect_null(prepared$offset)
 
-  expect_error(
-    mfp2:::prepare_ordinal_family(
-      ordinal_family(), y, weights = rep(2, length(y))
-    ),
-    "does not support case weights"
+  weighted <- mfp2:::prepare_ordinal_family(
+    ordinal_family(), y, weights = rep(2, length(y))
+  )$prepared
+  expect_equal(weighted$weights, rep(2, length(y)))
+  expect_identical(weighted$y, prepared$y)
+  expect_equal(
+    mfp2:::prepare_ordinal_family(ordinal_family(), y, weights = NULL)$prepared$weights,
+    rep(1, length(y))
   )
 })
 

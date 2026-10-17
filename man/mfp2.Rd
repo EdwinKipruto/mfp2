@@ -20,7 +20,7 @@ mfp2(x, ...)
   center = TRUE,
   subset = NULL,
   family = "gaussian",
-  criterion = c("pvalue", "aic", "bic"),
+  criterion = NULL,
   select = 0.05,
   alpha = 0.05,
   keep = NULL,
@@ -58,7 +58,7 @@ mfp2(x, ...)
   center = TRUE,
   subset = NULL,
   family = "gaussian",
-  criterion = c("pvalue", "aic", "bic"),
+  criterion = NULL,
   select = 0.05,
   alpha = 0.05,
   keep = NULL,
@@ -144,8 +144,11 @@ models; \code{\link[=finegray_family]{finegray_family()}} for Fine--Gray models;
 for generalized estimating equations. GEE supports Gaussian,
 binomial, Poisson, and Gamma response families.}
 
-\item{criterion}{Model-selection criterion: \code{"pvalue"} (default),
-\code{"aic"}, or \code{"bic"}. With \code{"pvalue"}, \code{select} controls predictor
+\item{criterion}{Model-selection criterion: \code{"pvalue"}, \code{"aic"}, or
+\code{"bic"}. If \code{NULL} (default), \code{"aic"} is used for GEE models
+(\code{\link[=gee_family]{gee_family()}}) and \code{"pvalue"} for all other families. Supply
+\code{criterion = "pvalue"} explicitly to use robust Wald p-value selection for
+GEE models. With \code{"pvalue"}, \code{select} controls predictor
 inclusion and \code{alpha} controls FP functional form and spike-at-zero component
 comparisons. With \code{"aic"} or \code{"bic"}, the model with the lowest score is
 selected. For GEE models, \code{"aic"} and \code{"bic"} use quasi likelihood
@@ -525,6 +528,9 @@ The optional \code{waves} argument specifies visit order within clusters.
 standard-error method, and scale settings. The final model is returned
 as a \code{geeglm} object.
 
+The default selection criterion for GEE models is \code{criterion = "aic"};
+all other families default to \code{criterion = "pvalue"}.
+
 With \code{criterion = "pvalue"}, selection uses approximate comparisons of
 overall robust Wald statistics, following Stata's \code{mfp: xtgee}
 calculation. During verbose fitting, the selection tables display
@@ -551,11 +557,6 @@ information-criterion comparisons. \eqn{p} counts
 mean-model coefficients, including the intercept, plus an allowance for
 selecting FP powers. The first is an MFP-adjusted QICu score; the second
 is a package-specific BIC-like score.
-
-For AIC or BIC selection, \code{\link[=print.mfp2]{print.mfp2()}} and \code{\link[=summary.mfp2]{summary.mfp2()}} show the
-full-linear and selected-MFP scores under \verb{Selection Scores}. Smaller
-scores are preferred. For GEE p-value selection, they omit the \verb{Model Fit}
-block; Wald comparisons appear during verbose fitting.
 }
 
 \section{Shifting, scaling, and centering}{

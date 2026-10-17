@@ -20,6 +20,9 @@
 #'   `0.05`, gives 95 percent intervals. See **Confidence intervals**.
 #' @param show_titles Whether to show titles describing the fitted
 #'   transformation or variable representation. Defaults to `TRUE`.
+#' @param show_grid Whether to show the major and minor panel grid lines of
+#'   [ggplot2::theme_bw()]. Defaults to `FALSE`, which draws plots without
+#'   grid lines.
 #' @param color_points Colour of component-plus-residual points, for example,
 #'   `"grey60"` or `"#AAAAAA"`. All colour arguments accept ggplot2 colour
 #'   names or hexadecimal codes. See [ggplot2::aes_colour_fill_alpha].
@@ -642,6 +645,7 @@ plot.mfp2 <- function(x,
                       terms_seq = c("data", "equidistant"),
                       alpha = 0.05,
                       show_titles = TRUE,
+                      show_grid = FALSE,
                       color_points = "#AAAAAA",
                       color_line = "black",
                       color_line_spike = "black",
@@ -686,6 +690,7 @@ plot.mfp2 <- function(x,
     terms_seq = terms_seq,
     alpha = alpha,
     show_titles = show_titles,
+    show_grid = show_grid,
     color_points = color_points,
     color_line = color_line,
     color_line_spike = color_line_spike,
@@ -1134,6 +1139,7 @@ plot_mfp2_impl <- function(model,
                            terms_seq = c("data", "equidistant"),
                            alpha = 0.05,
                            show_titles = TRUE,
+                           show_grid = FALSE,
                            color_points = "#AAAAAA",
                            color_line = "red",
                            color_line_spike = "red",
@@ -1163,6 +1169,9 @@ plot_mfp2_impl <- function(model,
 
   if (!is.logical(show_titles) || length(show_titles) != 1L || is.na(show_titles)) {
     stop("show_titles must be a single non-missing logical value.", call. = FALSE)
+  }
+  if (!is.logical(show_grid) || length(show_grid) != 1L || is.na(show_grid)) {
+    stop("show_grid must be a single non-missing logical value.", call. = FALSE)
   }
 
   # set defaults depending on type
@@ -1197,6 +1206,7 @@ plot_mfp2_impl <- function(model,
       terms_seq = terms_seq,
       alpha = alpha,
       show_titles = show_titles,
+      show_grid = show_grid,
       color_points = color_points,
       color_line = color_line,
       color_line_spike = color_line_spike,
@@ -1381,8 +1391,10 @@ plot_mfp2_impl <- function(model,
 
     p <- ggplot2::ggplot(data = df, ggplot2::aes(x = .data$variable, y = .data$value)) +
       ggplot2::xlab(v) + ggplot2::ylab(ylab) +
-      ggplot2::theme_bw() +
-      ggplot2::theme(panel.grid = ggplot2::element_blank())
+      ggplot2::theme_bw()
+    if (!show_grid) {
+      p <- p + ggplot2::theme(panel.grid = ggplot2::element_blank())
+    }
 
     if (show_titles) {
       p <- p + ggplot2::ggtitle(plot_title)
@@ -1508,7 +1520,7 @@ plot_mfp2_impl <- function(model,
 #' ordinal cutoff. Each ordinal facet includes its fitted cutoff intercept,
 #' the corresponding term coefficient covariance, and the matching residual.
 #'
-#' @param model,terms,partial_only,type,ref,terms_seq,alpha,show_titles Plot
+#' @param model,terms,partial_only,type,ref,terms_seq,alpha,show_titles,show_grid Plot
 #'   inputs forwarded from [plot.mfp2()] with the same meaning.
 #' @param ordinal Logical; facet by ordinal cutoff instead of multinomial logit.
 #' @param color_points,color_line,color_line_spike,color_fill,shape,size_points,size_points_spike,linetype,linewidth,alpha_fill
@@ -1526,6 +1538,7 @@ mfp2_plot_multinomial_impl <- function(model,
                                        terms_seq,
                                        alpha,
                                        show_titles,
+                                       show_grid,
                                        color_points,
                                        color_line,
                                        color_line_spike,
@@ -1682,11 +1695,13 @@ mfp2_plot_multinomial_impl <- function(model,
     p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$variable, y = .data$value)) +
       ggplot2::xlab(v) + ggplot2::ylab(ylab) +
       ggplot2::theme_bw() +
-      ggplot2::theme(panel.grid = ggplot2::element_blank()) +
       ggplot2::facet_wrap(
         ggplot2::vars(.data$logit), nrow = 1L,
         labeller = ggplot2::as_labeller(facet_labels)
       )
+    if (!show_grid) {
+      p <- p + ggplot2::theme(panel.grid = ggplot2::element_blank())
+    }
     if (show_titles) {
       p <- p + ggplot2::ggtitle(plot_title)
     }
@@ -1835,6 +1850,7 @@ fracplot <- function(model,
                      terms_seq = c("data", "equidistant"),
                      alpha = 0.05,
                      show_titles = TRUE,
+                     show_grid = FALSE,
                      color_points = "#AAAAAA",
                      color_line = "red",
                      color_line_spike = "red",
@@ -1866,6 +1882,7 @@ fracplot <- function(model,
     ref = ref,
     alpha = alpha,
     show_titles = show_titles,
+    show_grid = show_grid,
     color_points = color_points,
     color_line = color_line,
     color_line_spike = color_line_spike,

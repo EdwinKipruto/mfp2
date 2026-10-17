@@ -13,6 +13,7 @@ fracplot(
   terms_seq = c("data", "equidistant"),
   alpha = 0.05,
   show_titles = TRUE,
+  show_grid = FALSE,
   color_points = "#AAAAAA",
   color_line = "red",
   color_line_spike = "red",
@@ -49,6 +50,10 @@ See \strong{Evaluation values} for their meaning and defaults.}
 
 \item{show_titles}{Whether to show titles describing the fitted
 transformation or variable representation. Defaults to \code{TRUE}.}
+
+\item{show_grid}{Whether to show the major and minor panel grid lines of
+\code{\link[ggplot2:theme_bw]{ggplot2::theme_bw()}}. Defaults to \code{FALSE}, which draws plots without
+grid lines.}
 
 \item{color_points}{Colour of component-plus-residual points, for example,
 \code{"grey60"} or \code{"#AAAAAA"}. All colour arguments accept ggplot2 colour

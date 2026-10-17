@@ -68,14 +68,14 @@ for (fam_name in names(gee5_families)) {
       if (identical(corstr, "ar1")) {
         m2 <- mfp2(gee5_fp_formula, data = d,
                    family = gee_family(gfam, corstr = corstr),
-                   id = id, waves = wave, xorder = "original", verbose = FALSE)
+                   id = id, waves = wave, xorder = "original", verbose = FALSE, criterion = "pvalue")
         gg <- geepack::geeglm(y ~ x1 + x2 + x3 + x4 + x5, data = d,
                               family = gfam, id = id, waves = wave,
                               corstr = corstr)
       } else {
         m2 <- mfp2(gee5_fp_formula, data = d,
                    family = gee_family(gfam, corstr = corstr),
-                   id = id, xorder = "original", verbose = FALSE)
+                   id = id, xorder = "original", verbose = FALSE, criterion = "pvalue")
         gg <- geepack::geeglm(y ~ x1 + x2 + x3 + x4 + x5, data = d,
                               family = gfam, id = id, corstr = corstr)
       }

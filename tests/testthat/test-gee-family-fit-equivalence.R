@@ -23,7 +23,7 @@ fit_both <- function(dat, gfam, corstr, waves_col = NULL) {
   m2 <- mfp2(y ~ x1 + x2, data = dat,
              family = gee_family(gfam, corstr = corstr),
              id = dat$id, waves = waves_vec,
-             df = 1, select = 1, center = FALSE, verbose = FALSE)
+             df = 1, select = 1, center = FALSE, verbose = FALSE, criterion = "pvalue")
   if (is.null(waves_col)) {
     gg <- geepack::geeglm(y ~ x1 + x2, data = dat, family = gfam,
                           id = id, corstr = corstr)
@@ -77,7 +77,8 @@ test_that("retained AR1 GEE preserves gaps in factor-valued waves", {
     df = 1,
     select = 1,
     center = FALSE,
-    verbose = FALSE
+    verbose = FALSE,
+    criterion = "pvalue"
   )
 
   X <- stats::model.matrix(~ x1 + x2, dat)
@@ -130,7 +131,7 @@ test_that("Offset is handled equivalently", {
   dat$y <- stats::rpois(nrow(dat), exp(0.2 + 0.3 * dat$x1 + off))
   dat$off <- off
   m2 <- mfp2(y ~ x1 + x2, data = dat, family = gee_family(poisson(), corstr = "exchangeable"),
-             id = dat$id, offset = dat$off, df = 1, select = 1, center = FALSE, verbose = FALSE)
+             id = dat$id, offset = dat$off, df = 1, select = 1, center = FALSE, verbose = FALSE, criterion = "pvalue")
   gg <- geepack::geeglm(y ~ x1 + x2 + offset(off), data = dat, family = poisson(),
                         id = id, corstr = "exchangeable")
   expect_equal(unname(coef(m2)), unname(coef(gg)), tolerance = TOL_MED)
@@ -145,7 +146,7 @@ test_that("Reported QICu equals geepack::QIC() for the retained model", {
   m2 <- mfp2(y ~ x1 + x2, data = dat,
              family = gee_family(poisson(), corstr = "exchangeable"),
              id = dat$id, df = 1, select = 1, center = FALSE,
-             reference_dispersion = 1, verbose = FALSE)
+             reference_dispersion = 1, verbose = FALSE, criterion = "pvalue")
 
   # Build the reference geeglm here in the test frame with a literal family and
   # `data = dat`. geepack::QIC() refits an independence model by re-evaluating

@@ -94,6 +94,39 @@ resolve_mfp_ties <- function(ties = c("efron", "breslow")) {
   match.arg(ties)
 }
 
+#' Resolve the model-selection criterion
+#'
+#' `mfp2()` uses a family-dependent default criterion: AIC (an MFP-adjusted
+#' QICu score) for GEE models and p-value selection for every other family.
+#' An explicitly supplied criterion is validated and returned unchanged.
+#'
+#' @param criterion `NULL` (use the family default) or a character string
+#'   matching one of `"pvalue"`, `"aic"`, or `"bic"`.
+#' @param family_string Canonical family name, or `NULL` when only validating
+#'   an explicitly supplied criterion.
+#'
+#' @return One of `"pvalue"`, `"aic"`, or `"bic"`.
+#'
+#' @keywords internal
+#' @noRd
+resolve_mfp_criterion <- function(criterion = NULL, family_string = NULL) {
+  choices <- c("pvalue", "aic", "bic")
+  if (is.null(criterion)) {
+    if (is.null(family_string)) {
+      stop("`family_string` is required to resolve the default criterion.",
+           call. = FALSE)
+    }
+    return(if (identical(family_string, "gee")) "aic" else "pvalue")
+  }
+  if (!is.character(criterion) || anyNA(criterion)) {
+    stop(
+      "! `criterion` must be NULL or one of \"pvalue\", \"aic\", or \"bic\".",
+      call. = FALSE
+    )
+  }
+  match.arg(criterion, choices)
+}
+
 #' Validate Observation Weights
 #'
 #' Applies the common observation-weight contract used by the public MFP and

@@ -109,6 +109,9 @@
 #' standard-error method, and scale settings. The final model is returned
 #' as a `geeglm` object.
 #'
+#' The default selection criterion for GEE models is `criterion = "aic"`;
+#' all other families default to `criterion = "pvalue"`.
+#'
 #' With `criterion = "pvalue"`, selection uses approximate comparisons of
 #' overall robust Wald statistics, following Stata's `mfp: xtgee`
 #' calculation. During verbose fitting, the selection tables display
@@ -135,11 +138,6 @@
 #' mean-model coefficients, including the intercept, plus an allowance for
 #' selecting FP powers. The first is an MFP-adjusted QICu score; the second
 #' is a package-specific BIC-like score.
-#'
-#' For AIC or BIC selection, [print.mfp2()] and [summary.mfp2()] show the
-#' full-linear and selected-MFP scores under `Selection Scores`. Smaller
-#' scores are preferred. For GEE p-value selection, they omit the `Model Fit`
-#' block; Wald comparisons appear during verbose fitting.
 #'
 #' @section Shifting, scaling, and centering:
 #' FP functions involving logarithms or non-integer or negative powers need
@@ -431,8 +429,11 @@
 #' always use `fastglm` and require it to be installed. Survival,
 #' multinomial, ordinal, and GEE models use their own fitters and ignore
 #' this setting.
-#' @param criterion Model-selection criterion: `"pvalue"` (default),
-#' `"aic"`, or `"bic"`. With `"pvalue"`, `select` controls predictor
+#' @param criterion Model-selection criterion: `"pvalue"`, `"aic"`, or
+#' `"bic"`. If `NULL` (default), `"aic"` is used for GEE models
+#' ([gee_family()]) and `"pvalue"` for all other families. Supply
+#' `criterion = "pvalue"` explicitly to use robust Wald p-value selection for
+#' GEE models. With `"pvalue"`, `select` controls predictor
 #' inclusion and `alpha` controls FP functional form and spike-at-zero component
 #' comparisons. With `"aic"` or `"bic"`, the model with the lowest score is
 #' selected. For GEE models, `"aic"` and `"bic"` use quasi likelihood
@@ -1809,7 +1810,7 @@ mfp2.default <- function(x,
                          center = TRUE,
                          subset = NULL,
                          family = "gaussian",
-                         criterion = c("pvalue", "aic", "bic"),
+                         criterion = NULL,
                          select = 0.05,
                          alpha = 0.05,
                          keep = NULL,
@@ -1884,7 +1885,6 @@ mfp2.default <- function(x,
   force_max_fp <- force_max_fp_vars
 
   # Step 2: Resolve multiple-choice arguments to their single selected value ----
-  criterion <- match.arg(criterion)
   xorder    <- match.arg(xorder)
   ties      <- resolve_mfp_ties(ties)
   fitter <- match.arg(fitter)
@@ -1898,6 +1898,10 @@ mfp2.default <- function(x,
   family        <- family_info$family
   family_string <- family_info$family_string
   fitter <- resolve_fitter(fitter, family_string)
+
+  # The default criterion depends on the family: AIC (QICu) for GEE models and
+  # p-value selection otherwise. An explicitly supplied criterion always wins.
+  criterion <- resolve_mfp_criterion(criterion, family_string)
 
   # `x` must be a plain numeric matrix: mfp2.default() does not expand factors,
   # so any categorical predictors must already be coded as dummy columns.
@@ -2973,7 +2977,7 @@ mfp2.formula <- function(formula,
                          center = TRUE,
                          subset = NULL,
                          family = "gaussian",
-                         criterion = c("pvalue", "aic", "bic"),
+                         criterion = NULL,
                          select = 0.05,
                          alpha = 0.05,
                          keep = NULL,
@@ -3028,7 +3032,9 @@ mfp2.formula <- function(formula,
   id_expr <- substitute(id)
   waves_expr <- substitute(waves)
 
-  criterion <- match.arg(criterion)
+  if (!is.null(criterion)) {
+    criterion <- resolve_mfp_criterion(criterion, family_string = NULL)
+  }
   xorder <- match.arg(xorder)
   ties <- resolve_mfp_ties(ties)
   fitter <- match.arg(fitter)

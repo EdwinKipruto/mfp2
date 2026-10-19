@@ -1481,14 +1481,8 @@ mfpi_build_function_basis <- function(object, term, fit_result,
     centers <- NULL
   }
 
-  # Structural zeros must be restored after centering; otherwise zero rows would
-  # incorrectly receive minus the centering constant as their FP contribution.
-  zero_rows <- if (isTRUE(zero_var)) {
-    as.vector(cont_plus) == 0
-  } else {
-    rep(FALSE, nrow(cont_plus))
-  }
-  if (isTRUE(zero_var) && any(zero_rows)) transformed[zero_rows, ] <- 0
+  # Structural zeros are 0 in the basis before centring and are centred like
+  # every other row (the fit-time convention), so they are not reset here.
 
   if (anyNA(transformed) || any(!is.finite(transformed))) {
     stop(paste0("Non-finite values remain in the basis for term `", term, "`."),

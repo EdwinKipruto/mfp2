@@ -102,8 +102,10 @@ When predicting for new data, supply the matching offset.}
 \code{NULL} chooses scales automatically; \code{1} turns off automatic scaling.
 In \code{mfp2.default()}, use a named value such as \code{c(age = 10)} to set
 one column's scale. In formulas, set it inside \code{fp()} or \code{fp2()}.
-Binary and ACD predictors always use scale \code{1}. See \strong{Shifting,
-scaling, and centering}.}
+Binary and ACD predictors always use scale \code{1}. Predictors with exact-zero
+handling (\code{zero}, \code{catzero}, or \code{spike}) use an automatic scale of \code{1}; an
+explicitly supplied scale is still used. See \strong{Shifting, scaling, and
+centering}.}
 
 \item{shift}{Value added to predictors before FP transformation.
 \code{NULL} chooses shifts automatically; \code{0} turns off automatic shifting.
@@ -557,6 +559,11 @@ information-criterion comparisons. \eqn{p} counts
 mean-model coefficients, including the intercept, plus an allowance for
 selecting FP powers. The first is an MFP-adjusted QICu score; the second
 is a package-specific BIC-like score.
+
+For AIC or BIC selection, \code{\link[=print.mfp2]{print.mfp2()}} and \code{\link[=summary.mfp2]{summary.mfp2()}} show the
+full-linear and selected-MFP scores under \verb{Selection Scores}. Smaller
+scores are preferred. For GEE p-value selection, they omit the \verb{Model Fit}
+block; Wald comparisons appear during verbose fitting.
 }
 
 \section{Shifting, scaling, and centering}{
@@ -567,6 +574,15 @@ a power-of-ten scale for ordinary FP predictors to keep values numerically
 manageable during selection. ACD predictors may be shifted but are not
 scaled. Use \code{shift = 0} or \code{scale = 1} to turn off the corresponding
 automatic step for ordinary FP predictors.
+
+Predictors with exact-zero handling (\code{zero}, \code{catzero}, or \code{spike}) that
+contain exact zeros are not scaled automatically (their automatic scale is
+\code{1}). Their zeros stay at zero while only the positive values are
+transformed, so dividing by a scale factor would add a constant to
+logarithmic terms on the positive values only. That would make the
+selected powers depend on the arbitrary scale factor. Without scaling, FP
+selection compares the same models that are finally fitted. A scale you
+supply explicitly is still used.
 
 In \code{mfp2.default()}, a single unnamed value applies to all predictors.
 A named value applies only to the specified column: for example,

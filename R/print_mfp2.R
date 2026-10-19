@@ -1,3 +1,23 @@
+#' Group Design Columns for Coefficient Printing
+#'
+#' Keeps each predictor's basis terms together in original term order without
+#' changing the fitted model or the order within a predictor's basis block.
+#'
+#' @param object A fitted `mfp2` object.
+#' @return A print-only, reordered design-column metadata data frame.
+#' @keywords internal
+#' @noRd
+mfp2_print_design_info <- function(object) {
+  info <- mfp2_design_column_info(object)
+  variable_order <- unique(c(
+    names(object$term_to_columns),
+    rownames(object$fp_terms),
+    info$variable
+  ))
+  info[order(match(info$variable, variable_order), seq_len(nrow(info))),
+       , drop = FALSE]
+}
+
 
 #' Print the Coefficient Block for a Multinomial `mfp2` Model
 #'
@@ -39,7 +59,7 @@ mfp2_print_multinomial_coefficients <- function(object, digits = 3L) {
   }
 
   reference <- object$reference_class
-  design_info <- mfp2_design_column_info(object)
+  design_info <- mfp2_print_design_info(object)
   model_rows <- match(design_info$model_column, colnames(coefficients))
   if (anyNA(model_rows)) {
     stop("Final multinomial design metadata is not aligned with coefficients.",
@@ -73,6 +93,13 @@ mfp2_print_multinomial_coefficients <- function(object, digits = 3L) {
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
+    if (nrow(block) > 1L) {
+      repeated_variable <- c(
+        FALSE,
+        block$Variable[-1L] == block$Variable[-nrow(block)]
+      )
+      block$Variable[repeated_variable] <- ""
+    }
     if (show_center) {
       block$Center <- c(
         if (!is.na(intercept_position)) NA_real_,
@@ -955,7 +982,7 @@ mfp2_print_coefficients <- function(x, digits, intercepts, ctx) {
       coefficients <- stats::coef(x)
 
       if (length(coefficients) > 0L) {
-        design_info <- mfp2_design_column_info(x)
+        design_info <- mfp2_print_design_info(x)
         coefficient_names <- names(coefficients)
 
         if (is.null(coefficient_names)) {

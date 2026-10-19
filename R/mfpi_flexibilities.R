@@ -607,22 +607,19 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
 #' to each power combination.
 #'
 #' For every candidate, `fill_mfpi_fp_candidate_cpp()` scatters only the selected
-#' basis columns into the active group block of one reusable design matrix. The
-#' same helper also applies grand-mean or within-group centering and preserves
-#' structural-zero rows. This avoids retaining all candidate interaction
-#' matrices and avoids repeated `cbind()` allocation in the model-selection loop.
+#' basis columns into the active group block of one reusable design matrix and
+#' preserves structural-zero rows. This avoids retaining all candidate
+#' interaction matrices and avoids repeated `cbind()` allocation in the
+#' model-selection loop.
 #'
-#' After the candidate with the smallest deviance is identified, the reusable
-#' interaction block is filled once more for the winning candidate. For ordinary
-#' continuous covariates, the pooled main-effect FP columns are taken directly
-#' from the same compact basis. Binary covariates use `transform_vector_fp()` for
-#' the pooled main effect because the compact candidate map deliberately collapses
-#' the interaction-side binary basis to a single passthrough column.
-#'
-#' Structural-zero rows are excluded from centering means and remain exact zeros
-#' in the final group-specific design. Grand centering uses one mean per FP term
-#' across all valid rows; group centering uses a separate mean for each group and
-#' FP term.
+#' As in `flex1`, `flex4`, and `mfp2()`, powers are selected on the scaled
+#' covariate with uncentred candidate columns. Scaling and centring only
+#' reparameterise each candidate model, so they do not change its deviance.
+#' After the candidate with the smallest deviance is identified, the final
+#' main-effects and interaction designs are built once from the selected powers
+#' by `create_z_variables()`, the same builder used by `flex1`: FP terms are
+#' evaluated on the `x + shift` scale, structural zeros have basis value 0, and
+#' the requested grand or within-group centring is applied to all rows.
 #'
 #' @inheritParams flex_fit
 #' @return See \code{flex_fit()} for the return structure.
@@ -648,33 +645,28 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # Store each distinct FP basis term once together with a small integer map
   # from candidate power combinations to basis columns. Each candidate is then
   # scattered into one reusable group-specific fitting matrix.
-  # `contvar_vec` has already been shifted and divided by `scale_var` by the
-  # upstream MFPI preprocessing. The compact FP basis must be evaluated on the
-  # required x + shift scale used by both MFPI model designs.
-  # Multiplication is therefore a restoration step, not an additional rescaling.
-  contvar_main <- contvar_vec
-
-  if (!is.null(scale_var) && length(scale_var) == 1L &&
-      is.finite(scale_var) && scale_var != 1) {
-    contvar_main <- contvar_main * scale_var
-  }
+  # Powers are selected on the scaled covariate, exactly as in flex1, flex4,
+  # and mfp2(): `contvar_vec` has already been shifted and divided by
+  # `scale_var` upstream. Scaling multiplies each FP term by a constant (and
+  # adds a constant to log terms), so it keeps the search numerically moderate.
+  # The final designs are rebuilt on the x + shift scale in Step 3.
+  contvar_search_vec <- as.numeric(contvar_vec)
 
   # Convert the one-column matrices to simple vectors before crossing the R/C++
   # boundary. `group_idx` is deliberately converted to a dense 1..G integer
   # index because the C++ scatter kernel uses it for direct block addressing.
-  contvar_main_vec <- as.numeric(contvar_main)
   group_vec        <- as.vector(groupvar_vec)
   group_levels     <- sort(unique(group_vec))
   group_idx        <- match(group_vec, group_levels)
   group_idx_int    <- as.integer(group_idx)
   n_groups         <- length(group_levels)
   n_groups_int     <- as.integer(n_groups)
-  n                 <- length(contvar_main_vec)
+  n                 <- length(contvar_search_vec)
 
   # Structural-zero semantics: when `zero_var` is active, x == 0 does not
-  # participate in the positive-part FP transform or in centering. Those rows
-  # are later written back as exact zeros in every group-specific FP block.
-  zero_rows  <- if (isTRUE(zero_var)) contvar_main_vec == 0 else rep(FALSE, n)
+  # participate in the positive-part FP transform. Scaling does not move zero,
+  # so the same rows are structural zeros on both scales.
+  zero_rows  <- if (isTRUE(zero_var)) contvar_search_vec == 0 else rep(FALSE, n)
   valid_rows <- !zero_rows
 
   if (!any(valid_rows)) {
@@ -698,7 +690,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   #                  needed for candidate i. B is typically much smaller than
   #                  C * d because candidates reuse the same powers.
   compact <- generate_transformations_fp_basis_cpp(
-    x      = contvar_main_vec,
+    x      = contvar_search_vec,
     powers = powers_matrix,
     zero   = isTRUE(zero_var)
   )
@@ -721,9 +713,8 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   }
 
   # Column order is group-major: all FP terms for group 1, then all terms for
-  # group 2, and so on. The C++ helper and `coefficient_groups` use this exact
-  # layout, so keep the naming logic synchronized with `focal_width`.
-  z_names <- paste0(
+  # group 2, and so on. The C++ helper uses this exact layout.
+  search_names <- paste0(
     xname,
     rep(as.character(group_levels), each = n_terms),
     rep(seq_len(n_terms), times = n_groups)
@@ -732,14 +723,6 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # `znames` denotes the conceptual group-specific continuous variables and is
   # therefore one name per group, irrespective of the FP degree.
   znames <- paste0(xname, as.character(group_levels), "1")
-
-  coefficient_groups <- stats::setNames(
-    lapply(seq_len(n_groups), function(g) {
-      cols_g <- seq.int((g - 1L) * n_terms + 1L, g * n_terms)
-      z_names[cols_g]
-    }),
-    as.character(group_levels)
-  )
 
   # Step 2: Select powers with one reusable search design ----------------------
   fixed_x <- cbind(group_dummies, xadj)
@@ -753,7 +736,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     matrix(0, nrow = n, ncol = focal_width),
     fixed_x
   )
-  colnames(search_x) <- c(z_names, colnames(fixed_x))
+  colnames(search_x) <- c(search_names, colnames(fixed_x))
 
   deviance_vec <- numeric(n_candidates)
   multinomial_optimizer <- if (identical(family_string, "multinomial")) {
@@ -770,6 +753,9 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     # The kernel mutates/rebuilds only the active group-specific focal columns.
     # It returns `target` explicitly because Rcpp's copy-on-write boundary should
     # not be relied on as an undocumented in-place side effect at the R level.
+    # Candidates are not centred: centring only reparameterises the intercept
+    # and group dummies, so it cannot change a candidate's deviance. As in the
+    # other flex levels, centring is applied once to the selected design.
     candidate <- fill_mfpi_fp_candidate_cpp(
       target           = search_x,
       basis            = basis,
@@ -777,8 +763,8 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       group_idx        = group_idx_int,
       n_groups         = n_groups_int,
       target_start_col = 1L,
-      center           = isTRUE(center),
-      group_center     = isTRUE(center) && center_type == "group",
+      center           = FALSE,
+      group_center     = FALSE,
       valid_rows       = valid_rows
     )
     search_x <- candidate$target
@@ -809,39 +795,28 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   best_idx <- which.min(deviance_vec)
   bestfp   <- as.numeric(powers_matrix[best_idx, ])
 
-  # Refill the reusable focal block for the selected candidate only. This gives
-  # us the final interaction design and its centering constants without retaining
-  # all candidate matrices or all candidate center vectors.
-  selected <- fill_mfpi_fp_candidate_cpp(
-    target           = search_x,
-    basis            = basis,
-    source_cols      = as.integer(candidate_map[best_idx, ]),
-    group_idx        = group_idx_int,
-    n_groups         = n_groups_int,
-    target_start_col = 1L,
-    center           = isTRUE(center),
-    group_center     = isTRUE(center) && center_type == "group",
-    valid_rows       = valid_rows
+  # Step 3: Build the final designs from the selected powers -------------------
+  # Use the same builder as flex1 so every flex level constructs its final
+  # design identically: FP terms evaluated on x + shift (`scale_var`
+  # back-scaling), structural zeros kept as exact zeros, and the requested
+  # grand or within-group centring applied to the group-specific block. The
+  # pooled main effect is centred on all valid rows.
+  z_vars <- create_z_variables(
+    cont_var    = contvar_vec,
+    group_var   = groupvar_vec,
+    power       = bestfp,
+    shift       = 0,
+    scale       = 1,
+    center      = center,
+    zero        = zero_var,
+    center_type = center_type,
+    scale_var   = scale_var
   )
-  search_x <- selected$target
 
-  center_vals <- if (center) {
-    out <- as.numeric(selected$centers)
-    names(out) <- z_names
-    out
-  } else {
-    NULL
-  }
-
-  z_best <- search_x[, seq_len(focal_width), drop = FALSE]
-  colnames(z_best) <- z_names
-
-  if (any(!is.finite(z_best))) {
-    stop(
-      "! Non-finite values were produced in the selected flex2 interaction design.",
-      call. = FALSE
-    )
-  }
+  z_best <- z_vars$z
+  attributes(z_best) <- attributes(z_best)[c("dim", "dimnames")]
+  center_vals <- z_vars$center_vals
+  coefficient_groups <- z_vars$column_groups
 
   if (!identical(
     unname(unlist(coefficient_groups, use.names = FALSE)),
@@ -853,64 +828,12 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     )
   }
 
-  # Step 3: Reuse the winning columns for the pooled main-effects model --------
-  # For ordinary continuous variables, each selected FP term maps directly to
-  # one compact-basis column, so no second FP transformation is required after
-  # model selection. For binary covariates, the compact interaction basis can
-  # collapse to one passthrough column; the pooled main effect is therefore
-  # transformed directly with check_binary = FALSE.
-  if (ncol(candidate_map) == ncol(powers_matrix)) {
-    contvar_transformed <- basis[
-      , as.integer(candidate_map[best_idx, ]), drop = FALSE
-    ]
-  } else {
-    contvar_transformed <- transform_vector_fp(
-      x            = contvar_main,
-      power        = bestfp,
-      name         = cont_var,
-      scale        = 1,
-      shift        = 0,
-      zero         = zero_var,
-      check_binary = FALSE
-    )
-  }
-
-  contvar_transformed <- as.matrix(contvar_transformed)
+  contvar_transformed <- as.matrix(z_vars$xtransformed)
   storage.mode(contvar_transformed) <- "double"
   colnames(contvar_transformed) <- name_transformed_variables(
     cont_var,
     ncol(contvar_transformed)
   )
-
-  if (center) {
-    # Main-effect centering is pooled across groups. When structural zeros are
-    # enabled, use only valid positive-part rows so structural zeros do not
-    # contribute to the pooled centering constants.
-    center_rows <- if (isTRUE(zero_var)) valid_rows else rep(TRUE, n)
-    ct_means <- colMeans(
-      contvar_transformed[center_rows, , drop = FALSE],
-      na.rm = TRUE
-    )
-
-    if (any(!is.finite(ct_means))) {
-      stop(
-        "! Could not compute finite centering constants for the flex2 main-effect FP transformation.",
-        call. = FALSE
-      )
-    }
-
-    contvar_transformed <- sweep(
-      contvar_transformed,
-      2L,
-      ct_means,
-      "-",
-      check.margin = FALSE
-    )
-  }
-
-  if (isTRUE(zero_var) && any(zero_rows)) {
-    contvar_transformed[zero_rows, ] <- 0
-  }
 
   # Step 4: Assemble final design matrices -------------------------------------
   x_main        <- cbind(group_dummies, contvar_transformed, xadj)
@@ -1084,10 +1007,10 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
 #' active rows of each already-transformed group block contain exactly the basis
 #' needed to compute that group's centering constants, so their column means are
 #' used directly. With `center_type = "grand"`, the selected FP basis must be
-#' evaluated on all valid observations; these full-variable transformations are
+#' evaluated on all observations; these full-variable transformations are
 #' cached by an exact power-vector key so groups selecting identical powers share
-#' the same result. Structural-zero rows are excluded from centering and restored
-#' to zero after subtraction.
+#' the same result. As in `mfp2`, structural zeros have basis value 0, are
+#' included in the centring mean, and are centred like every other row.
 #'
 #' @inheritParams flex_fit
 #' @return See \code{flex_fit()} for the return structure.
@@ -1300,23 +1223,16 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       in_grp   <- group_idx == gi
       group_valid_rows <- in_grp & valid_rows
 
+      # Centring convention (same as mfp2's center_matrix()): structural zeros
+      # are 0 in the basis and are included in the mean; the centre is then
+      # subtracted from every row of the group block, zeros included, so
+      # centring is a pure intercept/group-dummy reparameterisation.
       if (center_type == "group") {
         # No new FP transform is necessary here: `transformed` already stores
         # this group's selected basis in `cols_g`, and only `in_grp` rows are
-        # active for that block. Restricting to `group_valid_rows` also excludes
-        # structural zeros from the centering denominator.
-        if (!any(group_valid_rows)) {
-          stop(
-            paste0(
-              "! Cannot compute flex4 centering constants for group ",
-              group_levels[gi], ": no valid rows."
-            ),
-            call. = FALSE
-          )
-        }
-
+        # active for that block.
         centers_g <- colMeans(
-          transformed[group_valid_rows, cols_g, drop = FALSE]
+          transformed[in_grp, cols_g, drop = FALSE]
         )
       } else {
         # Grand centering requires the group's selected FP basis on the full
@@ -1357,7 +1273,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
         }
 
         x_fp_full <- get(power_key, envir = grand_basis_cache, inherits = FALSE)
-        centers_g <- colMeans(x_fp_full[valid_rows, , drop = FALSE])
+        centers_g <- colMeans(x_fp_full)
       }
 
       if (any(!is.finite(centers_g))) {
@@ -1381,12 +1297,6 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
         "-",
         check.margin = FALSE
       )
-
-      # Structural zeros encode absence of the positive-part FP contribution.
-      # They must stay at 0 after centering; otherwise they become -center.
-      if (isTRUE(zero_var) && any(in_grp & zero_rows)) {
-        transformed[in_grp & zero_rows, cols_g] <- 0
-      }
     }
   } else {
     center_vals <- NULL

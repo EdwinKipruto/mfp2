@@ -146,6 +146,7 @@ predictor in both fitting stages. See \emph{Weights, offsets, and strata}.}
 default: 10.}
 
 \item{scale}{Positive scaling factors, or \code{NULL} for automatic scaling.
+Structural-zero predictors use an automatic scale of 1.
 See \emph{Predictor settings} and \emph{Shifting, scaling, and centring}.}
 
 \item{shift}{Finite shifting constants, or \code{NULL} for automatic shifting.
@@ -539,21 +540,25 @@ unsuitable for a nonlinear FP transformation.
 
 Linear-only and structural-zero predictors use a zero shift.
 Binary predictors and the grouping variable use zero shift and unit scale.
+Structural-zero predictors (\code{zero_vars}, \code{catzero_vars}, \code{spike_vars}, or
+the corresponding \code{fp()} options) that contain exact zeros use an automatic
+scale of 1, as in \code{\link[=mfp2]{mfp2()}}: scaling would add a constant to logarithmic
+terms on the positive values only and make the selected powers depend on
+the scale factor. An explicitly supplied scale is still used.
 
 For interaction functions, \code{center_type = "grand"} centres transformed
 values using a common mean across groups; \code{"group"} uses within-group
 means. With \code{"flex4"}, a separate centring value is calculated for each
 group's selected function. Fitted centring values are reused for prediction.
 
-For a structural-zero interaction variable, centring means use positive
-observations only, and the continuous contribution remains zero at exact
-zeros. Group centring therefore also changes the reference for the positive
-component and should be chosen deliberately. Each group must retain at
-least two positive observations for a linear or FP1 form, or three for FP2.
-
-Structural-zero adjustment variables follow the \code{\link[=mfp2]{mfp2()}} convention:
-their uncentred continuous functions are zero at exact zeros, and centring
-subtracts the fitted mean of the complete column from every observation.
+Structural-zero variables follow the \code{\link[=mfp2]{mfp2()}} convention, both as
+interaction and as adjustment variables: their uncentred continuous
+functions are zero at exact zeros, and centring subtracts the mean of the
+complete column (zeros included) from every observation. Centring is
+therefore a pure intercept and group-effect reparameterisation and does not
+change fitted values, tests, or interaction functions. For a structural-zero
+interaction variable, each group must retain at least two positive
+observations for a linear or FP1 form, or three for FP2.
 }
 
 \section{Special transformations}{

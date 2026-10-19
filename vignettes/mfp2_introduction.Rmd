@@ -348,6 +348,13 @@ handling also receive a shift of zero so that zero keeps its intended meaning.
 are extremely large or small. Scaling improves numerical stability during FP
 power selection. A scale of 1 means that no scaling is needed.
 
+Variables fitted with structural-zero handling (`zero`, `catzero`, or `spike`)
+are not scaled automatically. Their zeros stay at zero while only the positive
+values are transformed, so dividing by a scale factor would shift logarithmic
+terms for the positive values only and could change which powers are selected.
+Keeping these variables unscaled means that power selection compares the same
+models that are finally fitted. A scale supplied explicitly is still used.
+
 Shifting and scaling are performed automatically. Users do not need to
 calculate these values before fitting the model.
 

@@ -243,6 +243,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      interaction_forms, interaction_specs,
                      p_interact, min_improvement, show_models, verbose,
                      digits, scale, shift = NULL, quiet = FALSE, has_offset,
+                     shift_automatic = NULL,
                      center_type = c("grand", "group"),
                      p_adjust_method = "none",
                      group_input_levels = NULL,
@@ -512,6 +513,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     center_type        = center_type,
     scale              = scale,
     shift              = shift,
+    shift_automatic    = shift_automatic,
     adj_acd_parameter = adjustment_model$acd_parameter,
     quiet              = quiet,
     p_adjust_method    = p_adjust_method,
@@ -1429,6 +1431,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
                                   min_improvement, min_saz_prop,
                                   center_type = c("grand", "group"),
                                   scale = NULL, shift = NULL,
+                                  shift_automatic = NULL,
                                   adj_acd_parameter = NULL,
                                   xadj = NULL, skip_adjustment = FALSE,
                                   p_adjust_method = "none", has_offset,
@@ -1589,6 +1592,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       flex                   = flex,
       scale                  = scale,
       shift                  = shift,
+      shift_automatic        = shift_automatic,
       has_offset             = has_offset,
       ic_col                 = ic_col,
       ic_label               = ic_label,
@@ -1875,6 +1879,7 @@ evaluate_interaction_for_variable <- function(var_name,
                                               flex,
                                               scale,
                                               shift,
+                                              shift_automatic = NULL,
                                               has_offset,
                                               ic_col,
                                               ic_label,
@@ -1961,7 +1966,7 @@ evaluate_interaction_for_variable <- function(var_name,
   for (interaction_type in active_type) {
     degree <- degree_lookup[[interaction_type]]
 
-    fit_result <- flex_fit(
+    fit_result <- mfpi_with_rank_hint(flex_fit(
       x                     = x,
       y                     = y,
       cont_var              = var_name,
@@ -1998,6 +2003,15 @@ evaluate_interaction_for_variable <- function(var_name,
       shift_var     = if (isTRUE(interaction_spec$discrete)) 0 else if (!is.null(shift)) unname(shift[var_name]) else 0,
       run_test      = TRUE,
       has_offset    = has_offset
+    ),
+      var_name         = var_name,
+      interaction_spec = interaction_spec,
+      interaction_form = interaction_type,
+      x                = x,
+      scale            = scale,
+      shift            = shift,
+      shift_automatic  = shift_automatic,
+      zero_var         = isTRUE(processed_data$updated_params$zero_vars[var_name])
     )
 
     # -----------------------------------------------------------------------
@@ -2707,4 +2721,100 @@ mfpi_make_xadj_current <- function(var_name,
   }
 
   out
+}
+
+
+#' Add Cause-and-Fix Guidance to a Rank-Deficient MFPI Error
+#'
+#' Evaluates `expr`; if it signals `mfpi_rank_deficient_error`, re-signals the
+#' same error with guidance appended when the failure has the typical
+#' signature of an automatic shift: the variable was shifted automatically,
+#' its smallest shifted value is very close to 0 relative to its range (below
+#' 1%), and the selected powers include a negative or log (0) power. Otherwise
+#' the error is re-signalled unchanged. No shift value is computed or
+#' suggested; the guidance only names the cause and the available options.
+#'
+#' @param expr Expression to evaluate (the `flex_fit()` call).
+#' @param var_name Interaction variable name.
+#' @param interaction_spec Interaction specification for `var_name`.
+#' @param interaction_form Resolved interaction form (`"fp1"`, `"fp2"`, ...).
+#' @param x Internal (shifted and scaled) training matrix.
+#' @param scale,shift Named scale and shift vectors used at fit time.
+#' @param shift_automatic Named logical vector: `TRUE` where the shift was
+#'   estimated automatically rather than supplied by the user.
+#' @param zero_var Logical; whether `var_name` uses zero handling.
+#' @keywords internal
+#' @noRd
+mfpi_with_rank_hint <- function(expr, var_name, interaction_spec,
+                                interaction_form, x, scale, shift,
+                                shift_automatic, zero_var = FALSE) {
+  tryCatch(
+    expr,
+    mfpi_rank_deficient_error = function(e) {
+      hint <- mfpi_rank_deficient_hint(
+        powers = e$selected_powers,
+        var_name = var_name,
+        interaction_spec = interaction_spec,
+        interaction_form = interaction_form,
+        x = x,
+        scale = scale,
+        shift = shift,
+        shift_automatic = shift_automatic,
+        zero_var = zero_var
+      )
+      if (!is.null(hint)) e$message <- paste0(e$message, "\n", hint)
+      stop(e)
+    }
+  )
+}
+
+
+#' Build the Automatic-Shift Guidance for a Rank-Deficient MFPI Design
+#'
+#' @inheritParams mfpi_with_rank_hint
+#' @param powers Selected FP powers attached to the error, or `NULL`.
+#' @return A character scalar, or `NULL` when the failure does not match the
+#'   automatic-shift signature.
+#' @keywords internal
+#' @noRd
+mfpi_rank_deficient_hint <- function(powers, var_name, interaction_spec,
+                                     interaction_form, x, scale, shift,
+                                     shift_automatic, zero_var = FALSE) {
+  if (is.null(interaction_spec) || !identical(interaction_spec$kind, "continuous")) {
+    return(NULL)
+  }
+  if (is.null(powers) || !any(powers <= 0)) return(NULL)
+  if (is.null(shift_automatic) || !isTRUE(shift_automatic[var_name])) return(NULL)
+
+  shift_v <- if (!is.null(shift) && var_name %in% names(shift)) unname(shift[[var_name]]) else 0
+  scale_v <- if (!is.null(scale) && var_name %in% names(scale)) unname(scale[[var_name]]) else 1
+  if (!is.finite(shift_v) || shift_v <= 0 || !var_name %in% colnames(x)) return(NULL)
+
+  x_plus <- as.numeric(x[, var_name]) * scale_v
+  if (isTRUE(zero_var)) x_plus <- x_plus[x_plus != 0]
+  x_plus <- x_plus[is.finite(x_plus)]
+  if (length(x_plus) < 2L) return(NULL)
+  value_range <- diff(range(x_plus))
+  smallest <- min(x_plus)
+  if (!(value_range > 0) || smallest >= 0.01 * value_range) return(NULL)
+
+  fmt <- function(v) format(signif(v, 3), scientific = abs(v) < 1e-3 && v != 0)
+  simpler <- if (identical(interaction_form, "fp2")) {
+    paste0("`interaction_forms = c(", var_name, " = \"fp1\")` or `\"linear\"`")
+  } else {
+    paste0("`interaction_forms = c(", var_name, " = \"linear\")`")
+  }
+  paste0(
+    "i Likely cause: `", var_name, "` was shifted automatically (shift = ",
+    fmt(shift_v), "), which places its smallest value at ", fmt(smallest),
+    ", very close to 0 relative to its range (", fmt(value_range), "). ",
+    "The selected power(s) (", paste(powers, collapse = ", "), ") include a ",
+    "negative or log power, which gives the observations near 0 extreme values.\n",
+    "i Possible fixes:\n",
+    "  * supply your own shift for `", var_name, "` so that its smallest value ",
+    "is not close to 0: `fp(", var_name, ", shift = ...)` in a formula, or ",
+    "`shift = c(", var_name, " = ...)` with the matrix interface;\n",
+    "  * use a simpler interaction form, e.g. ", simpler, ";\n",
+    "  * try another `flex` level."
+  )
 }

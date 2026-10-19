@@ -293,7 +293,7 @@ validate_mfpi_design_estimability <- function(cont_var,
       } else {
         ""
       }
-      stop(
+      mfpi_stop_rank_deficient(
         paste0(
           "MFPI cannot test continuous variable '", cont_name,
           "' in group '", as.character(group_levels[[group_index]]),
@@ -316,7 +316,7 @@ validate_mfpi_design_estimability <- function(cont_var,
       } else {
         ""
       }
-      stop(
+      mfpi_stop_rank_deficient(
         paste0(
           "MFPI cannot test continuous variable '", cont_name, "': the selected ",
           design_name, " design is rank deficient (rank ", design_rank$rank,
@@ -387,7 +387,7 @@ validate_mfpi_fitted_rank <- function(fit,
   }
 
   if (fitted_rank < expected_rank) {
-    stop(
+    mfpi_stop_rank_deficient(
       paste0(
         "MFPI cannot test continuous variable '", cont_name, "': the fitted ",
         model_name, " model is rank deficient (fitted rank ", fitted_rank,
@@ -570,7 +570,7 @@ validate_mfpi_fitted_rank <- function(fit,
 #'
 #' @keywords internal
 #' @noRd
-test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
+test_interaction_impl <- function(y, cont_var, group_var, xmain, xinteraction,
                              degree, bestfp_main, bestfp_interaction,
                              flex, use_ftest, family, family_string,
                              weights, offset, ties, strata, control,
@@ -869,4 +869,61 @@ print.best_model_metrics <- function(x, ...) {
 
   print.data.frame(as.data.frame(x), row.names = FALSE, ...)
   invisible(x)
+}
+
+
+#' Signal a Rank-Deficient MFPI Design
+#'
+#' Raises an error of class `mfpi_rank_deficient_error` so callers can add
+#' context (for example selected powers and shift diagnostics) without
+#' matching on message text.
+#'
+#' @param ... Message parts, pasted together.
+#' @param call. Ignored; kept so call sites read like `stop()`.
+#' @keywords internal
+#' @noRd
+mfpi_stop_rank_deficient <- function(..., call. = FALSE) {
+  stop(structure(
+    class = c("mfpi_rank_deficient_error", "error", "condition"),
+    list(message = paste0(...), call = NULL)
+  ))
+}
+
+
+#' Test One MFPI Interaction, Recording Selected Powers on Rank Failures
+#'
+#' Thin wrapper around `test_interaction_impl()`. If the selected design is
+#' rank deficient, the selected FP powers are attached to the classed error
+#' (`selected_powers`) so `evaluate_interaction_for_variable()` can explain the
+#' likely cause.
+#'
+#' @inheritParams test_interaction_impl
+#' @keywords internal
+#' @noRd
+test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
+                             degree, bestfp_main, bestfp_interaction,
+                             flex, use_ftest, family, family_string,
+                             weights, offset, ties, strata, control,
+                             nocenter, has_offset, fitter = "base",
+                             linear_width = 1L) {
+  impl_args <- mget(names(formals(test_interaction_impl)))
+  # Report the selected FP vector as is when every group uses the same powers
+  # (flex1-flex3); otherwise (flex4) report the distinct powers across groups.
+  power_sets <- lapply(
+    c(list(bestfp_main), unname(as.list(bestfp_interaction))),
+    function(p) as.numeric(unlist(p, use.names = FALSE))
+  )
+  selected_powers <- if (all(vapply(power_sets, identical, logical(1L),
+                                    power_sets[[1L]]))) {
+    power_sets[[1L]]
+  } else {
+    sort(unique(unlist(power_sets)))
+  }
+  tryCatch(
+    do.call(test_interaction_impl, impl_args),
+    mfpi_rank_deficient_error = function(e) {
+      e$selected_powers <- selected_powers
+      stop(e)
+    }
+  )
 }

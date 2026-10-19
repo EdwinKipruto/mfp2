@@ -53,6 +53,43 @@ find_scale_factor <- function(x) {
   10^(sign(lrange) * floor(abs(lrange)))
 }
 
+#' Keep Zero-Handled Predictors Unscaled
+#'
+#' Sets the automatic scale of zero-handled predictors (`zero`, `catzero`, or
+#' `spike`) to 1. Their structural zeros stay at 0 while only the positive
+#' part is transformed, so dividing by a scale factor shifts log terms on the
+#' positive rows only. That step at zero cannot be absorbed by the intercept,
+#' which makes candidate models, and hence the selected powers, depend on the
+#' arbitrary scale factor. Keeping these predictors unscaled makes the power
+#' search use the same model as the final fit, which is unscaled anyway.
+#'
+#' Only automatic scales (`NA`) of predictors that actually contain exact zeros
+#' are changed; user-supplied scales are left unchanged.
+#'
+#' @param scale Named numeric vector of scales; `NA` means automatic.
+#' @param zero Named logical vector of effective zero-handling flags (after
+#'   the spike -> catzero -> zero cascade).
+#' @param x_shifted Shifted predictor matrix used for scale estimation.
+#'
+#' @return `scale` with automatic entries of zero-handled predictors set to 1.
+#' @keywords internal
+#' @noRd
+fix_zero_handled_scale <- function(scale, zero, x_shifted) {
+  if (is.null(zero) || !any(zero) || length(scale) == 0L) {
+    return(scale)
+  }
+  candidates <- intersect(names(zero)[zero], colnames(x_shifted))
+  candidates <- intersect(candidates, names(scale)[is.na(scale)])
+  if (length(candidates) == 0L) {
+    return(scale)
+  }
+  has_zero <- vapply(candidates, function(v) {
+    any(x_shifted[, v] == 0, na.rm = TRUE)
+  }, logical(1L))
+  scale[candidates[has_zero]] <- 1
+  scale
+}
+
 #' Calculate a shift factor for a predictor variable
 #'
 #' @details
@@ -461,11 +498,95 @@ subset_formula_model_frame <- function(model_frame, rows) {
     )
   }
 
+  # Row subsetting with `[` drops non-structural attributes from plain vectors.
+  # Formula specials such as fp()/fp2() store their per-term settings in such
+  # attributes, so restore any that were lost. These attributes describe the
+  # term, not individual rows, and are therefore valid for every row subset.
+  for (column_position in setdiff(seq_along(model_frame), factor_columns)) {
+    retained[[column_position]] <- restore_formula_column_attributes(
+      retained = retained[[column_position]],
+      source = model_frame[[column_position]]
+    )
+  }
+
   if (!is.null(terms_object)) {
     attr(retained, "terms") <- terms_object
   }
 
   retained
+}
+
+
+#' Restore Term-Level Attributes After Row Subsetting
+#'
+#' Copies attributes that row subsetting removed from a model-frame column back
+#' from its full-data source. Structural attributes (`dim`, `dimnames`,
+#' `names`, `class`, `levels`, `tsp`, `row.names`) are never copied because
+#' they depend on the retained rows or are maintained by the column's own
+#' subsetting method. Attributes still present on the subset are left as they
+#' are.
+#'
+#' @param retained Row-subset column.
+#' @param source Corresponding full-data column.
+#'
+#' @return `retained` with missing term-level attributes restored.
+#' @keywords internal
+#' @noRd
+restore_formula_column_attributes <- function(retained, source) {
+  source_attributes <- attributes(source)
+  if (is.null(source_attributes)) {
+    return(retained)
+  }
+  structural <- c("dim", "dimnames", "names", "class", "levels", "tsp", "row.names")
+  missing_names <- setdiff(
+    names(source_attributes),
+    c(structural, names(attributes(retained)))
+  )
+  for (attribute_name in missing_names) {
+    attr(retained, attribute_name) <- source_attributes[[attribute_name]]
+  }
+  retained
+}
+
+
+#' Extract fp()/fp2() Term Settings From the Full-Data Model Frame
+#'
+#' fp()/fp2() settings (`name`, `df`, `powers`, `shift`, ...) are attributes of
+#' the term, not of individual rows. They are therefore read from the
+#' full-data model frame, which is never row-subset, so a formula `subset`
+#' cannot affect them. The fitted frame is used only to locate the terms.
+#'
+#' @param mf Fitted (possibly row-subset) model frame.
+#' @param mf_full Full-data model frame built from the same formula.
+#' @param fp_pos Positions of fp()/fp2() columns in `mf`.
+#'
+#' @return Data frame of the fp()/fp2() columns from `mf_full`, in the order of
+#'   `fp_pos`, each carrying a valid `name` attribute.
+#' @keywords internal
+#' @noRd
+formula_fp_settings_frame <- function(mf, mf_full, fp_pos) {
+  fp_columns <- colnames(mf)[fp_pos]
+  missing_columns <- setdiff(fp_columns, colnames(mf_full))
+  if (length(missing_columns) > 0L) {
+    stop(
+      "Internal error: fp()/fp2() terms are missing from the full-data model frame: ",
+      paste(missing_columns, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  settings <- mf_full[, fp_columns, drop = FALSE]
+  has_name <- vapply(settings, function(column) {
+    value <- attr(column, "name", exact = TRUE)
+    is.character(value) && length(value) == 1L && !is.na(value) && nzchar(value)
+  }, logical(1L))
+  if (!all(has_name)) {
+    stop(
+      "Internal error: fp()/fp2() settings could not be recovered for: ",
+      paste(fp_columns[!has_name], collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  settings
 }
 
 

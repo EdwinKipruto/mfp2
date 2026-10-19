@@ -164,8 +164,9 @@ mfpi_group_row_cache <- function(group_idx,
 #'   }
 #' }
 #'
-#' When \code{zero = TRUE}, exact-zero values of \code{cont_var} are excluded
-#' from the centering means and reset to zero after centering. Negative values
+#' When \code{zero = TRUE}, the FP basis is 0 at exact-zero values of
+#' \code{cont_var}; centring then subtracts the mean of the complete column
+#' (zeros included) from every row, as in \code{mfp2}. Negative values
 #' are invalid and must be recoded explicitly if they should represent zero.
 #'
 #' @section Fitting matrix versus evaluation matrix:
@@ -240,8 +241,9 @@ mfpi_group_row_cache <- function(group_idx,
 #' @param center Logical. If \code{TRUE}, center the FP basis columns before
 #'   constructing the group-specific design matrix. Default is \code{FALSE}.
 #' @param zero Logical. If \code{TRUE}, exact-zero values of nonnegative
-#'   \code{cont_var} are treated as structural zeros: they are excluded from
-#'   centering means and reset to zero after centering. Callers must supply
+#'   \code{cont_var} are treated as structural zeros: the FP basis is set to 0
+#'   at those rows, and centring (as in \code{mfp2}) subtracts the mean of the
+#'   complete column from every row, zeros included. Callers must supply
 #'   previously validated nonnegative values. Default is \code{FALSE}.
 #' @param center_type Character string controlling centering when
 #'   \code{center = TRUE}. Either \code{"grand"} or \code{"group"}. Default is
@@ -501,8 +503,14 @@ create_z_variables <- function(cont_var,
   center_vals_work <- numeric(n_groups * n_terms)
   names(center_vals_work) <- z_names
 
+  # Centring convention (same as mfp2's center_matrix()): for a zero-handled
+  # variable the basis is first set to 0 at the structural zeros, then the mean
+  # of the complete column (zeros included) is subtracted from every row,
+  # including the zeros. Subtracting one constant from all rows of a group block
+  # is absorbed by the intercept/group dummies, so centring never changes the
+  # fitted model.
   if (center && center_type == "grand") {
-    grand_means <- colMeans(x_fp[valid_rows, , drop = FALSE], na.rm = TRUE)
+    grand_means <- colMeans(x_fp, na.rm = TRUE)
 
     if (any(!is.finite(grand_means))) {
       stop("Could not compute finite grand centering constants.",
@@ -539,19 +547,7 @@ create_z_variables <- function(cont_var,
       if (center_type == "grand") {
         centers_g <- grand_means
       } else {
-        rows_g_valid <- valid_by_group[[g]]
-
-        if (length(rows_g_valid) == 0L) {
-          stop(
-            paste0(
-              "Cannot compute within-group centering constants for group ",
-              group_levels[g], ": no valid rows."
-            ),
-            call. = FALSE
-          )
-        }
-
-        centers_g <- colMeans(x_fp[rows_g_valid, , drop = FALSE], na.rm = TRUE)
+        centers_g <- colMeans(x_fp[rows_g_all, , drop = FALSE], na.rm = TRUE)
 
         if (any(!is.finite(centers_g))) {
           stop(
@@ -582,19 +578,13 @@ create_z_variables <- function(cont_var,
         check.margin = FALSE
       )
     }
-
-    # Restore structural-zero rows after centering. This prevents zero rows
-    # from becoming `-center_g` in the active group block.
-    if (zero && length(zero_by_group[[g]]) > 0L) {
-      z[zero_by_group[[g]], cols_g] <- 0
-    }
   }
 
   # Pooled transformed variable for possible main-effect FP terms --------------
   xtransformed <- x_fp
 
   if (center) {
-    pooled_centers <- colMeans(x_fp[valid_rows, , drop = FALSE], na.rm = TRUE)
+    pooled_centers <- colMeans(x_fp, na.rm = TRUE)
 
     xtransformed <- sweep(
       x_fp,
@@ -603,10 +593,6 @@ create_z_variables <- function(cont_var,
       "-",
       check.margin = FALSE
     )
-
-    if (zero && any(zero_rows)) {
-      xtransformed[zero_rows, ] <- 0
-    }
   }
 
   # Optional evaluation matrix -------------------------------------------------
@@ -649,25 +635,10 @@ create_z_variables <- function(cont_var,
         )
       }
     }
-
-    # Structural-zero rows are zero in every evaluated group-specific function.
-    # Reset once across all columns instead of once per group block.
-    if (zero && any(zero_rows)) {
-      x_eval[zero_rows, ] <- 0
-    }
   }
 
-  # Restore structural-zero rows explicitly, then fail on any remaining
-  # non-finite values. Non-finite values outside structural-zero rows indicate an
-  # internal transformation or centering problem and must not be silently repaired.
-  if (zero && any(zero_rows)) {
-    xtransformed[zero_rows, ] <- 0
-
-    if (!is.null(x_eval)) {
-      x_eval[zero_rows, ] <- 0
-    }
-  }
-
+  # Fail on any remaining non-finite values. They indicate an internal
+  # transformation or centering problem and must not be silently repaired.
   if (any(!is.finite(z))) {
     stop(
       "Non-finite values remain in the group-specific interaction design.",

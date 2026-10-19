@@ -44,7 +44,8 @@ control inclusion under AIC or BIC selection.}
 inherits the setting from \code{mfp2()}; \code{0} disables shifting for this term.}
 
 \item{scale}{Positive divisor applied after shifting. \code{NULL} (default)
-inherits the setting from \code{mfp2()}; \code{1} disables scaling for this term.}
+inherits the setting from \code{mfp2()}; \code{1} disables scaling for this term.
+With \code{zero}, \code{catzero}, or \code{spike}, the automatic scale is \code{1}.}
 
 \item{center}{Whether to center the fitted terms. Default \code{TRUE}.}
 

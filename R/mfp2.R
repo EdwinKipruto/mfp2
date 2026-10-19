@@ -139,6 +139,11 @@
 #' selecting FP powers. The first is an MFP-adjusted QICu score; the second
 #' is a package-specific BIC-like score.
 #'
+#' For AIC or BIC selection, [print.mfp2()] and [summary.mfp2()] show the
+#' full-linear and selected-MFP scores under `Selection Scores`. Smaller
+#' scores are preferred. For GEE p-value selection, they omit the `Model Fit`
+#' block; Wald comparisons appear during verbose fitting.
+#'
 #' @section Shifting, scaling, and centering:
 #' FP functions involving logarithms or non-integer or negative powers need
 #' positive inputs. By default, `mfp2()` adds a shift when needed and chooses
@@ -146,6 +151,15 @@
 #' manageable during selection. ACD predictors may be shifted but are not
 #' scaled. Use `shift = 0` or `scale = 1` to turn off the corresponding
 #' automatic step for ordinary FP predictors.
+#'
+#' Predictors with exact-zero handling (`zero`, `catzero`, or `spike`) that
+#' contain exact zeros are not scaled automatically (their automatic scale is
+#' `1`). Their zeros stay at zero while only the positive values are
+#' transformed, so dividing by a scale factor would add a constant to
+#' logarithmic terms on the positive values only. That would make the
+#' selected powers depend on the arbitrary scale factor. Without scaling, FP
+#' selection compares the same models that are finally fitted. A scale you
+#' supply explicitly is still used.
 #'
 #' In `mfp2.default()`, a single unnamed value applies to all predictors.
 #' A named value applies only to the specified column: for example,
@@ -391,8 +405,10 @@
 #' `NULL` chooses scales automatically; `1` turns off automatic scaling.
 #' In `mfp2.default()`, use a named value such as `c(age = 10)` to set
 #' one column's scale. In formulas, set it inside `fp()` or `fp2()`.
-#' Binary and ACD predictors always use scale `1`. See **Shifting,
-#' scaling, and centering**.
+#' Binary and ACD predictors always use scale `1`. Predictors with exact-zero
+#' handling (`zero`, `catzero`, or `spike`) use an automatic scale of `1`; an
+#' explicitly supplied scale is still used. See **Shifting, scaling, and
+#' centering**.
 #' @param shift Value added to predictors before FP transformation.
 #' `NULL` chooses shifts automatically; `0` turns off automatic shifting.
 #' In `mfp2.default()`, use a named value such as `c(age = 20)` to set
@@ -2715,6 +2731,10 @@ mfp2.default <- function(x,
 
   # Scaling is estimated after shifting because find_scale_factor() operates on
   # shifted values. `scale` is already validated, named, and column-aligned.
+  # Zero-handled predictors keep an automatic scale of 1: scaling would add a
+  # constant to log terms on the positive rows only, making selection depend on
+  # the arbitrary scale factor.
+  scale <- fix_zero_handled_scale(scale, effective_zero, preprocess_x_shifted)
   scale_missing <- is.na(scale)
 
   if (any(scale_missing)) {
@@ -3668,11 +3688,13 @@ mfp2.formula <- function(formula,
   fp_pos <- which(is_fp_term(colnames(mf)))
 
   if (length(fp_pos) > 0) {
-    fp_data <- mf[, fp_pos, drop = FALSE]
+    # Term settings are read from the full-data frame so that a formula
+    # `subset` can never affect them.
+    fp_data <- formula_fp_settings_frame(mf, mf_full, fp_pos)
 
     # The real variable name (e.g. "age") is stored as an attribute on the
     # fp()-transformed column (whose model-frame name is literally "fp(age)").
-    fp_vars <- unname(sapply(fp_data, function(v) attr(v, "name")))
+    fp_vars <- unname(vapply(fp_data, function(v) attr(v, "name"), character(1L)))
 
     # A variable must not be wrapped in fp() more than once in the same formula.
     fp_vars_duplicates <- fp_vars[duplicated(fp_vars)]
@@ -4439,6 +4461,7 @@ mfp2_multinomial_residuals <- function(object, type = "deviance") {
 #'   inherits the setting from `mfp2()`; `0` disables shifting for this term.
 #' @param scale Positive divisor applied after shifting. `NULL` (default)
 #'   inherits the setting from `mfp2()`; `1` disables scaling for this term.
+#'   With `zero`, `catzero`, or `spike`, the automatic scale is `1`.
 #' @param center Whether to center the fitted terms. Default `TRUE`.
 #' @param acd Whether to request approximate cumulative distribution (ACD)
 #'   modelling. Default `FALSE`.

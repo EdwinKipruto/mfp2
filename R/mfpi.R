@@ -48,6 +48,7 @@
 #' @param cycles The maximum number of MFP fitting cycles. A positive integer;
 #'   default: 10.
 #' @param scale Positive scaling factors, or `NULL` for automatic scaling.
+#'   Structural-zero predictors use an automatic scale of 1.
 #'   See *Predictor settings* and *Shifting, scaling, and centring*.
 #' @param shift Finite shifting constants, or `NULL` for automatic shifting.
 #'   See *Predictor settings* and *Shifting, scaling, and centring*.
@@ -334,21 +335,25 @@
 #'
 #' Linear-only and structural-zero predictors use a zero shift.
 #' Binary predictors and the grouping variable use zero shift and unit scale.
+#' Structural-zero predictors (`zero_vars`, `catzero_vars`, `spike_vars`, or
+#' the corresponding `fp()` options) that contain exact zeros use an automatic
+#' scale of 1, as in [mfp2()]: scaling would add a constant to logarithmic
+#' terms on the positive values only and make the selected powers depend on
+#' the scale factor. An explicitly supplied scale is still used.
 #'
 #' For interaction functions, `center_type = "grand"` centres transformed
 #' values using a common mean across groups; `"group"` uses within-group
 #' means. With `"flex4"`, a separate centring value is calculated for each
 #' group's selected function. Fitted centring values are reused for prediction.
 #'
-#' For a structural-zero interaction variable, centring means use positive
-#' observations only, and the continuous contribution remains zero at exact
-#' zeros. Group centring therefore also changes the reference for the positive
-#' component and should be chosen deliberately. Each group must retain at
-#' least two positive observations for a linear or FP1 form, or three for FP2.
-#'
-#' Structural-zero adjustment variables follow the [mfp2()] convention:
-#' their uncentred continuous functions are zero at exact zeros, and centring
-#' subtracts the fitted mean of the complete column from every observation.
+#' Structural-zero variables follow the [mfp2()] convention, both as
+#' interaction and as adjustment variables: their uncentred continuous
+#' functions are zero at exact zeros, and centring subtracts the mean of the
+#' complete column (zeros included) from every observation. Centring is
+#' therefore a pure intercept and group-effect reparameterisation and does not
+#' change fitted values, tests, or interaction functions. For a structural-zero
+#' interaction variable, each group must retain at least two positive
+#' observations for a linear or FP1 form, or three for FP2.
 #'
 #' @section Special transformations:
 #' The following options require nonnegative variables. Negative values must
@@ -1610,6 +1615,22 @@ mfpi.default <- function(
   shift_to_zero[names(zero_flag)[zero_flag]]       <- TRUE
   shift_to_zero[names(catzero_flag)[catzero_flag]] <- TRUE
   shift_to_zero[vnames[df_list == 1L]]             <- TRUE
+
+  # Continuous interaction variables with an FP interaction form are
+  # FP-transformed by the flex search even when their adjustment-model term is
+  # linear (explicit df = 1, or df = 1 assigned automatically for <= 3 distinct
+  # values). They therefore keep a positivity shift: an explicit user shift is
+  # honoured and a missing shift is estimated below. Zero-handled variables keep
+  # shift = 0 because only their positive part is transformed.
+  fp_interaction_columns <- mfpi_fp_interaction_columns(
+    interaction_specs = interaction_specs,
+    interaction_forms = interaction_forms
+  )
+  zero_handled_names <- union(
+    names(zero_flag)[zero_flag],
+    names(catzero_flag)[catzero_flag]
+  )
+  shift_to_zero[setdiff(fp_interaction_columns, zero_handled_names)] <- FALSE
   shift[shift_to_zero] <- 0
 
   # At this point  the code has already handled zero_flag, catzero_flag,
@@ -1617,6 +1638,9 @@ mfpi.default <- function(
   # shift = 0 for retained zero/catzero variables and df = 1 variables
   # automatic find_shift_factor() only for remaining NA shifts
   shift_missing <- is.na(shift)
+  # Remember which shifts were estimated automatically, so rank-deficiency
+  # errors can tell automatic shifts apart from user-supplied ones.
+  shift_automatic <- stats::setNames(as.logical(shift_missing), vnames)
   if (any(shift_missing)) {
     shift[shift_missing] <- apply(
       preprocess_x[, shift_missing, drop = FALSE],
@@ -1647,6 +1671,8 @@ mfpi.default <- function(
 
   # Compute scale factors on shifted x, matching standalone mfp2. User-supplied
   # scale values are left untouched; only missing scales are estimated.
+  # Zero-handled predictors keep an automatic scale of 1, as in mfp2().
+  scale <- fix_zero_handled_scale(scale, zero_flag, preprocess_x_shifted)
   scale_missing <- is.na(scale)
 
   if (any(scale_missing)) {
@@ -1658,7 +1684,9 @@ mfpi.default <- function(
   }
 
   # Positivity check for variables that undergo nonlinear FP transformation ----
-  nonlinear_names <- vnames[df_list != 1L]
+  # This covers nonlinear adjustment terms and continuous interaction variables
+  # with an FP interaction form, whatever their adjustment-model df.
+  nonlinear_names <- union(vnames[df_list != 1L], fp_interaction_columns)
   all_zero_names  <- union(names(zero_flag)[zero_flag],
                            names(catzero_flag)[catzero_flag])
   check_names     <- setdiff(nonlinear_names, all_zero_names)
@@ -1964,6 +1992,7 @@ mfpi.default <- function(
     center_type       = center_type,
     scale             = scale,
     shift             = shift,
+    shift_automatic   = shift_automatic,
     has_offset        = has_offset,
     p_adjust_method   = p_adjust_method,
     group_input_levels     = group_input_levels,
@@ -2564,7 +2593,9 @@ mfpi.formula <- function(formula,
   # We do the rename now so all parameter lists use the correct final names.
   # ---------------------------------------------------------------------------
   if (length(fp_pos) > 0L) {
-    fp_data_pre <- mf[, fp_pos, drop = FALSE]
+    # Term settings are read from the full-data frame so that a formula
+    # `subset` can never affect them.
+    fp_data_pre <- formula_fp_settings_frame(mf, mf_full, fp_pos)
     fp_vars_pre <- unname(vapply(fp_data_pre, function(v) attr(v, "name"), character(1L)))
     fp_x_pos <- which(is_fp_term(names_x))
 
@@ -2652,7 +2683,7 @@ mfpi.formula <- function(formula,
   # Apply fp() term overrides
   # ---------------------------------------------------------------------------
   if (length(fp_pos) > 0L) {
-    fp_data <- mf[, fp_pos, drop = FALSE]
+    fp_data <- fp_data_pre
     # fp_vars already computed as fp_vars_pre in the rename block above;
     # reuse here under the canonical name fp_vars.
     fp_vars <- fp_vars_pre
@@ -2938,6 +2969,29 @@ mfpi.formula <- function(formula,
   fit$call <- call
 
   fit
+}
+
+#' Continuous Interaction Columns That Receive an FP Interaction Form
+#'
+#' Returns the design columns of continuous interaction variables whose
+#' resolved interaction form is not `"linear"`. These columns are
+#' FP-transformed during the interaction search, so they need strictly
+#' positive values regardless of the df used for them in the adjustment model.
+#'
+#' @param interaction_specs Named list returned by `mfpi_interaction_specs()`.
+#' @param interaction_forms Named character vector of resolved forms.
+#'
+#' @return Character vector of column names (possibly empty).
+#' @keywords internal
+#' @noRd
+mfpi_fp_interaction_columns <- function(interaction_specs, interaction_forms) {
+  if (length(interaction_specs) == 0L) return(character(0L))
+  terms <- names(interaction_specs)[vapply(interaction_specs, function(spec) {
+    identical(spec$kind, "continuous")
+  }, logical(1L))]
+  terms <- terms[terms %in% names(interaction_forms)]
+  terms <- terms[unname(interaction_forms[terms]) != "linear"]
+  unique(unlist(lapply(interaction_specs[terms], `[[`, "columns"), use.names = FALSE))
 }
 
 #' Format unused dot arguments for error messages

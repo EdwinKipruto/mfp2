@@ -52,6 +52,21 @@ All three selection criteria in \code{\link[=mfp2]{mfp2()}} are available for GE
 P-value selection uses approximate tests for GEE. AIC selection uses
 QICu; BIC selection uses a BIC-like score based on quasi-likelihood.
 }
+\examples{
+set.seed(1)
+d <- data.frame(id = rep(1:40, each = 3), x = runif(120, 1, 5))
+d$y <- log(d$x) + rnorm(40, sd = 0.5)[d$id] + rnorm(120, sd = 0.3)
+
+fit_gee <- mfp2(
+  y ~ fp(x, df = 2),
+  data = d,
+  family = gee_family(gaussian(), corstr = "exchangeable"),
+  id = d$id,
+  verbose = FALSE
+)
+coef(fit_gee)
+
+}
 \references{
 Pan, W. (2001). Akaike's information criterion in generalized estimating
 equations. \emph{Biometrics}, 57, 120--125.\cr

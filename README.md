@@ -10,13 +10,12 @@
 extensions. It performs variable selection and functional-form selection for
 continuous covariates. Supported responses include Gaussian, binomial,
 Poisson, Gamma, inverse Gaussian, and negative-binomial outcomes; unordered
-multinomial and ordinal outcomes; Cox, parametric survival, and Fine--Gray
+multinomial and ordinal outcomes; Cox, parametric survival, and Fine–Gray
 competing-risks models; and clustered marginal models fitted by generalized
 estimating equations (GEE). Multinomial fitting uses `nnet`; one FP
 transformation is selected per predictor and shared across logits, with
-logit-specific coefficients. Negative-binomial models use the optional
-`fastglm` backend, selected automatically for `family = "negbin"`.
-Ordinal models use the optional `rms` package. GEE models use `geepack` and
+logit-specific coefficients. Negative-binomial models require the suggested `fastglm` package.
+Ordinal models require the suggested `rms` package (version 7.0-0 or later). GEE models use `geepack` and
 require a cluster identifier supplied through `id` (with optional `waves`).
 
 In addition to standard MFP modelling, `mfp2` provides:
@@ -33,21 +32,39 @@ Both formula and matrix interfaces are available.
 
 ## Compatibility with existing software packages
 
-`mfp2` closely emulates the functionality of the `mfp` and `mfpa` packages in
-Stata. It extends the existing `mfp` package in R by providing:
+The `mfp2` package provides functionality similar to Stata's `mfp` and
+`mfpa` commands. It extends the functionality available in the `mfp`
+package in R by providing:
 
-- both matrix and formula interfaces for input data;
-- sigmoid transformations through the ACD transformation;
+- both formula and matrix interfaces;
+- approximate cumulative distribution (ACD) transformations for modelling
+  sigmoid relationships;
 - support for covariates with a spike at zero;
-- fractional-polynomial interaction analyses between categorical grouping
-  variables and continuous covariates;
-- estimation and plotting of contrasts and partial linear predictors for
-  investigating nonlinear effects; and
-- computational optimizations to improve speed and usability.
+- variable and function selection using p-values, AIC, or BIC;
+- fractional polynomials of any degree, with the maximum degree specified
+  by the user;
+- predictor-specific sets of candidate FP powers;
+- support for additional model families, including multinomial and
+  ordinal regression, generalised estimating equations, parametric
+  survival models, and Fine–Gray competing-risks models;
+- interaction analyses between a categorical grouping variable and
+  continuous, binary, or categorical predictors;
+- a dedicated ggplot2 interface for plotting fitted functions, contrasts,
+  and component-plus-residual plots with pointwise confidence intervals;
+- control over the order in which predictors are evaluated during
+  backfitting;
+- an option to retain a predictor at its maximum permitted FP complexity
+  under any selection criterion;
+- a choice between F-tests and chi-square tests for selection in
+  Gaussian models; and
+- computational optimisations and usability improvements.
 
 ## Installation
 
 ```r
+# Install the released version from CRAN
+install.packages("mfp2")
+
 # Install the development version from GitHub with pak
 # install.packages("pak")
 pak::pak("EdwinKipruto/mfp2")
@@ -123,9 +140,9 @@ Choose `family` according to the response. These specifications work with
 | Counts | `"poisson"` | Nonnegative integer response |
 | Positive continuous | `stats::Gamma(link = "log")` | Positive response |
 | Positive continuous | `stats::inverse.gaussian(link = "log")` | Positive response |
-| Overdispersed counts | `"negbin"` | Optional `fastglm`; backend chosen automatically |
+| Overdispersed counts | `"negbin"` | Requires `fastglm` |
 | Unordered classes | `multinomial_family()` | At least three classes; `nnet` |
-| Ordered categories | `ordinal_family()` | At least three ordered categories; optional `rms` |
+| Ordered categories | `ordinal_family()` | At least three ordered categories; requires `rms` (>= 7.0-0) |
 | Right-censored survival | `"cox"` | `survival::Surv(time, status)` |
 | Parametric survival | `survreg_family(dist = "weibull")` | `survival::Surv()` response |
 | Competing risks | `finegray_family(etype = "cause1")` | Multi-state `survival::Surv()` response |
@@ -173,8 +190,7 @@ fit_inverse_gaussian <- mfp2(
 
 ### Fit a negative-binomial model
 
-`fastglm` is optional; when installed, `family = "negbin"` selects that
-backend automatically.
+`family = "negbin"` requires the suggested `fastglm` package.
 
 ```r
 if (requireNamespace("fastglm", quietly = TRUE)) {
@@ -193,10 +209,22 @@ The first level is the reference by default; choose another with
 `multinomial_family()`.
 
 ```r
+multinomial_data <- family_data[, c("x", "z")]
+linear_b <- with(multinomial_data, 0.3 + log(x) + 0.4 * z)
+linear_c <- with(multinomial_data, -0.2 + 0.8 * log(x) - 0.3 * z)
+class_probabilities <- cbind(1, exp(linear_b), exp(linear_c))
+class_probabilities <- class_probabilities / rowSums(class_probabilities)
+multinomial_data$class <- factor(
+  apply(class_probabilities, 1, function(p) {
+    sample(c("A", "B", "C"), 1, prob = p)
+  }),
+  levels = c("A", "B", "C")
+)
+
 fit_multinomial <- mfp2(
-  Species ~ fp(Sepal.Length) + fp(Petal.Length) + Sepal.Width,
-  data = iris,
-  family = multinomial_family(reference = "setosa"),
+  class ~ fp(x, df = 2) + fp(z, df = 1),
+  data = multinomial_data,
+  family = multinomial_family(reference = "A"),
   verbose = FALSE
 )
 
@@ -204,18 +232,19 @@ fit_multinomial <- mfp2(
 coef(fit_multinomial)
 
 # Class probabilities and predicted classes.
-predict(fit_multinomial, iris[1:6, ], type = "response")
-predict(fit_multinomial, iris[1:6, ], type = "class")
+predict(fit_multinomial, multinomial_data[1:6, ], type = "response")
+predict(fit_multinomial, multinomial_data[1:6, ], type = "class")
 ```
 
 ### Fit an ordinal MFP model
 
 For an ordered response, `ordinal_family()` fits a proportional-odds
-model. Install the optional `rms` package first. Supplying an ordered
+model. It requires the suggested `rms` package (version 7.0-0 or later). Supplying an ordered
 factor makes the category order explicit.
 
 ```r
-if (requireNamespace("rms", quietly = TRUE)) {
+if (requireNamespace("rms", quietly = TRUE) &&
+    utils::packageVersion("rms") >= "7.0-0") {
   ordinal_data <- family_data[, c("x", "z")]
   ordinal_data$rating <- ordered(cut(
     eta + rlogis(n_family),
@@ -256,7 +285,7 @@ fit_weibull <- mfp2(
 )
 ```
 
-### Fit a Fine--Gray competing-risks model
+### Fit a Fine–Gray competing-risks model
 
 The event response must be a multi-state `Surv()` object: the first
 factor level represents censoring, and `etype` identifies the event of
@@ -373,7 +402,7 @@ fit_interaction <- mfpi(
     fp(bph) + fp(cp),
   data = prostate,
   group_var = "svi",
-  cont_vars = c("cavol", "age"),
+  interaction_vars = c("cavol", "age"),
   flex = "flex1",
   center = FALSE,
   include_group_var = TRUE,
@@ -436,31 +465,50 @@ Function-level help is available through:
 
 ## References
 
-To learn more about the MFP algorithm, see Royston and Sauerbrei (2008),
-*Multivariable Model-Building: A Pragmatic Approach to Regression Analysis
-based on Fractional Polynomials for Modelling Continuous Variables*.
-John Wiley & Sons.
+For an introduction to the MFP algorithm, see Royston and Sauerbrei
+(2008), *Multivariable Model-Building: A Pragmatic Approach to Regression
+Analysis Based on Fractional Polynomials for Modelling Continuous
+Variables*. John Wiley & Sons.
 
-For details on the ACD transformation, see Royston (2014),
-*A smooth covariate rank transformation for use in regression models with a
-sigmoid dose-response function*. The Stata Journal.
+For the ACD transformation and its integration into MFP modelling, see:
 
-For the spike-at-zero algorithm, see Becher et al. (2012),
-*Analysing covariates with spike at zero: a modified FP procedure and conceptual
-issues*. Biometrical Journal, 54(5), 686-700.
+- Royston (2014). *A smooth covariate rank transformation for use in
+  regression models with a sigmoid dose-response function*. The Stata
+  Journal, 14(2), 329–341.
+  doi: [10.1177/1536867X1401400206](https://doi.org/10.1177/1536867X1401400206)
 
-For fractional-polynomial interaction analyses between treatment and continuous
-covariates, see Royston and Sauerbrei (2004), *A new approach to modelling
-interactions between treatment and continuous covariates in clinical trials by
-using fractional polynomial submodels*. Statistics in Medicine, 23(16),
-2509-2525. doi: [10.1002/sim.1815](https://doi.org/10.1002/sim.1815)
+- Royston and Sauerbrei (2016). *mfpa: Extension of mfp using the ACD
+  covariate transformation for enhanced parametric multivariable
+  modeling*. The Stata Journal, 16(1), 72–87.
+  doi: [10.1177/1536867X1601600109](https://doi.org/10.1177/1536867X1601600109)
 
-See also Royston and Sauerbrei (2013), *Interaction of treatment with a
-continuous variable: simulation study of significance level for several methods
-of analysis*. Statistics in Medicine, 32(22), 3788-3803. doi:
-[10.1002/sim.5813](https://doi.org/10.1002/sim.5813)
+For spike-at-zero modelling in `mfp2`, including model selection,
+prediction, and plotting, see Kipruto and Sauerbrei (2026),
+*Modelling Spike-at-Zero Covariates with Fractional Polynomials in R*.
 
-For simulation results on power, see Royston and Sauerbrei (2014), *Interaction
-of treatment with a continuous variable: simulation study of power for several
-methods of analysis*. Statistics in Medicine, 33(27), 4695-4708. doi:
-[10.1002/sim.6308](https://doi.org/10.1002/sim.6308)
+For the underlying spike-at-zero methodology, see Becher et al. (2012),
+*Analysing covariates with spike at zero: a modified FP procedure and
+conceptual issues*. Biometrical Journal, 54(5), 686–700.
+doi: [10.1002/bimj.201100263](https://doi.org/10.1002/bimj.201100263)
+
+For interaction analyses using `mfpi()`, see Kipruto, Royston, and
+Sauerbrei (2026), *Multivariable Fractional Polynomial Interaction
+Models in R*. The underlying methods and simulation studies are
+described in:
+
+- Royston and Sauerbrei (2004). *A new approach to modelling interactions
+  between treatment and continuous covariates in clinical trials by
+  using fractional polynomial submodels*. Statistics in Medicine,
+  23(16), 2509–2525.
+  doi: [10.1002/sim.1815](https://doi.org/10.1002/sim.1815)
+
+- Royston and Sauerbrei (2013). *Interaction of treatment with a
+  continuous variable: simulation study of significance level for
+  several methods of analysis*. Statistics in Medicine, 32(22),
+  3788–3803.
+  doi: [10.1002/sim.5813](https://doi.org/10.1002/sim.5813)
+
+- Royston and Sauerbrei (2014). *Interaction of treatment with a
+  continuous variable: simulation study of power for several methods
+  of analysis*. Statistics in Medicine, 33(27), 4695–4708.
+  doi: [10.1002/sim.6308](https://doi.org/10.1002/sim.6308)

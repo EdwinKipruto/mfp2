@@ -2,7 +2,7 @@
 % Please edit documentation in R/mfpi_plot.R
 \name{plot.mfpi}
 \alias{plot.mfpi}
-\title{Plot MFPI Fitted Curves and Group Differences}
+\title{Plot MFPI Fitted Functions and Group Differences}
 \usage{
 \method{plot}{mfpi}(
   x,
@@ -32,71 +32,82 @@
 )
 }
 \arguments{
-\item{x}{A model fitted by \code{\link[=mfpi]{mfpi()}}.}
+\item{x}{An object of class \code{"mfpi"} returned by \code{\link[=mfpi]{mfpi()}}.}
 
-\item{terms}{Character vector specifying interaction variables to plot,
-rather than adjustment variables. If \code{NULL}, plots only retained
-interactions. Supplying a variable allows its evaluated interaction to
-be plotted even if it was not retained.}
+\item{terms}{An optional character vector naming variables tested for
+interaction. The default is \code{NULL}, which plots selected interactions
+only. Specify a variable to plot its interaction even if it was not
+selected.}
 
-\item{plot_type}{\code{"fitted"} shows group-specific curves, \code{"difference"}
-shows comparison-group minus reference-group curves, and \code{"both"} shows
-these side by side. Default: \code{"both"}, which requires \pkg{patchwork}
-package.}
+\item{plot_type}{A character string specifying the plots to display:
+\code{"fitted"} for group-specific functions, \code{"difference"} for the
+comparison-group function minus the reference-group function, or
+\code{"both"} for side-by-side plots. Default: \code{"both"}, which requires
+the optional \pkg{patchwork} package.}
 
-\item{auto_print}{Whether to display the plots automatically.
-Set to \code{FALSE} to return plots without displaying them. Default: \code{TRUE}.}
+\item{auto_print}{A logical value indicating whether to display plots
+automatically. Default: \code{TRUE}. Use \code{FALSE} to return the plots
+without displaying them.}
 
-\item{show_title}{Whether to display titles and subtitles. Default: \code{TRUE}.}
+\item{show_title}{A logical value indicating whether to display titles
+and subtitles. Default: \code{TRUE}.}
 
-\item{show_rug}{Whether to add rug marks for continuous predictors.
+\item{show_rug}{A logical value indicating whether to show observed
+continuous predictor values as rug marks along the horizontal axis.
 Default: \code{FALSE}.}
 
-\item{show_ci_fitted}{Whether to display confidence intervals for
-group-specific curves. Default: \code{FALSE}.}
+\item{show_ci_fitted}{A logical value indicating whether to display
+confidence intervals for group-specific functions. Default: \code{FALSE}.}
 
-\item{show_ci_diff}{Whether to display confidence intervals for group
-differences. Default: \code{TRUE}.}
+\item{show_ci_diff}{A logical value indicating whether to display
+confidence intervals for group differences. Default: \code{TRUE}.}
 
-\item{show_null_line}{Whether to add a horizontal line at zero to difference
-plots. Default: \code{FALSE}. See \strong{Reference lines}.}
+\item{show_null_line}{A logical value indicating whether to add a
+horizontal line at zero to difference plots. Default: \code{FALSE}.}
 
-\item{show_maineffect_line}{Whether to add the constant group contrast
-from the no-interaction model to difference plots. Omitted if that model
-is unavailable. Default: \code{TRUE}. See \strong{Reference lines}.}
+\item{show_maineffect_line}{A logical value indicating whether to add
+the constant group difference estimated by the model without interaction
+to difference plots. Default: \code{TRUE}. The line is omitted if that
+model is unavailable.}
 
-\item{show_ci_maineffect}{Whether to display a confidence interval around
-the main-effects reference line. Requires \code{show_maineffect_line = TRUE}
-and an available standard error. Default: \code{FALSE}.}
+\item{show_ci_maineffect}{A logical value indicating whether to display
+a confidence band around the main-effects reference line.
+Requires \code{show_maineffect_line = TRUE} and an available standard error.
+Default: \code{FALSE}.}
 
-\item{legend_position}{Legend position: \code{"inside"}, \code{"right"}, \code{"left"},
-\code{"bottom"}, \code{"top"}, or \code{"none"}. Default: \code{"inside"}.}
+\item{legend_position}{A character string specifying the legend position:
+\code{"inside"} (default), \code{"right"}, \code{"left"}, \code{"bottom"}, \code{"top"}, or \code{"none"}.}
 
-\item{legend_inside}{Horizontal and vertical coordinates for an inside
-legend, between 0 and 1. \code{c(0, 0)} is bottom left and \code{c(1, 1)} is
-top right. Default: \code{c(0.02, 0.98)}.}
+\item{legend_inside}{Two numeric values giving the horizontal and vertical
+position of an inside legend, between 0 and 1. The bottom-left corner
+is \code{c(0, 0)} and the top-right corner is \code{c(1, 1)}.
+Default: \code{c(0.02, 0.98)}.}
 
-\item{legend_justification}{Horizontal and vertical alignment of an inside
-legend. Default: \code{c(0, 1)}, aligning its top-left corner.}
+\item{legend_justification}{Two numeric values specifying which part
+of an inside legend is anchored at \code{legend_inside}.
+Default: \code{c(0, 1)}, which anchors the legend at its top-left corner.}
 
 \item{colour_ref}{Colour of the reference-group curve, points, and
-confidence intervals.}
+confidence intervals. Default: \code{"#2166AC"}.}
 
 \item{colour_group}{Colour of the comparison-group curve, points, and
-confidence intervals.}
+confidence intervals. Default: \code{"#D6604D"}.}
 
-\item{line_types}{Optional line types for group-specific curves. Supply
-two values in reference-group then comparison-group order, or a named
-vector matching the displayed group labels.}
+\item{line_types}{An optional character vector specifying curve styles.
+For example, \code{c("solid", "dashed")} gives the reference group a solid
+line and the comparison group a dashed line. Alternatively, assign styles
+to group labels, for example \code{c(Placebo = "solid", Treatment = "dashed")},
+using the labels in your data. Default: \code{NULL}, which makes all lines solid.}
 
 \item{colour_diff}{Colour of the difference curve, points, and confidence
-intervals.}
+intervals. Default: \code{"#1B7837"}.}
 
-\item{colour_null}{Colour of the zero reference line.}
+\item{colour_null}{Colour of the zero reference line. Default: \code{"grey50"}.}
 
-\item{colour_maineffect}{Colour of the main-effects reference line.}
+\item{colour_maineffect}{Colour of the main-effects reference line.
+Default: \code{"grey20"}.}
 
-\item{linewidth}{Positive number controlling curve width. Default: \code{1}.}
+\item{linewidth}{A positive number controlling curve width. Default: \code{1}.}
 
 \item{ribbon_alpha}{Confidence-band transparency, from 0 (transparent)
 to 1 (opaque). Default: \code{0.2}.}
@@ -104,82 +115,98 @@ to 1 (opaque). Default: \code{0.2}.}
 \item{rug_alpha}{Rug-mark transparency, from 0 (transparent) to 1 (opaque).
 Default: \code{0.4}.}
 
-\item{...}{Currently unused. Supplied arguments generate a warning.}
+\item{...}{Not used. Supplied arguments generate a warning.}
 }
 \value{
-Invisibly returns a named list with one element per interaction variable,
-containing its group-comparison plots. For multinomial models, plots are
-additionally grouped by non-reference response category.
+Invisibly returns a named list with one element per plotted interaction
+variable. Each element contains a list of plots comparing individual
+groups with the reference group.
 
-Returned plots can be modified with \pkg{ggplot2} or saved using
-\code{\link[ggplot2:ggsave]{ggplot2::ggsave()}}.
+For multinomial models, each variable's results contain an additional
+list level for the non-reference response categories.
 
-Returns an empty list if no interactions were retained and \code{terms = NULL}.
+Individual plots are \pkg{ggplot2} objects. With \code{plot_type = "both"},
+each group comparison contains a combined \pkg{patchwork} plot.
+Returned plots can be modified or saved using \code{\link[ggplot2:ggsave]{ggplot2::ggsave()}}.
+Use \code{auto_print = FALSE} to obtain them without displaying them.
+
+An empty list is returned if no interactions were selected and
+\code{terms = NULL}.
 }
 \description{
-Plots group-specific fitted curves and differences between groups for
-interaction variables examined by \code{\link[=mfpi]{mfpi()}}. Continuous variables are shown
-as curves; binary and categorical variables are shown as separate points
-for each level.
+Plot group-specific fitted functions and differences between groups for
+variables tested for interaction by \code{\link[=mfpi]{mfpi()}}. Continuous predictors are
+shown as curves; binary and categorical predictors are shown as points
+at each fitted level.
 }
 \section{Interpreting the plots}{
 
-Each variable uses its separate fitted interaction model. With more than
-two groups, each non-reference group is compared with the reference group.
-Multinomial models produce separate plots for each non-reference response
-category.
+Each variable is plotted using its separate fitted interaction model.
+The reference group is the one used during fitting. With more than two
+groups, a separate plot is produced for each comparison with the reference.
+Multinomial models also produce separate plots for each non-reference
+response category.
 
-Curves include group main effects and the model intercept where applicable,
-but exclude contributions from other adjustment variables and offsets.
-Differences include both the group main-effect contrast and differences
-between the fitted predictor functions.
+Fitted functions include the predictor contribution, group main effects,
+and model intercept where applicable. They exclude contributions from
+other adjustment variables and offsets. Group differences include both
+the group main-effect difference and differences between the predictor
+functions (see Kipruto, Royston and Sauerbrei (2026) for details).
 
-All plots use the model's linear-predictor scale, rather than showing
-complete predictions for individuals. See \code{\link[=predict.mfpi]{predict.mfpi()}} for scales
-and interpretation by model family.
+Plots use the model's linear-predictor scale. For example, Gaussian
+models with an identity link use the outcome scale, and binomial models
+with a logit link use the log-odds scale. See \code{\link[=predict.mfpi]{predict.mfpi()}} for
+interpretation by model family.
 
-Confidence intervals are 95 percemt pointwise intervals, shown as shaded bands
-for continuous variables and error bars for discrete variables. They are
-conditional on the fitted model and exclude uncertainty from variable,
-transformation, and interaction selection.
+Confidence intervals use a fixed confidence level of 95\%. They are
+pointwise intervals, shown as shaded bands for continuous predictors
+and error bars for binary and categorical predictors. They are conditional
+on the fitted model and do not account for uncertainty from selecting
+variables, transformations, or interactions.
 }
 
 \section{Reference lines}{
 
-The zero line marks equal fitted group curves at a given predictor value.
-Crossing zero does not by itself establish interaction: a constant nonzero
-difference represents a group effect that does not vary with the predictor.
+Difference plots can show two horizontal reference lines.
 
-The main-effects line shows the constant group difference estimated by
-the no-interaction model. It provides a reference for comparing the fitted
-difference with the result obtained without an interaction.
+The zero line indicates no difference between the groups.
+Add it using \code{show_null_line = TRUE}.
+
+The main-effects line shows the group difference estimated by the model
+without interaction. That model assumes the predictor has the same effect
+in every group, so the group difference is constant across predictor values.
+This line is shown by default; use \code{show_maineffect_line = FALSE} to hide it.
+Use \code{show_ci_maineffect = TRUE} to add its 95\% confidence band.
 }
 
 \examples{
 data("prostate")
 
+# Include the grouping variable in the formula and name it in group_var.
 fit <- mfpi(
   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
     fp(bph) + fp(cp),
   data = prostate,
+  family = gaussian(),
   group_var = "svi",
   interaction_vars = c("cavol", "age"),
   flex = "flex1",
+  p_interact = 0.9,
   include_group_var = TRUE,
   center = FALSE,
   verbose = FALSE
 )
 
-# Plot an evaluated interaction, whether or not it was retained.
+# Plot an interaction even if it was not selected.
 plot(fit, terms = "cavol", plot_type = "difference")
 
-# Group-specific curves with confidence bands.
+# Plot group-specific functions with confidence bands.
 plot(
   fit, terms = "cavol", plot_type = "fitted",
   show_ci_fitted = TRUE
 )
 
-# Return plots for modification or saving.
+# Return plots without displaying them.
 plots <- plot(
   fit, terms = "cavol", plot_type = "difference",
   auto_print = FALSE
@@ -187,12 +214,17 @@ plots <- plot(
 print(plots$cavol[[1]])
 
 \donttest{
+# Side-by-side plots require patchwork.
 if (requireNamespace("patchwork", quietly = TRUE)) {
-  # By default, display fitted curves and differences side by side.
-  plot(fit, terms = "cavol")
+  plot(fit, terms = "cavol", plot_type = "both")
 }
 }
 
+}
+\references{
+Kipruto, E., Royston, P. and Sauerbrei, W. (2026).
+Multivariable Fractional Polynomial Interaction Models in R.
+\emph{Journal of Statistical Software}.
 }
 \seealso{
 \code{\link[=mfpi]{mfpi()}}, \code{\link[=predict.mfpi]{predict.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}

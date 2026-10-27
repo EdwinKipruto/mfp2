@@ -884,49 +884,52 @@ predict(
 predict(fit_multinomial, newdata = nd_multi, type = "class")
 
 ## Ordinal models: category probabilities and cutoff intercepts
-set.seed(3)
-d_ordinal <- data.frame(age = runif(150, 30, 75))
-d_ordinal$severity <- cut(
-  0.04 * (d_ordinal$age - 50) + rlogis(150),
-  breaks = c(-Inf, -0.5, 0.5, Inf),
-  labels = c("low", "medium", "high"),
-  ordered_result = TRUE
-)
+if (requireNamespace("rms", quietly = TRUE) &&
+    utils::packageVersion("rms") >= "7.0-0") {
+  set.seed(3)
+  d_ordinal <- data.frame(age = runif(150, 30, 75))
+  d_ordinal$severity <- cut(
+    0.04 * (d_ordinal$age - 50) + rlogis(150),
+    breaks = c(-Inf, -0.5, 0.5, Inf),
+    labels = c("low", "medium", "high"),
+    ordered_result = TRUE
+  )
 
-fit_ordinal <- mfp2(
-  severity ~ fp(age),
-  data = d_ordinal,
-  family = ordinal_family(),
-  df = 1,
-  select = 1,
-  verbose = FALSE
-)
+  fit_ordinal <- mfp2(
+    severity ~ fp(age),
+    data = d_ordinal,
+    family = ordinal_family(),
+    df = 1,
+    select = 1,
+    verbose = FALSE
+  )
 
-nd_ordinal <- data.frame(age = c(40, 50, 60))
-predict(
-  fit_ordinal,
-  newdata = nd_ordinal,
-  type = "response",
-  se.fit = TRUE
-)
+  nd_ordinal <- data.frame(age = c(40, 50, 60))
+  print(predict(
+    fit_ordinal,
+    newdata = nd_ordinal,
+    type = "response",
+    se.fit = TRUE
+  ))
 
-# The common predictor without a cutoff intercept.
-predict(
-  fit_ordinal,
-  newdata = nd_ordinal,
-  type = "link",
-  add_intercept = FALSE
-)
+  # The common predictor without a cutoff intercept.
+  print(predict(
+    fit_ordinal,
+    newdata = nd_ordinal,
+    type = "link",
+    add_intercept = FALSE
+  ))
 
-# Include cutoff 1: medium/high versus low.
-predict(
-  fit_ordinal,
-  newdata = nd_ordinal,
-  type = "terms",
-  terms = "age",
-  terms_seq = "data",
-  ordinal_cutoff = 1
-)
+  # Include cutoff 1: medium/high versus low.
+  print(predict(
+    fit_ordinal,
+    newdata = nd_ordinal,
+    type = "terms",
+    terms = "age",
+    terms_seq = "data",
+    ordinal_cutoff = 1
+  ))
+}
 
 ## Cox models: relative risk and survival at a chosen time
 data("gbsg")

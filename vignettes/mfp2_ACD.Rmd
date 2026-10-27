@@ -112,255 +112,157 @@ library(formatR)
 
 # Overview
 
-Royston (2014) proposed the approximate cumulative distribution (ACD)
-transformation as a smooth covariate-rank transformation for use in regression
-models with sigmoid dose-response functions. The transformation was motivated by
-the need to represent relationships that are singly or doubly asymptotic, or
-that contain a sigmoid-shaped component.
+The approximate cumulative distribution (ACD) transformation provides a
+smooth way to model sigmoid-shaped relationships, including curves that
+level off at one or both ends (Royston, 2014). It approximates the
+empirical cumulative distribution function of a continuous predictor.
 
-Standard flexible functions, such as fractional polynomials (FPs) and restricted
-cubic splines, can be useful for many nonlinear relationships. However, they may
-struggle to represent curves with one or two asymptotes. The ACD transformation
-addresses this problem by first compressing the tails of the observed covariate
-distribution through a scaled-rank transformation and then approximating the
-empirical cumulative distribution function (ECDF) by a smooth function.
+The MFPA extension combines this transformation with multivariable
+fractional polynomial (MFP) modelling (Royston and Sauerbrei, 2016).
+For a predictor selected for ACD assessment, `mfp2()` considers functions
+of both the original predictor and its ACD transformation. The usual
+function-selection procedure is replaced by the function-selection
+procedure with ACD transformation (FSPA). Other predictors continue
+through standard MFP selection during backfitting.
 
-The `mfp2` package implements ACD transformations for continuous covariates. In
-`mfp2`, ACD modelling corresponds to the MFPA extension of the standard MFP
-algorithm for variables selected by the user. This extension allows the original
-covariate `x` and its ACD transformation to be considered together within a
-fractional polynomial model-selection framework:
+Request ACD assessment using:
 
-$$
-A_x = \operatorname{ACD}(x).
-$$
+- `acd_vars = "x"` in the matrix interface;
+- `fp(x, acd = TRUE)` in the formula interface.
 
-In the multivariable setting, the ACD extension follows the same backfitting
-principle as MFP. For variables selected for ACD assessment, the usual function
-selection procedure (FSP) is replaced by a function-selection procedure with ACD
-transformation (FSPA). Variables not selected for ACD assessment are handled by
-the standard MFP procedure.
-
-The ACD transformation can be used in both interfaces of `mfp2()`:
-
-- in the matrix interface, by specifying the variable name in the `acd_vars`
-  argument;
-- in the formula interface, by setting `acd = TRUE` inside `fp()`.
-
-In the notation below, the ACD transformation of a covariate `x` is denoted by
-$A_x$.
+Requesting ACD assessment allows the transformation to be considered;
+selection may still retain an ordinary FP1 or linear effect, or omit
+the predictor.
 
 # Definition of the ACD transformation
 
-Let the observed values of a continuous covariate `X` be denoted by
-
-$$
-x_1, \ldots, x_n.
-$$
-
-The ACD transformation proceeds in three steps.
+For observed predictor values $x_1,\ldots,x_n$, the transformation has
+three steps. The description below assumes ordinary continuous data,
+without structural-zero handling.
 
 ## Inverse normal transformation of ranks
 
-First, the rank of each observation is transformed to an approximately standard
-normal scale:
+First, convert the ranks to normal scores:
 
 $$
-z_i =
-\Phi^{-1}
-\left(
-\frac{\operatorname{rank}(x_i) - 0.5}{n}
-\right),
+z_i = \Phi^{-1}\left\{\frac{\operatorname{rank}(x_i)-0.5}{n}\right\},
 $$
 
-where
-
-$$
-\Phi^{-1}
-$$
-
-is the inverse standard normal cumulative distribution function. If all `x_i`
-values are distinct, the transformed values `z_i` resemble expected standard
-normal order statistics.
+where $\Phi^{-1}$ is the inverse standard normal cumulative
+distribution function. The package assigns average ranks to tied
+values. When all values are distinct, these scores approximate expected
+standard normal order statistics.
 
 ## Power-linear approximation
 
-Second, a one-term fractional polynomial regression is fitted to approximate
-`z_i` as a smooth function of `x_i`:
+Next, approximate the normal scores using a one-term FP regression.
+To include the logarithmic case explicitly, define
 
 $$
-\hat{z}_i =
-\hat{\beta}_0 +
-\hat{\beta}_1 (x_i + \text{shift})^p.
+h_p(u) =
+\begin{cases}
+\log(u), & p=0,\\
+u^p, & p\ne 0.
+\end{cases}
 $$
 
-Here, `p` is the best-fitting FP1 power. The power `p` is selected from the usual
-FP power set:
+The fitted approximation is
 
 $$
-S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}.
+\hat z_i = \hat a_0 + \hat a_1 h_q(x_i+s),
 $$
 
-Ordinary least squares is used to estimate
+where $s$ is the fitted shift and $q$ is the best-fitting FP1 power.
+The default candidate set is
 
 $$
-\hat{\beta}_0
-\quad \text{and} \quad
-\hat{\beta}_1.
+S = \{-2,-1,-0.5,0,0.5,1,2,3\}.
 $$
 
-A power of 0 corresponds to the natural logarithm. If all observed `x_i` values
-are positive, the shift is zero. If some values are nonpositive, a shift is
-used to ensure that all transformed values are positive:
+The coefficients are estimated by ordinary least squares, and the
+power giving the best fit is selected. This preliminary regression
+uses the predictor values, not the outcome. User-supplied candidate
+powers for the predictor also apply to this step.
 
-$$
-x_i + \text{shift} > 0.
-$$
+With automatic shifting, $s=0$ when all values are positive; otherwise,
+a shift is chosen so that $x_i+s>0$. Active ACD predictors are not
+scaled by the ordinary MFP scale factor in version 1.1.0.
 
 ## Back-transformation to the interval `(0, 1)`
 
-Third, the fitted values are transformed back to the interval `(0, 1)` using the
-standard normal cumulative distribution function:
+Finally, apply the standard normal cumulative distribution function:
 
 $$
-\operatorname{ACD}(x_i)
-=
-a_i
-=
-\Phi(\hat{z}_i)
-=
-\Phi
-\left[
-\hat{\beta}_0 +
-\hat{\beta}_1 (x_i + \text{shift})^p
-\right].
+A(x_i) = \Phi(\hat z_i)
+= \Phi\{\hat a_0+\hat a_1 h_q(x_i+s)\}.
 $$
 
-The result is a smooth approximation to the ECDF of `X`. Importantly, after this
-smoothing step, the transformed value $\operatorname{ACD}(x_i)$ is a smooth 
-function of the original covariate value $x_i$ and no longer depends directly on
-its observed rank.
+This gives a smooth approximation to the predictor's empirical
+cumulative distribution. Once its parameters have been estimated,
+$A(x)$ can be evaluated at new predictor values without recalculating
+their ranks. The fitted transformation is estimated once and reused
+during backfitting and prediction.
 
 # Interpretation
 
-The ACD transformation maps `X` to an approximately uniform scale on `(0, 1)`.
-When a regression model includes a linear effect of `ACD(X)`, the expected
-outcome changes smoothly from its value at the lower end of the distribution of
-`X` to its value at the upper end.
+ACD values are approximately uniformly distributed between zero and
+one. They need not be exactly uniform, and the smallest and largest
+observed values need not map exactly to zero and one.
 
-For example, in a model of the form
-
-$$
-E(Y) = \beta_0 + \beta_1 \operatorname{ACD}(X),
-$$
-
-the ACD transformation maps the observed distribution of `X` approximately onto
-the interval `(0, 1)`. At the lower end of the observed distribution,
-$\operatorname{ACD}(X) \approx 0$,
-
-so that
+For illustration, consider an uncentred model with an identity link:
 
 $$
-E(Y \mid \operatorname{ACD}(X) \approx 0)
-\approx
-\beta_0 + \beta_1 \times 0
-=
-\beta_0.
+\mu(x)=E(Y\mid X=x)=\beta_0+\beta_1 A(x).
 $$
 
-At the upper end of the observed distribution, $\operatorname{ACD}(X) \approx 1$,
-
-so that
-
-$$
-E(Y \mid \operatorname{ACD}(X) \approx 1)
-\approx
-\beta_0 + \beta_1 \times 1
-=
-\beta_0 + \beta_1.
-$$
-
-Therefore, the difference between the predicted values at the upper and lower
-ends of the observed distribution is
+At ACD values near zero, the fitted mean is near $\beta_0$; at values
+near one, it is near $\beta_0+\beta_1$. Thus, $\beta_1$ is the signed
+change in the fitted mean for a one-unit increase in $A(x)$.
+Across the actual observed predictor range, the fitted difference is
 
 $$
-(\beta_0 + \beta_1) - \beta_0 = \beta_1.
+\mu(x_{\max})-\mu(x_{\min})
+=\beta_1\{A(x_{\max})-A(x_{\min})\}.
 $$
 
-Thus, $\beta_1$ represents the range of predicted values across the observed
-distribution of `X`.
+This difference is approximately $\beta_1$ only when the observed ACD
+values cover nearly the whole interval. With other links, the same
+interpretation applies on the linear-predictor scale.
 
-Because the mapping from `X` to `ACD(X)` is S-shaped, it changes slowly in the
-tails of the distribution and more rapidly in the central range. Consequently, a
-linear effect of `ACD(X)` typically produces a sigmoid-shaped relationship
-between `X` and `Y`.
-
-This type of relationship may be difficult to represent adequately using
-standard FP functions alone, particularly when the curve is singly or doubly
-asymptotic.
-
-The ACD transformation may also reduce the influence of extreme covariate values.
-By construction, `ACD(X)` has an approximately uniform distribution on `(0, 1)`.
-Extreme values on the original scale of `X` are therefore compressed into the
-tails of the ACD scale.
+A linear effect of $A(x)$ typically produces a sigmoid-shaped
+relationship with the original predictor. The transformation compresses
+the tails of its distribution, which can reduce the influence of
+extreme predictor values. It does not guarantee a particular response
+shape for every distribution or selected function.
 
 # ACD in the fractional polynomial family
 
-Royston and Sauerbrei (2016) extended the MFP approach by considering both the
-original covariate `x` and its ACD transformation simultaneously:
+The largest ACD-extended function combines one FP1 term in the shifted
+original predictor and one FP1 term in its ACD transformation:
 
 $$
-A_x = \operatorname{ACD}(x).
+\beta_1 h_{p_1}(x+s)+\beta_2 h_{p_2}\{A(x)\}.
 $$
 
-To reduce instability and overfitting, the most complex model is restricted to 
-one-term FP functions of $x$ and $A_x$. Specifically, the most complex
-ACD-extended model has the form
+Following Royston and Sauerbrei (2016), this is denoted
+$FP1(p_1,p_2)$. Here the notation represents two components, each
+containing one FP term. It differs from ordinary FP1 notation, which
+represents a single power term in one predictor.
 
-$$
-\beta_1 x^{p_1}
-+
-\beta_2 A_x^{p_2}.
-$$
+The powers $p_1$ and $p_2$ are selected for the outcome model. They are
+separate from the power $q$ used to construct $A(x)$. The default power
+set gives $8\times8=64$ candidate pairs. A power of zero denotes a
+logarithm through the definition of $h_p$ above.
 
-This model is denoted
-
-$$
-FP1(p_1, p_2).
-$$
-
-This notation follows Royston and Sauerbrei (2016). Here it denotes the sum of
-one FP1 term in the original covariate and one FP1 term in its ACD
-transformation; it should not be confused with the ordinary one-term FP1 model
-used in standard MFP notation.
-
-The powers `p1` and `p2` are selected from the usual FP power set:
-
-$$
-S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\},
-$$
-
-where a power of 0 denotes the natural logarithm. All 64 ($8 \times 8 = 64$) 
-combinations of the two powers are considered during model selection.
-
-This family provides a flexible way to model sigmoid-like effects while
-remaining within the general framework of fractional polynomial model selection.
-It also permits standard FP1 or linear functions when the ACD component is not
-needed.
+This family also permits simpler functions that omit either component.
+When both components are retained, the original-predictor term can add
+a trend, so the complete function need not level off at both ends.
 
 # Function-selection procedure for ACD (FSPA)
 
-When a variable is selected for ACD assessment, `mfp2()` uses the FSPA. The
-procedure starts from the most complex candidate ACD-extended model,
-
-$$
-FP1(p_1, p_2),
-$$
-
-and compares it with a set of simpler nested models, as described in the
-[closed test procedure](#FSA). The aim is to select the simplest function that
-is adequately supported by the data. The procedure considers six nested model 
-families as shown below:
+For each predictor requested for ACD assessment, the FSPA considers the
+following six candidate families. The notation omits the intercept,
+other predictors, and centring constants.
 
 ```{r acd-model-table, echo=FALSE, results='asis'}
 acd_models <- data.frame(
@@ -374,10 +276,10 @@ acd_models <- data.frame(
     "$FP1(\\cdot, \\cdot)$"
   ),
   Function = c(
-    "$\\beta_1 x^{p_1} + \\beta_2 A_x^{p_2}$",
-    "$\\beta_1 x^{p_1}$",
-    "$\\beta_2 A_x^{p_2}$",
-    "$\\beta_1 x$",
+    "$\\beta_1 h_{p_1}(x+s) + \\beta_2 h_{p_2}(A_x)$",
+    "$\\beta_1 h_{p_1}(x+s)$",
+    "$\\beta_2 h_{p_2}(A_x)$",
+    "$\\beta_1(x+s)$",
     "$\\beta_2 A_x$",
     "Null model"
   ),
@@ -396,56 +298,58 @@ knitr::kable(
   acd_models,
   align = c("l", "l", "l", "l"),
   escape = FALSE,
-  caption = "Six nested model families considered by the FSPA."
+  caption = "Six candidate model families considered by the FSPA."
 )
 ```
-The dot $\cdot$ indicates that the corresponding term is omitted.
 
-## Closed test procedure {#FSA}
+Here $A_x=A(x)$, and a dot indicates that the corresponding component
+is omitted. The families do not form a single nested sequence; for
+example, M2 and M3 use different components.
 
-Selection among the six sub-models is performed using a closed test procedure.
-The first test is performed at the significance level specified by `select`,
-whereas the remaining tests are performed at the significance level specified by
-`alpha`.
+## P-value selection {#FSA}
 
-The sequence of tests is as follows:
+With `criterion = "pvalue"`, the first comparison uses `select` and
+the remaining comparisons use `alpha`. For the Gaussian models used
+below, the sequence is:
 
-1. Compare model M1 with model M6 on 4 degrees of freedom. If the test is not
-   significant, omit `x`. Otherwise, continue to Step 2.
+1. Compare M1 with M6 using 4 selection degrees of freedom. If the
+   comparison is not significant, omit the predictor unless it is
+   retained through `keep` or `select = 1`. Otherwise, continue.
+2. Compare M1 with M4 using 3 degrees of freedom. If the comparison
+   is not significant, select the linear effect of the original
+   predictor (M4) and stop.
+3. Compare M1 with M2 using 2 degrees of freedom. If the comparison
+   is not significant, select the ordinary FP1 function (M2) and stop.
+4. Compare M1 with M3 using 2 degrees of freedom. If the comparison
+   is significant, retain both components (M1) and stop. Otherwise,
+   continue to the final comparison.
+5. Compare M3 with M5 using 1 degree of freedom. Select an FP1 function
+   of ACD (M3) if the comparison is significant; otherwise, select
+   a linear effect of ACD (M5).
 
-2. Compare model M1 with model M4 on 3 degrees of freedom. If the test is not
-   significant, select model M4 and stop. Otherwise, continue to Step 3.
+The ordering favours a linear or ordinary FP1 function when it gives
+an adequate fit relative to the two-component function. ACD components
+are retained when those simpler forms do not adequately represent the
+relationship. The degrees of freedom include an allowance for selecting
+the outcome-model FP powers; model comparisons also account for
+family-specific coefficient counts where applicable.
 
-3. Compare model M1 with model M2 on 2 degrees of freedom. If the test is not
-   significant, select model M2 and stop. Otherwise, continue to Step 4.
-
-4. Compare model M1 with model M3 on 2 degrees of freedom. If the test is
-   significant, model M1 cannot be simplified; select model M1 and stop.
-   Otherwise, continue to Step 5.
-
-5. Compare model M3 with model M5 on 1 degree of freedom. If the test is
-   significant, select model M3. Otherwise, select model M5.
-
-The result is the selection of one of the six models. The ordering of these tests
-is intentional. The FSPA favours a linear or standard FP1 function when such a
-function provides an adequate fit. ACD-based models are selected only when the
-simpler standard functions do not fit sufficiently well relative to the full
-ACD-extended model.
-
-This follows the general philosophy of MFP: the selected model should be as
-simple as possible, and additional complexity should be supported by improved
-fit.
+Gaussian models use chi-square comparisons by default. Set
+`ftest = TRUE` to use F-tests. GEE models use Wald-based comparisons
+under p-value selection.
 
 ## Information criteria
 
-As an alternative to p-value-based selection, the candidate models M1 to M6 can
-be compared using AIC or BIC. When `criterion = "aic"` or `criterion = "bic"`,
-the model with the smallest information criterion is selected.
+With `criterion = "aic"` or `criterion = "bic"`, the six candidate
+families are compared directly, and the permitted model with the
+smallest criterion value is selected. The `select` and `alpha`
+significance levels do not control these comparisons. For GEE models,
+the corresponding scores are QICu and QBIC.
 
 # Simulation example
 
-The following simulation creates a sigmoid relationship between a continuous
-covariate `x` and a continuous outcome `y`.
+The following simulation creates a sigmoid relationship between `x`
+and a continuous outcome `y`, with random noise added to the mean.
 
 ```{r simulate-acd}
 set.seed(54)
@@ -460,16 +364,12 @@ sigmoid <- function(x) {
 y <- as.numeric(20 * sigmoid(x) + rnorm(n, mean = 0, sd = 0.5))
 ```
 
-The true relationship between `x` and `y` is sigmoid-shaped. This provides a
-simple setting in which the ACD extension is expected to be useful.
-
 # Fitting an ACD model
 
 ## Matrix interface
 
-We first fit the model using the matrix interface. The variable `x` is specified
-in the `acd_vars` argument, indicating that the ACD extension should be considered
-for this covariate.
+Name the predictor in `acd_vars` to request ACD assessment. In this
+example, the response family defaults to Gaussian.
 
 ```{r fit-acd-matrix}
 fit_acd_matrix <- mfp2(
@@ -483,8 +383,8 @@ fit_acd_matrix$fp_terms
 
 ## Formula interface
 
-The same model can be fitted using the formula interface by setting
-`acd = TRUE` inside `fp()`.
+Set `acd = TRUE` inside `fp()` to request the same assessment through
+the formula interface.
 
 ```{r fit-acd-formula}
 dat <- data.frame(y = y, x = as.numeric(x))
@@ -500,7 +400,8 @@ fit_acd_formula$fp_terms
 
 # Comparison with standard MFP
 
-For comparison, we fit a standard MFP model without the ACD extension.
+For comparison, fit an ordinary MFP model to the same data without ACD
+assessment. Its default maximum complexity is FP2.
 
 ```{r fit-standard-mfp}
 fit_standard <- mfp2(
@@ -512,14 +413,13 @@ fit_standard <- mfp2(
 fit_standard$fp_terms
 ```
 
-A standard FP function may select a flexible FP2 model, but it may still be less
-suitable for representing a clearly sigmoid-shaped relationship. The ACD
-extension is designed for situations where such shapes are scientifically
-plausible and supported by the data.
-
 # Plotting the fitted functions
 
-The fitted functions can be inspected using `plot()`.
+Use `plot()` to compare the selected functions. Each panel shows the
+fitted contribution, pointwise 95% confidence intervals, and
+component-plus-residual points. Because each Gaussian model has only
+one predictor and an identity link, the fitted curve includes the
+intercept and the points correspond to the observed outcomes.
 
 ```{r plot-acd, fig.cap="ACD model compared with a standard MFP model.", fig.width=8, fig.height=4}
 p1 <- plot(fit_acd_matrix, terms = "x")[[1]] +
@@ -533,32 +433,38 @@ p2 <- plot(fit_standard, terms = "x")[[1]] +
 patchwork::wrap_plots(p1, p2, ncol = 2)
 ```
 
-In this simulated example, the ACD model is expected to follow the sigmoid shape
-more naturally than the standard MFP model.
+Both models use the same simulated observations. Inspect the curves
+to see how each represents the central transition and the tails,
+rather than assuming that requesting ACD guarantees a better fit.
+The intervals are conditional on the selected model and do not account
+for uncertainty from variable or function selection.
 
 # Practical remarks
 
-ACD transformations are useful when a sigmoid-shaped relationship is
-scientifically plausible. They may also reduce the influence of extreme
-covariate values, because the observed covariate distribution is mapped to an
-approximately uniform scale on `(0, 1)`.
-
-Requesting ACD sets the term's maximum `df` to 4 because the complete FSPA
-requires the two-component reference model. If the fitting data contain fewer
-than five distinct values for the requested term, `mfp2()` resets the ACD request
-and applies the ordinary MFP rules instead.
-
-The ACD extension should be regarded as an additional modelling option within the
-MFP framework, not as a replacement for standard MFP modelling.
+- Use ACD assessment when sigmoid-shaped effects are plausible and the
+  fitted relationship supports them. The ACD option extends the choices
+  available during MFP selection.
+- For an eligible ACD predictor, `mfp2()` sets the maximum `df` to 4
+  to allow the two-component reference model. Selection can still
+  choose a simpler form.
+- ACD requests are reset when the fitting predictor has fewer than
+  five distinct values. The ordinary MFP rules then apply.
+- Supply original predictor values for prediction. The fitted shift,
+  ACD approximation, selected powers, and centring are reused; do not
+  recalculate ranks or refit the ACD transformation in the new data.
+- In `$fp_terms`, `power1` describes the original-predictor component
+  and `power2` the ACD component. An `NA` power indicates that the
+  corresponding component is absent. A nonzero ACD flag alone does
+  not establish that the final model retains an ACD component.
 
 # References
 
 Royston, P. (2014). A smooth covariate rank transformation for use in regression
-models with a sigmoid dose-response function. *Stata Journal*, 14, 329--341.
+models with a sigmoid dose-response function. *Stata Journal*, 14(2), 329--341.
 
 Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD
 covariate transformation for enhanced parametric multivariable modeling.
-*Stata Journal*, 16, 72--87.
+*Stata Journal*, 16(1), 72--87.
 
 Royston, P. and Sauerbrei, W. (2008). *Multivariable Model-Building: A
 Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for

@@ -1,0 +1,393 @@
+---
+title: "Multivariable Fractional Polynomial Interaction Models"
+author: "Edwin Kipruto, Patrick Royston and Willi Sauerbrei"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Multivariable Fractional Polynomial Interaction Models}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 9,
+  fig.height = 4.5,
+  fig.align = "center",
+  out.width = "100%"
+)
+options(width = 80)
+has_patchwork <- requireNamespace("patchwork", quietly = TRUE)
+```
+
+# Introduction
+
+`mfpi()` assesses whether the effect of a grouping variable, such as
+treatment, varies with a continuous variable. The treatment effect is
+modelled as a fractional polynomial (FP) function of the continuous
+variable, so the variable does not need to be categorised. The
+procedure has two stages: Stage 1 selects an adjustment model with MFP,
+and Stage 2 tests each candidate interaction while holding that
+adjustment model fixed.
+
+This vignette shows how to run the analyses in the accompanying paper
+([paper reference](#paper-reference)) and how to read the output. For
+the methodology, the flexibility variants (`flex`), the selection
+criteria and the interface, each section points to the relevant part of
+the paper (Sections 2 and 3).
+
+```{r packages}
+library(mfp2)
+library(survival)
+```
+
+# Advanced prostate cancer data
+
+The data come from a randomised trial comparing placebo with
+diethylstilboestrol (paper, Section 4). The outcome is overall survival
+(`survtime`, `cens`), and the grouping variable is the binary treatment
+`rx`. The data set already contains the recoding described in the
+paper.
+
+Converting `rx` to a factor with named levels gives `Placebo` and
+`Treatment` labels in printed output, predictions and plots. The first
+level is the reference group (paper, Section 3.3).
+
+```{r data}
+data("advanced_prostate_cancer", package = "mfp2")
+advanced_prostate_cancer$rx <- factor(
+  advanced_prostate_cancer$rx,
+  levels = c(0, 1), labels = c("Placebo", "Treatment")
+)
+
+table(advanced_prostate_cancer$rx)
+tapply(advanced_prostate_cancer$age, advanced_prostate_cancer$rx, range)
+```
+
+The question is whether the treatment effect varies with age. The overall
+treatment comparison, which ignores age, shows no clear difference
+(paper, Section 4.1):
+
+```{r overall-treatment-effect}
+survdiff(Surv(survtime, cens) ~ rx, data = advanced_prostate_cancer)
+
+cox <- coxph(Surv(survtime, cens) ~ rx, data = advanced_prostate_cancer)
+summary(cox)$conf.int
+```
+
+The hazard ratio is 0.84 (95% CI 0.68--1.04). A single overall
+estimate like this can hide an effect that changes with age.
+
+All analyses below use `flex = "flex1"` (the same FP powers in both
+groups) and `ties = "breslow"`, as in the paper. The package defaults
+are `flex = "flex3"` and `ties = "efron"`. The paper (Sections 2.5 and
+4) explains both choices and how Efron's method changes the results.
+
+# Interaction without adjustment
+
+```{r unadjusted-fit}
+fit_unadjusted <- mfpi(
+  Surv(survtime, cens) ~ rx + fp(age),
+  data = advanced_prostate_cancer,
+  family = "cox",
+  group_var = "rx",
+  interaction_vars = "age",
+  interaction_forms = c(age = "fp2"),
+  flex = "flex1",
+  ties = "breslow"
+)
+print(fit_unadjusted)
+```
+
+What the arguments do:
+
+- `fp(age)` puts age in the Stage 1 adjustment model. It does not set
+  the form of the interaction.
+- `group_var` names the grouping variable.
+- `interaction_vars` lists the continuous variables tested for
+  interaction with `group_var`.
+- `interaction_forms = c(age = "fp2")` models the interaction with an FP2
+  function. All 36 FP2 power pairs are compared. Variables not listed
+  use FP1.
+- `flex = "flex1"` selects the FP powers from the model without
+  interaction and uses them in both groups (paper, Section 2.5).
+
+How to read the output (paper, Section 4.2):
+
+- **Step 1** is the adjustment model. Age is selected as FP1 with power 3.
+  Here age is the only adjustment variable, and it is removed from the
+  adjustment set when its own interaction is tested.
+- **Step 2** is the interaction test. The FP2 powers (3, 3) are used in
+  both groups. Adding the interaction reduces the deviance by 9.746 on
+  2 df.
+- **Step 3** summarises the decision: the interaction is selected
+  (p = 0.008).
+
+## Plotting the interaction
+
+`plot()` returns a list with one element per variable. Each element
+contains one plot per comparison with the reference group.
+
+```{r unadjusted-plot, eval=has_patchwork, fig.cap="Unadjusted analysis: fitted age functions by group (left) and the Treatment-minus-Placebo log hazard ratio with 95% CI (right); paper, Figure 2."}
+p_unadj <- plot(fit_unadjusted, terms = "age", plot_type = "both",
+                show_title = FALSE)
+```
+
+The right panel shows the log hazard ratio for Treatment vs Placebo as a
+function of age, the difference function $\Delta$ (paper, Section 2.3). The 
+dashed line is the constant log hazard
+ratio from the model without interaction. Here, the benefit of
+treatment is largest in younger patients and decreases with age. The
+confidence intervals do not account for the selection of FP powers.
+
+## Predictions at chosen ages
+
+`type = "both"` returns the fitted function for each group and the
+difference between groups, all on the linear predictor scale.
+
+```{r unadjusted-predict}
+age_pred <- predict(
+  fit_unadjusted,
+  newdata = data.frame(age = c(50, 60, 70)),
+  terms = "age",
+  level = 0.95,
+  type = "both"
+)
+age_pred
+```
+
+The differences are age-specific log hazard ratios. Exponentiating them
+gives hazard ratios of about 0.23, 0.45 and 0.80 at ages 50, 60 and 70
+(paper, Section 4.2.2).
+
+# Interaction with adjustment for prognostic factors
+
+The other baseline factors are now candidates for the adjustment model.
+Continuous variables enter through `fp()`; binary variables are entered
+directly. Age is still the only variable tested for interaction.
+
+```{r adjusted-fit}
+fit_adjusted <- mfpi(
+  Surv(survtime, cens) ~ rx + fp(age) + fp(wt) + fp(sbp) +
+    fp(dbp) + fp(sz) + fp(ap) + fp(hg) + fp(sg) +
+    pf + hx + bm + stage + ekg,
+  data = advanced_prostate_cancer,
+  family = "cox",
+  group_var = "rx",
+  interaction_vars = "age",
+  interaction_forms = c(age = "fp2"),
+  flex = "flex1",
+  ties = "breslow"
+)
+print(fit_adjusted)
+```
+
+Step 1 now selects seven variables, with age as FP2 (3, 3). The
+interaction is weaker after adjustment but is still selected
+(p = 0.027; paper, Section 4.3). The plot is similar to the unadjusted
+one:
+
+```{r adjusted-plot, eval=has_patchwork, fig.cap="Adjusted analysis: fitted age functions by group (left) and the Treatment-minus-Placebo log hazard ratio with 95% CI (right); paper, Figure 3."}
+p_adj <- plot(fit_adjusted, terms = "age", plot_type = "both",
+              show_title = FALSE)
+```
+
+# Selection with AIC
+
+With `criterion = "aic"`, AIC is used in both stages. The interaction is
+selected when it lowers AIC by more than `min_improvement` (default 2).
+`criterion = "bic"` works the same way (paper, Section 2.6).
+
+```{r aic-fit}
+fit_aic <- mfpi(
+  Surv(survtime, cens) ~
+    rx + fp(age) + fp(wt) + fp(sbp) + fp(dbp) +
+    fp(sz) + fp(ap) + fp(hg) + fp(sg) +
+    pf + hx + bm + stage + ekg,
+  data = advanced_prostate_cancer,
+  family = "cox",
+  group_var = "rx",
+  interaction_vars = "age",
+  interaction_forms = c(age = "fp2"),
+  flex = "flex1",
+  ties = "breslow",
+  criterion = "aic",
+  min_improvement = 2
+)
+print(fit_aic)
+```
+
+AIC selects a slightly different adjustment model (eight variables) but
+the same interaction, with AIC lower by 3.681 (paper, Section 4.4).
+
+# Several interaction candidates
+
+Several continuous variables can be tested at once. Here age uses FP2
+and the other six use the default FP1. `p_adjust_method = "holm"`
+adjusts the p-values for the seven tests (paper, Section 2.6).
+
+```{r multiple-fit}
+fit_multiple_interactions <- mfpi(
+  Surv(survtime, cens) ~
+    rx + fp(age) + fp(wt) + fp(sbp) + fp(dbp) +
+    fp(sz) + fp(ap) + fp(hg) + fp(sg) +
+    pf + hx + bm + stage + ekg,
+  data = advanced_prostate_cancer,
+  family = "cox",
+  group_var = "rx",
+  interaction_vars = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg"),
+  interaction_forms = c(age = "fp2"),
+  flex = "flex1",
+  ties = "breslow",
+  p_adjust_method = "holm",
+  verbose = FALSE
+)
+print(fit_multiple_interactions)
+```
+
+Step 3 now shows raw and adjusted p-values. Age (raw p = 0.027) and `ap`
+(raw p = 0.049) are below 0.05 before adjustment, but no interaction is
+selected after Holm adjustment (paper, Section 4.5). 
+
+# Fixed linear adjustment model
+
+The adjustment model can be prespecified instead of selected:
+
+- `fp(x, df = 1)` gives a linear adjustment effect, with no FP power
+  search.
+- `keep` forces the named variables into the adjustment model.
+
+```{r fixed-linear-fit}
+fit_fixed_linear <- mfpi(
+  Surv(survtime, cens) ~
+    rx +
+    fp(age, df = 1) + fp(wt, df = 1) + fp(sbp, df = 1) +
+    fp(dbp, df = 1) + fp(sz, df = 1) + fp(ap, df = 1) +
+    fp(hg, df = 1) + fp(sg, df = 1) +
+    pf + hx + bm + stage + ekg,
+  data = advanced_prostate_cancer,
+  family = "cox",
+  group_var = "rx",
+  interaction_vars = "age",
+  interaction_forms = c(age = "fp2"),
+  flex = "flex1",
+  ties = "breslow",
+  criterion = "pvalue",
+  keep = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg", "sg",
+           "pf", "hx", "bm", "stage", "ekg")
+)
+print(fit_fixed_linear)
+```
+
+`fp(age, df = 1)` affects only the adjustment model. The interaction
+with treatment is still FP2, as set by `interaction_forms`. To use a
+known transformation in the adjustment model (for example, `log(x)`),
+create the transformed variable first and enter it with `df = 1`
+(paper, Section 4.6).
+
+# More than two groups
+
+`group_var` may have more than two levels. Each non-reference group is
+compared with the reference group, and `plot()` and `predict()` return
+one comparison per non-reference group (paper, Section 4.7).
+
+# The xy interface
+
+`mfpi()` also accepts a predictor data frame `x` and a response `y`
+instead of a formula. Columns are matched by name, so their order does
+not matter (paper, Appendix A).
+
+```{r xy-data}
+y <- with(advanced_prostate_cancer, Surv(survtime, cens))
+x <- advanced_prostate_cancer[, c(
+  "rx", "age", "wt", "sbp", "dbp", "sz", "ap", "hg", "sg",
+  "pf", "hx", "bm", "stage", "ekg"
+)]
+```
+
+The unadjusted analysis passes only `rx` and `age`, and gives the same
+results as `fit_unadjusted`:
+
+```{r xy-unadjusted}
+fit_unadjusted_xy <- mfpi(
+  x = x[, c("rx", "age")],
+  y = y,
+  family = "cox",
+  group_var = "rx",
+  interaction_vars = "age",
+  interaction_forms = c(age = "fp2"),
+  flex = "flex1",
+  ties = "breslow"
+)
+print(fit_unadjusted_xy)
+```
+
+Passing all columns of `x` makes every other variable a candidate for
+the adjustment model. The following calls give the same results as the
+adjusted, AIC and multiple-candidate formula fits above:
+
+```{r xy-other-analyses, eval=FALSE}
+fit_adjusted_xy <- mfpi(
+  x = x, y = y, family = "cox",
+  group_var = "rx", interaction_vars = "age",
+  interaction_forms = c(age = "fp2"), flex = "flex1", ties = "breslow"
+)
+
+fit_aic_xy <- mfpi(
+  x = x, y = y, family = "cox",
+  group_var = "rx", interaction_vars = "age",
+  interaction_forms = c(age = "fp2"), flex = "flex1", ties = "breslow",
+  criterion = "aic", min_improvement = 2
+)
+
+fit_multiple_xy <- mfpi(
+  x = x, y = y, family = "cox",
+  group_var = "rx",
+  interaction_vars = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg"),
+  interaction_forms = c(age = "fp2"), flex = "flex1", ties = "breslow",
+  p_adjust_method = "holm", verbose = FALSE
+)
+```
+
+Without a formula, settings that `fp()` would set are given as named
+vectors. For the fixed linear adjustment model, `df` sets each
+continuous variable to linear and `keep` forces all variables in:
+
+```{r xy-fixed-linear, eval=FALSE}
+fit_fixed_linear_xy <- mfpi(
+  x = x, y = y, family = "cox",
+  group_var = "rx", interaction_vars = "age",
+  interaction_forms = c(age = "fp2"), flex = "flex1", ties = "breslow",
+  criterion = "pvalue",
+  df = c(age = 1, wt = 1, sbp = 1, dbp = 1,
+         sz = 1, ap = 1, hg = 1, sg = 1),
+  keep = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg", "sg",
+           "pf", "hx", "bm", "stage", "ekg")
+)
+```
+
+Centering (`center`, `center_type`) works the same in both interfaces.
+It does not change the fitted values, the difference function, the
+selected powers or the p-values (paper, Appendix A.7).
+
+# Further details
+
+See `?mfpi`, `?predict.mfpi` and `?plot.mfpi` for all arguments. The
+paper describes the MFPI methodology (Section 2), the software
+interface and data requirements (Section 3), the application in more
+detail (Section 4) and a comparison with the Stata `mfpi` command
+(Section 5 and Appendix B).
+
+## Paper reference {#paper-reference}
+
+Kipruto, E., Royston, P., and Sauerbrei, W. *Multivariable Fractional
+Polynomial Interaction Models in R*. Manuscript submitted to the
+*Journal of Statistical Software*.

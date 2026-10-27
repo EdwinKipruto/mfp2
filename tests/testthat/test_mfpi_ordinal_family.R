@@ -64,7 +64,7 @@ ordinal_response_matrix <- function(pred) {
 # ---------------------------------------------------------------------------
 
 test_that("ordinal mfpi() fits without error and returns correct class", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   output <- capture.output(
     fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data(), verbose = TRUE)
@@ -86,7 +86,7 @@ test_that("ordinal mfpi() fits without error and returns correct class", {
 
 
 test_that("ordinal mfpi() stores ordinal metadata correctly", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data(), link = "probit")
 
@@ -101,7 +101,7 @@ test_that("ordinal mfpi() stores ordinal metadata correctly", {
 # ---------------------------------------------------------------------------
 
 test_that("coef() and vcov() work for ordinal mfpi", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data())
 
@@ -122,7 +122,7 @@ test_that("coef() and vcov() work for ordinal mfpi", {
 # ---------------------------------------------------------------------------
 
 test_that("function prediction works for ordinal mfpi", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data())
   nd <- make_mfpi_ordinal_data()[1:20, c("group", "x", "z"), drop = FALSE]
@@ -156,7 +156,7 @@ test_that("function prediction works for ordinal mfpi", {
 # ---------------------------------------------------------------------------
 
 test_that("ordinal link prediction returns the slope linear predictor", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data())
   nd <- make_mfpi_ordinal_data()[1:20, c("group", "x", "z"), drop = FALSE]
@@ -181,7 +181,7 @@ test_that("ordinal link prediction returns the slope linear predictor", {
 # ---------------------------------------------------------------------------
 
 test_that("ordinal response prediction returns valid class probabilities", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data())
   nd <- make_mfpi_ordinal_data()[1:20, c("group", "x", "z"), drop = FALSE]
@@ -207,7 +207,7 @@ test_that("ordinal response prediction returns valid class probabilities", {
 # ---------------------------------------------------------------------------
 
 test_that("ordinal mean prediction returns numeric expectations", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data())
   nd <- make_mfpi_ordinal_data()[1:20, c("group", "x", "z"), drop = FALSE]
@@ -228,7 +228,7 @@ test_that("ordinal mean prediction returns numeric expectations", {
 
 
 test_that("ordinal mean is consistent with response probabilities", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data())
   nd <- make_mfpi_ordinal_data()[1:20, c("group", "x", "z"), drop = FALSE]
@@ -255,7 +255,7 @@ test_that("ordinal mean is consistent with response probabilities", {
 # ---------------------------------------------------------------------------
 
 test_that("ordinal mfpi with probit link returns valid predictions", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data(), link = "probit")
   expect_identical(fit$ordinal_link, "probit")
@@ -278,7 +278,7 @@ test_that("ordinal mfpi with probit link returns valid predictions", {
 # ---------------------------------------------------------------------------
 
 test_that("ordinal mfpi works through the matrix interface", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   dat <- make_mfpi_ordinal_data()
   fit <- mfpi(
@@ -311,7 +311,7 @@ test_that("ordinal mfpi works through the matrix interface", {
 # ---------------------------------------------------------------------------
 
 test_that("ordinal se.fit warns for response/mean types", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data())
   nd <- make_mfpi_ordinal_data()[1:10, c("group", "x", "z"), drop = FALSE]
@@ -331,7 +331,7 @@ test_that("ordinal se.fit warns for response/mean types", {
 # ---------------------------------------------------------------------------
 
 test_that("ordinal mfpi rejects invalid prediction types", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
 
   fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data())
   nd <- make_mfpi_ordinal_data()[1:5, c("group", "x", "z"), drop = FALSE]

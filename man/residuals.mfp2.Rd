@@ -39,6 +39,16 @@ non-reference category.
 For other models, residual calculation is passed to the underlying fit,
 including its choice of default residual type.
 }
+\examples{
+data("prostate")
+fit <- mfp2(
+  lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+  data = prostate,
+  verbose = FALSE
+)
+head(residuals(fit))
+
+}
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[=plot]{plot()}}, \code{\link[stats:residuals]{stats::residuals()}}
 }

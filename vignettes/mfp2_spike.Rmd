@@ -1,0 +1,438 @@
+---
+title: "Modelling Spike-at-Zero Covariates with Fractional Polynomials"
+author: "Edwin Kipruto and Willi Sauerbrei"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Modelling Spike-at-Zero Covariates with Fractional Polynomials}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6,
+  fig.height = 4.5,
+  fig.align = "center",
+  out.width = "100%"
+)
+options(width = 80)
+```
+
+# Introduction
+
+A spike-at-zero (SAZ) covariate has a proportion of observations equal
+to zero and a continuous distribution of positive values. In `mfp2()`,
+setting `spike = TRUE` inside `fp()` models such a covariate with two
+components: a binary indicator $I(x = 0)$ and an FP function of the
+positive values. The selection procedure then decides which components
+to keep.
+
+This vignette shows how to run the analyses in the accompanying paper
+([paper reference](#paper-reference)) and how to read the output. For
+the model, the selection procedures and the eligibility rules, each
+section points to the relevant part of the paper.
+
+Every SAZ fit reports one of four `saz_decision` values (paper,
+Section 2.3):
+
+| `saz_decision`        | Retained components                  | Paper notation |
+|-----------------------|--------------------------------------|----------------|
+| `continuous + binary` | FP function and binary indicator     | $M_{BP}$       |
+| `continuous only`     | FP function of positive values only  | $M_P$          |
+| `binary only`         | Binary indicator only                | $M_B$          |
+| `not selected`        | None (covariate excluded)            | --             |
+
+```{r packages-and-data}
+library(mfp2)
+
+data("prostate", package = "mfp2")
+```
+
+# Prostate cancer data
+
+The outcome is `lpsa` (log prostate-specific antigen). The SAZ candidate
+is `pgg45`, the percentage of Gleason score 4 or 5 (paper, Section 4.1).
+
+```{r prostate-zero-summary}
+nrow(prostate)
+table(pgg45_zero = prostate$pgg45 == 0)
+round(mean(prostate$pgg45 == 0), 2)
+length(unique(prostate$pgg45[prostate$pgg45 > 0]))  # distinct positive values
+```
+
+The zero proportion (0.36) and the positive proportion (0.64) are both
+above the default threshold `min_saz_prop = 0.10`, so `pgg45` is
+eligible for SAZ modelling (paper, Section 3.2).
+
+## Univariable analysis with p-values
+
+```{r univariable-saz-fit}
+fit_pgg45 <- mfp2(
+  lpsa ~ fp(pgg45, df = 4, select = 0.05, alpha = 0.05, spike = TRUE),
+  data = prostate,
+  family = "gaussian",
+  criterion = "pvalue",
+  verbose = FALSE
+)
+
+print(fit_pgg45, detailed_settings = FALSE, notes = FALSE)
+```
+
+What the arguments do (all except `spike` are the defaults):
+
+- `spike = TRUE` requests the SAZ decomposition.
+- `df = 4` allows at most an FP2 function for the positive values.
+- `select` is the significance level for including the covariate.
+- `alpha` is the significance level for choosing the FP function and for
+  the tests that remove a component (paper, Sections 2.3.1--2.3.2).
+- `detailed_settings = FALSE` and `notes = FALSE` shorten the printed
+  output.
+
+The selected model is `binary only`: the FP function is dropped, so
+every positive value of `pgg45` gets the same fitted value (paper,
+Section 4.2).
+
+`predict()` takes covariates on their original scale and builds the
+indicator and FP terms itself:
+
+```{r univariable-saz-predictions}
+newdat <- data.frame(pgg45 = c(0, 4, 20, 45, 60, 100))
+predict(fit_pgg45, newdata = newdat, type = "link")
+```
+
+The prediction is about 1.74 at zero and about 2.90 at every positive
+value.
+
+`plot()` returns a list of ggplot objects, one per covariate.
+`partial_only = TRUE` plots only the fitted effect, without
+partial residuals. A `binary only` effect shows as two points with
+confidence intervals. The intervals do not account for model selection.
+
+```{r univariable-saz-plot, fig.cap="Binary-only SAZ model for pgg45 (paper, Figure 1)."}
+p1 <- plot(fit_pgg45, terms = "pgg45", partial_only = TRUE)
+p1[["pgg45"]]
+```
+
+## Forcing inclusion or the full SAZ model
+
+Three settings override parts of the selection (paper, Section 3.1 and
+the table of arguments there).
+
+**`select = 1`** keeps `pgg45` in the model. `alpha` still controls the
+choice of FP function and the removal of components, so any SAZ
+decision except `not selected` can result.
+
+```{r select-one}
+fit_forced <- mfp2(
+  lpsa ~ fp(pgg45, select = 1, alpha = 0.05, spike = TRUE),
+  data = prostate,
+  family = gaussian(),
+  criterion = "pvalue",
+  verbose = FALSE
+)
+print(fit_forced, detailed_settings = FALSE, notes = FALSE)
+```
+
+**`keep`** does the same for any `criterion`. It is an argument of
+`mfp2()`, not of `fp()`, and takes variable names. The multivariable
+model in the next section excludes `pgg45`; `keep = "pgg45"` keeps it in:
+
+```{r keep}
+fit_keep <- mfp2(
+  lpsa ~ fp(pgg45, spike = TRUE) + fp(age) +
+    fp(cavol) + fp(weight) + fp(bph) + fp(cp) + svi,
+  data = prostate,
+  family = gaussian(),
+  criterion = "pvalue",
+  select = 0.05,
+  alpha = 0.05,
+  keep = "pgg45",
+  verbose = FALSE
+)
+print(fit_keep, detailed_settings = FALSE, notes = FALSE)
+```
+
+**`force_max_fp = TRUE`** in `fp()` keeps the binary indicator and the
+most complex FP function allowed by `df` (FP2 here). Components are not
+removed, whatever the criterion.
+
+```{r force-max-fp}
+fit_maxfp <- mfp2(
+  lpsa ~ fp(pgg45, spike = TRUE, force_max_fp = TRUE),
+  data = prostate,
+  family = gaussian(),
+  criterion = "pvalue",
+  verbose = FALSE
+)
+print(fit_maxfp, detailed_settings = FALSE, notes = FALSE)
+```
+
+## Multivariable analysis
+
+SAZ covariates can be mixed with ordinary FP covariates and with binary
+covariates entered without `fp()` (here `svi`). The SAZ decision for
+`pgg45` is made in each backfitting cycle, given the current functions
+of the other covariates (paper, Section 2.4). Settings passed to
+`mfp2()` (`select`, `alpha`) apply to all covariates unless overridden
+inside `fp()`.
+
+```{r multivariable-saz-fit}
+fit_multi <- mfp2(
+  lpsa ~ fp(pgg45, spike = TRUE) + fp(age) +
+    fp(cavol) + fp(weight) + fp(bph) + fp(cp) + svi,
+  data = prostate,
+  family = gaussian(),
+  criterion = "pvalue",
+  select = 0.05,
+  alpha = 0.05,
+  verbose = FALSE
+)
+print(fit_multi, detailed_settings = FALSE, notes = FALSE)
+```
+
+After adjustment, `pgg45` is `not selected`. Only `cavol` (log),
+`weight` (linear) and `svi` are retained (paper, Section 4.3).
+
+## Selection with AIC or BIC
+
+With `criterion = "aic"` or `"bic"`, all candidate SAZ models are
+compared in a single step and `select` and `alpha` are ignored (paper,
+Sections 2.3.3 and 4.4).
+
+```{r aic-saz-fit}
+fit_pgg45_aic <- mfp2(
+  lpsa ~ fp(pgg45, spike = TRUE),
+  data = prostate,
+  family = "gaussian",
+  criterion = "aic",
+  verbose = FALSE
+)
+print(fit_pgg45_aic, detailed_settings = FALSE, notes = FALSE)
+```
+
+AIC penalises extra parameters less than the 0.05 p-value test does, and
+selects `continuous only` with a log function. There is no binary
+indicator. For `pgg45 = 0` the FP term is set to zero (`log(0)` is not
+computed), so the prediction at zero is the uncentred intercept. This
+equals the fitted log function at `pgg45 = 1`.
+
+```{r aic-saz-predictions}
+newdat <- data.frame(pgg45 = c(0, 4, 25, 100))
+predict(fit_pgg45_aic, newdata = newdat, type = "link")
+```
+
+```{r aic-saz-plot, fig.height=5, fig.cap="Continuous-only SAZ model for pgg45 selected by AIC (paper, Figure 2)."}
+p2 <- plot(fit_pgg45_aic, terms = "pgg45", partial_only = TRUE,
+           show_grid = TRUE)
+p2[["pgg45"]]
+```
+
+BIC penalises extra parameters more than AIC does, and selects
+`binary only`, the same result as the p-value analysis:
+
+```{r bic-saz-fit}
+fit_pgg45_bic <- mfp2(
+  lpsa ~ fp(pgg45, spike = TRUE),
+  data = prostate,
+  family = "gaussian",
+  criterion = "bic",
+  verbose = FALSE
+)
+print(fit_pgg45_bic, detailed_settings = FALSE, notes = FALSE)
+```
+
+# Simulated data: continuous + binary
+
+The prostate data do not produce `continuous + binary`. Section 4.5 of
+the paper therefore simulates data from its Equation 14: an FP2
+function with powers (0.5, 1) for positive values, a binary effect
+$\gamma = 2$, and about 30% zeros.
+
+```{r simulate-both-components, eval=FALSE}
+set.seed(2107)
+n <- 5000
+
+is_zero <- rbinom(n, size = 1, prob = 0.30) == 1
+x_saz <- ifelse(is_zero, 0, runif(n, min = 1, max = 12))
+
+# True FP2 function for positive values; 0 at x = 0
+positive <- x_saz > 0
+f_saz <- numeric(n)
+f_saz[positive] <- 4.0 * sqrt(x_saz[positive]) - 0.9 * x_saz[positive]
+
+alpha <- 1.5  # intercept
+gamma <- 2.0  # binary-indicator effect
+z_saz <- as.numeric(x_saz == 0)
+y <- alpha + gamma * z_saz + f_saz + rnorm(n, sd = 1)
+
+dat_bincont <- data.frame(y = y, x_saz = x_saz)
+```
+
+`center = FALSE` makes the coefficients directly comparable with the
+generating values.
+
+```{r simulated-saz-fit, eval=FALSE}
+fit_bincont <- mfp2(
+  y ~ fp(x_saz, center = FALSE, spike = TRUE),
+  data = dat_bincont,
+  family = gaussian(),
+  criterion = "pvalue",
+  min_saz_prop = 0.10,
+  verbose = FALSE
+)
+print(fit_bincont, detailed_settings = FALSE, notes = FALSE)
+
+predict(fit_bincont, newdata = data.frame(x_saz = c(0, 1, 5, 7, 12)))
+
+p3 <- plot(fit_bincont, terms = "x_saz", partial_only = TRUE,
+           show_grid = TRUE)
+p3[["x_saz"]]
+```
+
+Results reported in the paper:
+
+| Parameter                 | True | Estimate (SE) |
+|---------------------------|------|---------------|
+| Intercept $\alpha$        | 1.5  | 1.578 (0.212) |
+| $x^{0.5}$                 | 4.0  | 3.977 (0.190) |
+| $x$                       | -0.9 | -0.904 (0.040)|
+| Binary $\gamma$           | 2.0  | 1.930 (0.213) |
+
+The selected model is `continuous + binary` with powers (0.5, 1). The
+prediction at zero is $\hat\alpha + \hat\gamma \approx 3.51$. Over the
+positive values, the predictions rise to a peak near $x = 5$ and then
+fall (paper, Figure 3).
+
+# Several SAZ covariates in one model
+
+Appendix A of the paper simulates three SAZ covariates, one for each
+retained decision, plus an ordinary FP covariate (`x4`) and two noise
+covariates (`x5`, `x6`). Each SAZ covariate gets its own decision
+within the backfitting.
+
+```{r simulate-multiple-saz, eval=FALSE}
+set.seed(2107)
+n <- 10000
+p <- 6
+rho <- 0.20
+mu <- rep(3, p)
+sigma <- 0.60
+Sigma <- matrix(rho * sigma^2, nrow = p, ncol = p)
+diag(Sigma) <- sigma^2
+
+repeat {
+  X <- MASS::mvrnorm(n = n, mu = mu, Sigma = Sigma)
+  if (all(X > 0)) break
+}
+colnames(X) <- paste0("x", 1:6)
+x1 <- X[, 1]; x2 <- X[, 2]; x3 <- X[, 3]
+x4 <- X[, 4]; x5 <- X[, 5]; x6 <- X[, 6]
+
+# Introduce zeros in the three SAZ covariates
+x1[rbinom(n, 1, 0.30) == 1] <- 0
+x2[rbinom(n, 1, 0.25) == 1] <- 0
+x3[rbinom(n, 1, 0.35) == 1] <- 0
+
+# FP transformation of positive values; 0 at x = 0
+positive_fp <- function(x, power) {
+  out <- numeric(length(x))
+  pos <- x > 0
+  out[pos] <- if (power == 0) log(x[pos]) else x[pos]^power
+  out
+}
+
+# Linear predictor (paper, Equation 15)
+eta <- 0.5 +
+  20.00 * positive_fp(x1, -2) - 1.40 * (x1 == 0) +   # FP1 + binary
+  15.00 * positive_fp(x2, -2) +
+   0.25 * positive_fp(x2, 2) +                         # FP2 only
+   1.40 * (x3 == 0) +                                  # binary only
+   4.00 * log(x4)                                      # ordinary FP1
+
+y <- eta + rnorm(n, mean = 0, sd = 0.80)
+simdat <- data.frame(y, x1, x2, x3, x4, x5, x6)
+
+colMeans(simdat[c("x1", "x2", "x3")] == 0)  # zero proportions
+```
+
+```{r multiple-saz-fit, eval=FALSE}
+fit_sim <- mfp2(
+  y ~ fp(x1, spike = TRUE, center = FALSE) +
+    fp(x2, spike = TRUE, center = FALSE) +
+    fp(x3, spike = TRUE, center = FALSE) +
+    fp(x4, center = FALSE) +
+    fp(x5, center = FALSE) +
+    fp(x6, center = FALSE),
+  data = simdat,
+  family = "gaussian",
+  criterion = "bic",
+  verbose = FALSE
+)
+print(fit_sim, detailed_settings = FALSE, notes = FALSE)
+```
+
+The paper reports that the true form is selected for every covariate:
+
+| Covariate | `saz_decision`        | Selected function |
+|-----------|-----------------------|-------------------|
+| `x1`      | `continuous + binary` | FP(-2) + binary   |
+| `x2`      | `continuous only`     | FP(-2, 2)         |
+| `x3`      | `binary only`         | binary            |
+| `x4`      | not SAZ               | FP(0) (log)       |
+| `x5`, `x6`| not SAZ               | excluded          |
+
+All estimated coefficients are close to the generating values (paper,
+Appendix A). This is one sample, so it does not show how often the
+correct model is selected.
+
+# Matrix interface
+
+`mfp2()` also accepts a numeric matrix `x` and a response `y`. SAZ
+covariates are then named in `spike_vars` instead of using
+`fp(..., spike = TRUE)`. The two interfaces give the same fit (paper,
+Appendix B). The code below refits the three prostate models and
+compares their coefficients with the formula fits above.
+
+```{r matrix-fits}
+y <- prostate$lpsa
+x <- as.matrix(prostate[, "pgg45", drop = FALSE])  # drop = FALSE keeps a matrix
+x_multi <- as.matrix(
+  prostate[, c("pgg45", "age", "cavol", "weight", "bph", "cp", "svi")]
+)
+
+fit_pgg45_mat <- mfp2(x, y, family = "gaussian", criterion = "pvalue",
+                      select = 0.05, alpha = 0.05, spike_vars = "pgg45",
+                      verbose = FALSE)
+
+fit_multi_mat <- mfp2(x_multi, y, family = "gaussian", criterion = "pvalue",
+                      select = 0.05, alpha = 0.05, spike_vars = "pgg45",
+                      verbose = FALSE)
+
+fit_aic_mat <- mfp2(x, y, family = "gaussian", criterion = "aic",
+                    spike_vars = "pgg45", verbose = FALSE)
+
+print(fit_pgg45_mat, detailed_settings = FALSE, notes = FALSE)
+```
+
+# Further details
+
+See `?mfp2`, `?fp`, `?predict.mfp2` and `?plot.mfp2` for all
+arguments. The paper describes the SAZ model and selection procedures
+(Section 2), the software interface, eligibility checks and methods for
+fitted objects (Section 3), and discusses the results in more detail
+(Section 4 and Appendices A--B).
+
+## Paper reference {#paper-reference}
+
+Kipruto, E., and Sauerbrei, W. *Modelling Spike-at-Zero Covariates with
+Fractional Polynomials in R*. Manuscript submitted to the *Journal of
+Statistical Software*.

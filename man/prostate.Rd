@@ -24,4 +24,8 @@ data(prostate)
 \description{
 Prostate cancer dataset used in Royston and Sauerbrei (2008) book.
 }
+\examples{
+data(prostate)
+str(prostate)
+}
 \keyword{data}

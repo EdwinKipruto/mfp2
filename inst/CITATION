@@ -1,0 +1,18 @@
+bibentry(bibtype = "Article",
+  title   = "Multivariable Fractional Polynomial Interaction Models in {R}",
+  author  = c(person(given = "Edwin", family = "Kipruto"),
+              person(given = "Patrick", family = "Royston"),
+              person(given = "Willi", family = "Sauerbrei")),
+  journal = "Journal of Statistical Software",
+  year    = "2026",
+  header  = "If mfpi() is used, please also cite:"
+)
+
+bibentry(bibtype = "Article",
+  title   = "Modelling Spike-at-Zero Covariates with Fractional Polynomials in {R}",
+  author  = c(person(given = "Edwin", family = "Kipruto"),
+              person(given = "Willi", family = "Sauerbrei")),
+  journal = "Journal of Statistical Software",
+  year    = "2026",
+  header  = "If spike-at-zero modelling is used, please also cite:"
+)

@@ -16,6 +16,9 @@
 #'   \item{x8}{Binary variable.}
 #'   \item{x9}{Nominal variable with 3 levels.}
 #' }
+#' @examples
+#' data(art)
+#' str(art)
 "art"
 
 #' Breast cancer dataset used in Royston and Sauerbrei (2008) book.
@@ -39,6 +42,9 @@
 #'   \item{rectime}{Time (days) to death or cancer recurrence.}
 #'   \item{censrec}{Censoring (0 = censored, 1 = event).}
 #' }
+#' @examples
+#' data(gbsg)
+#' str(gbsg)
 "gbsg"
 
 
@@ -66,6 +72,9 @@
 #'   \item{age}{Age in years.}
 #'   \item{y}{Binary outcome variable (diabetes, yes/no).}
 #' }
+#' @examples
+#' data(pima)
+#' str(pima)
 "pima"
 
 
@@ -87,6 +96,9 @@
 #'   \item{cp}{Amount of capsular penetration (g).}
 #'   \item{lpsa}{Log PSA concentration (outcome variable).}
 #' }
+#' @examples
+#' data(prostate)
+#' str(prostate)
 "prostate"
 
 #' Advanced prostate cancer dataset used in Royston and Sauerbrei (2008) book.
@@ -115,4 +127,7 @@
 #'   \item{survtime}{Time to death (overall survival).}
 #'   \item{cens}{Censoring (0 = censored, 1 = event).}
 #'   }
+#' @examples
+#' data(advanced_prostate_cancer)
+#' str(advanced_prostate_cancer)
 "advanced_prostate_cancer"

@@ -40,6 +40,17 @@ the correct basis for GEE inference (and \code{geepack} supplies no \code{confin
 method). Multinomial and ordinal models, whose coefficients are not a single
 named vector, defer to the interval method of the underlying fit.
 }
+\examples{
+data("prostate")
+fit <- mfp2(
+  lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+  data = prostate,
+  verbose = FALSE
+)
+confint(fit)
+confint(fit, parm = "svi.1", level = 0.9)
+
+}
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=vcov]{vcov()}}
 }

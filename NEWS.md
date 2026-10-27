@@ -2,161 +2,48 @@
 
 ## New functionality
 
-* Added generalized estimating equations (GEE) through
-  `family = gee_family(...)`, using the `geepack` package. Supported response
-  families are Gaussian, binomial, Poisson, and Gamma, with `"exchangeable"`
-  (the default), `"independence"`, and `"ar1"` working correlations and
-  `"san.se"`/`"jack"`/`"j1s"`/`"fij"` covariance estimators. The cluster identifier
-  is given through the top-level `id` argument (required; clusters must occupy
-  contiguous rows) and repeated-measure order through the new `waves` argument.
-  Repeated FP candidate fits use the matrix-level `geepack::geese.fit()` hot
-  path; the retained model is refitted with `geepack::geeglm()` and inherits the
-  native `geeglm` class. All three selection criteria are available: `"pvalue"`
-  uses differences in negative overall Wald scores (as in Stata `mfp` with
-  `xtgee`), consistently using the selected covariance estimator for visiting
-  order, power ranking, closed tests, and final inference. The default
-  sandwich covariance receives Stata's finite-cluster `K/(K-1)` correction;
-  jackknife covariances are used unchanged. The `"aic"`/`"bic"` criteria use
-  the quasi-likelihood information criteria QICu (Pan,
-  2001) and QBIC, with QICu agreeing numerically with `geepack::QIC()`. Grouped
-  binomial responses and observation weights are supported. GEE `mfp2` objects
-  support the standard methods with correct marginal-model behaviour:
-  `predict()` (link/response point predictions, plus prediction standard errors
-  from the selected GEE covariance, which the base `predict.glm()` path cannot
-  provide), `confint()` (Wald intervals; the profile-likelihood
-  default does not apply to GEE), `residuals()`, `vcov()`, `summary()`, and
-  `plot()`. Deviance residuals for GEE are computed from the marginal fitted
-  mean and the family deviance function (geepack does not expose them), so the
-  component-plus-residual plot uses the same residual as Stata's `fracplot`.
-  `summary()` and `print()` additionally report the working correlation with
-  its estimate and standard error, the selected standard-error method, the
-  estimated scale with its standard error, and the number of clusters. The
-  model label identifies the response family and link (e.g.,
-  `Model: Gaussian GEE (identity link)`). The coefficient table follows
-  geepack's convention, reporting the Wald chi-square statistic and its
-  `Pr(>|W|)` p-value.
+* Added Gamma, inverse-Gaussian, and negative-binomial regression. GLM families can now be supplied as names, functions, or family objects, including alternative links.
 
-* `confint()` now returns Wald confidence intervals
-  (`estimate ± z * SE`, with the standard error from `vcov()`) for every
-  scalar-coefficient `mfp2` family, matching the intervals shown by
-  `summary()`. Previously the default `stats::confint.glm()` profile-likelihood
-  path was used for GLM families and failed on `mfp2`'s internally transformed
-  design. Multinomial and ordinal models keep their own interval method. For
-  GEE the covariance is the estimator selected by `std.err`.
+* Added ordinal regression through `ordinal_family()` and multinomial regression through `multinomial_family()`, with prediction and plotting support.
 
-* The structured `summary()` now reports the fitted intercept as the first row
-  of the Linear Terms table, consistently across every family that estimates
-  one (GLM, GEE, and parametric survival). Cox and Fine--Gray have no
-  intercept; ordinal threshold intercepts and multinomial per-logit intercepts
-  continue to be reported through their own dedicated sections.
+* Added parametric survival regression through `survreg_family()` and Fine–Gray competing-risks regression through `finegray_family()`.
 
-* Added multinomial logistic models through
-  `family = "multinomial"` and `multinomial_family(reference = ...)`.
-  Repeated MFP and MFPI candidate fits use the matrix-level `nnet` hot path,
-  while retained MFP models inherit from `multinom`. FP transformations and
-  selected powers are common across non-reference logits, with separate
-  coefficients per logit. Multinomial-aware degrees of freedom, printing,
-  summaries, class probabilities, predicted classes, offsets, factor responses,
-  and grouped class-count responses are supported.
+* Added generalized estimating equations through `gee_family()`, with cluster identifiers supplied through `id` and optional measurement order through `waves`. GEE models default to QICu-based selection.
 
-* Added term and contrast predictions and component-plus-residual plots for
-  multinomial `mfp2` models. `predict(type = "terms")` and
-  `predict(type = "contrasts")` now return one partial predictor per
-  non-reference logit, stacked in a data frame with a `logit` column; standard
-  errors use the logit-specific block of the multinomial covariance.
-  `residuals()` returns an `n` by `Q` matrix of per-logit residuals (`nnet`
-  provides no residual method), with binomial deviance residuals -- treating
-  each non-reference logit as a binary sub-problem -- as the default `type`.
-  `plot()`/`fracplot()` draw one figure per predictor faceted by logit (one
-  facet per non-reference class), overlaying these per-logit deviance residuals
-  for the component-plus-residual display.
+* Added `mfpi()` for interaction analysis with a categorical grouping variable, including prediction and plotting methods for group-specific functions and differences.
 
-* Expanded the `family` interface to all likelihood-based base `glm()`
-  families and their supported links. Quasi families remain unsupported because
-  MFP selection requires a likelihood. The existing Cox path is unchanged, and
-  the package now adds `survreg_family()` for parametric survival models and
-  `finegray_family()` for Fine--Gray subdistribution-hazards models. Repeated
-  survival candidate fits use matrix-level hot paths; final fits retain native
-  `survreg` or `coxph` objects.
+* Added spike-at-zero modelling and options for modelling positive predictor values with or without a separate zero indicator.
 
-* Added `mfpi()` for fractional polynomial interaction analysis between a categorical grouping variable and continuous covariates. The function supports four flexibility levels, from `flex = "flex1"` to `flex = "flex4"`, which determine how fractional polynomial powers are estimated and constrained across groups. Both matrix and formula interfaces are available through `mfpi.default()` and `mfpi.formula()`, respectively.
+* Added support for assessing categorical predictors as complete terms, with `term_groups` available in the default interface.
 
-* Added `predict.mfpi()` for generating predictions from `mfpi` objects. The method supports group-specific fitted functions, between-group difference curves, and pointwise standard errors and confidence intervals calculated using the delta method.
+* Added `force_max_fp_vars` to retain specified predictors at their maximum permitted FP degree.
 
-* Added `plot.mfpi()` for visualizing `mfpi` model results. The method supports fitted-function plots, group-difference plots, and combined side-by-side displays using the `patchwork` package.
+* Added `plot.mfp2()`. `fracplot()` is deprecated and will be removed in a future
+  release; use `plot()` with a fitted `mfp2` object instead.
 
-* Added support in `mfp2()` for modelling semicontinuous covariates using a spike-at-zero approach.
+* Added the `fitter` argument to choose between `stats::glm.fit()` (`"base"`)
+  and the optional `fastglm` backend for GLM families.
 
-* Added `prop_zero` to retained spike-at-zero term metadata and to the SAZ sections printed by `mfp2()` and `mfpi()`. The value is the proportion of finite observations in the fitted sample that belong to the structural-zero component.
+## Interface changes
 
+* Variable-specific `df`, `select`, `alpha`, `shift`, and `scale` settings in the default methods now use named vectors matched to predictor columns. Partial named vectors are supported; unnamed vectors containing more than one value are rejected.
 
-* Added the `zero` and `catzero` arguments to `mfp2()` for specifying semicontinuous covariates and modelling their positive components.
+* Cox models now default to `ties = "efron"` rather than `"breslow"`, and to `nocenter = c(-1, 0, 1)` rather than `NULL`. The `"exact"` tie option is no longer accepted.
 
-* Extended the `family` argument in `mfp2()` to accept GLM family objects and alternative link functions, including specifications such as `stats::binomial(link = "probit")`.
+* Observation weights must be finite and strictly positive; zero weights are no longer accepted.
 
-* Added `plot.mfp2()`, an S3 `plot()` method for `mfp2` objects. The method provides partial predictor and contrast plots and is now the recommended interface for visualizing fitted `mfp2` models. The existing `fracplot()` function is retained as an alias for backward compatibility.
+* ACD settings now use `acd_vars` in the default interface and `acd = TRUE` within `fp()` or `fp2()`. The former `acdx` spelling remains available as a deprecated alias.
 
-* Changed per-variable `shift` and `scale` settings in `mfp2.default()` from positional, column-index-based vectors to named vectors matched to `colnames(x)`. Named vectors may specify only a subset of predictors, with unspecified values estimated automatically; their order is irrelevant. Unnamed vectors with more than one value are now rejected to prevent settings from being assigned to the wrong columns.
+* The direct `strata` argument to `mfp2.formula()` is deprecated in favour of `strata(...)` in the formula. For formula-stratified models, prediction data must contain the original stratification variables.
 
-* Changed per-variable `df`, `select`, and `alpha` settings in `mfp2.default()` and `mfpi.default()` from positional vectors to named overrides matched to `colnames(x)`. Named vectors may specify only a subset of predictors; omitted predictors use the package defaults (`df = 4`, `select = 0.05`, and `alpha = 0.05`). Unnamed vectors with more than one value are now rejected.
+## Fixes and improvements
 
+* Fixed binomial response predictions for new observations.
 
-## Subsetting and factor handling
+* Corrected formula evaluation during subsetting and improved handling of unused factor levels. Removing levels from a factor with custom contrasts now produces an informative error.
 
-* Updated `mfp2.formula()` so that `subset` expressions are evaluated exactly once using standard formula semantics: names are resolved from `data` first and then from the formula environment.
+* Improved support for namespace-qualified terms such as `mfp2::fp()` and `mfp2::fp2()`.
 
-* Formula calls now use the same lookup rule for observation-level `weights`,
-  `offset`, and Fine--Gray `id` expressions. The deprecated
-  `mfp2.formula()` `strata` compatibility argument follows the same convention
-  during its transition period. Complete vectors are still validated before
-  subsetting.
-
-* Formula methods now construct the complete model frame once and retain requested rows directly. This avoids non-standard-evaluation failures involving internal row-index variables and prevents formula expressions, offsets, and strata terms from being evaluated a second time.
-
-* For formula fits with a non-`NULL` subset, unused factor levels are dropped and default unordered or ordered contrasts are regenerated from the retained levels. Factor-specific custom contrasts are preserved when all levels remain; if subsetting removes a level from a factor with an attached custom contrast, fitting stops with a targeted error rather than silently changing the coding.
-
-## Bug fixes
-
-* Formula-stratified `mfp2` and `mfpi` models now require prediction strata to
-  be supplied through the original `strata(...)` variables in `newdata`.
-  Supplying a separate `strata` argument is rejected with targeted guidance,
-  preventing raw values such as `0` and `1` from being confused with fitted
-  formula labels such as `pf=0` and `pf=1`. Matrix-interface prediction retains
-  its existing `strata` argument.
-
-* Corrected centering for zero-handled FP and ACD bases. Their uncentered basis
-  remains zero at exact-zero observations, after which the complete
-  fitted-sample column mean is subtracted from every row. Centering therefore
-  no longer changes fitted values or creates an implicit zero effect when no
-  zero indicator was requested. Plot documentation and titles now distinguish
-  this case from `catzero` and spike-at-zero models.
-
-* Fixed an issue in `predict.mfp2()` when `type = "response"` was used with binomial-family models.
-
-* Corrected the negative-binomial null deviance for models with offsets. The
-  reporting-only null fit now follows `MASS::glm.nb()` by retaining the fitted
-  theta and fitting an intercept plus offset; repeated candidate fits remain on
-  the existing `fastglm` hot path.
-
-* Added the native `type = "linear"` alias for complete-model `survreg`
-  predictions. It is equivalent to `type = "link"` and `type = "lp"`.
-
-## Performance and compatibility
-
-* Aligned survival stratification with formula conventions. Formula calls now
-  use `strata(...)`: the direct `strata` argument to `mfp2.formula()` remains as
-  a deprecated compatibility path, while `mfpi.formula()` accepts strata only
-  through the formula. The `strata` argument remains unchanged in both matrix
-  interfaces.
-
-* Renamed the public ACD options for clarity: matrix interfaces now use
-  `acd_vars`, while formula terms use `fp(..., acd = TRUE)` or
-  `fp2(..., acd = TRUE)`. The former `acdx` spelling remains available as a
-  deprecated compatibility alias in both interfaces.
-
-* Improved the computational efficiency of `mfp2()`.
-
-* Improved support for namespace-qualified fractional polynomial terms, including `mfp2::fp()` and `mfp2::fp2()`.
 
 # mfp2 1.0.1
 

@@ -22,4 +22,8 @@ data(art)
 The ART data set mimics the GBSG breast cancer study in terms of the
 distribution of predictors and correlation structure.
 }
+\examples{
+data(art)
+str(art)
+}
 \keyword{data}

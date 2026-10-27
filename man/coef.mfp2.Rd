@@ -20,6 +20,16 @@ term; powers are common across rows but coefficients are outcome specific.
 Returns coefficients from a fitted \code{\link[=mfp2]{mfp2()}} model. This is a method for the
 generic \code{\link[stats:coef]{stats::coef()}} function.
 }
+\examples{
+data("prostate")
+fit <- mfp2(
+  lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+  data = prostate,
+  verbose = FALSE
+)
+coef(fit)
+
+}
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=predict.mfp2]{predict.mfp2()}}
 }

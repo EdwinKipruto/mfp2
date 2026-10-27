@@ -19,7 +19,7 @@ mfp2(x, ...)
   df = 4,
   center = TRUE,
   subset = NULL,
-  family = "gaussian",
+  family = gaussian(),
   criterion = NULL,
   select = 0.05,
   alpha = 0.05,
@@ -57,7 +57,7 @@ mfp2(x, ...)
   df = 4,
   center = TRUE,
   subset = NULL,
-  family = "gaussian",
+  family = gaussian(),
   criterion = NULL,
   select = 0.05,
   alpha = 0.05,
@@ -1020,7 +1020,8 @@ fit_multinomial <- mfp2(
 )
 
 # Ordinal regression uses the optional rms package.
-if (requireNamespace("rms", quietly = TRUE)) {
+if (requireNamespace("rms", quietly = TRUE) &&
+    utils::packageVersion("rms") >= "7.0-0") {
   fit_ordinal <- mfp2(
     y_ordinal ~ x1 + x2, data = family_data,
     family = ordinal_family(),

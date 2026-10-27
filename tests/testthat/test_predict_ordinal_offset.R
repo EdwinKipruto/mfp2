@@ -16,7 +16,7 @@ ordinal_offset_data <- function() {
 }
 
 test_that("ordinal predictions with a formula offset use newdata's offset", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
   d <- ordinal_offset_data()
   fit <- mfp2(y ~ fp(x1, df = 1, select = 1, center = FALSE, shift = 0, scale = 1) +
                 fp(x2, df = 1, select = 1, center = FALSE, shift = 0, scale = 1) +
@@ -54,7 +54,7 @@ test_that("ordinal predictions with a formula offset use newdata's offset", {
 })
 
 test_that("ordinal matrix-interface predictions use newoffset", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
   d <- ordinal_offset_data()
   x <- as.matrix(d[, c("x1", "x2")])
   fit <- mfp2(x, d$y, offset = d$o, family = ordinal_family(),

@@ -61,7 +61,7 @@
 #'
 #' - `vignette("MFP_Introduction", package = "mfp2")` for MFP methodology;
 #' - `vignette("mfp2_ACD", package = "mfp2")` for ACD transformations;
-#' - the [mfp2()] help page for the complete spike-at-zero algorithm;
+#' - `vignette("mfp2_spike", package = "mfp2")` for spike-at-zero;
 #' - `vignette("mfpi", package = "mfp2")` for interaction analysis.
 #'
 #' @seealso

@@ -28,4 +28,8 @@ the onset of diabetes in a cohort of 768 female Pima Indians of whom 268
 developed diabetes. Missing values were imputed using the ice procedure
 for Stata.
 }
+\examples{
+data(pima)
+str(pima)
+}
 \keyword{data}

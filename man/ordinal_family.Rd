@@ -31,15 +31,15 @@ intended order, convert the outcome to an ordered factor before fitting.
 A positive predictor coefficient indicates an association with higher
 outcome categories. Optional case weights must be finite and strictly
 positive. They are used without normalisation in selection and final fitting.
-Integer weights are equivalent to repeating observations for likelihood
-calculations. BIC uses the number of fitted rows as its sample size.
+BIC uses the number of fitted rows as its sample size.
 }
 \examples{
 ordinal_family()
 ordinal_family(link = "probit")
 
 \donttest{
-if (requireNamespace("rms", quietly = TRUE)) {
+if (requireNamespace("rms", quietly = TRUE) &&
+    utils::packageVersion("rms") >= "7.0-0") {
   set.seed(44)
   n <- 180
   ordinal_data <- data.frame(

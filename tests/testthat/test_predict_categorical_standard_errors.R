@@ -267,7 +267,7 @@ test_that("categorical SEs validate required covariance and negative variances",
 })
 
 test_that("linear ordinal full-model predictions and SEs match rms", {
-  skip_if_not_installed("rms")
+  skip_if_not_installed("rms", minimum_version = "7.0-0")
   set.seed(824)
   dat <- data.frame(x1 = runif(300L, 0.5, 3), x2 = rnorm(300L))
   latent <- 0.4 * dat$x1 - 0.3 * dat$x2 + rlogis(nrow(dat))

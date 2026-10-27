@@ -27,4 +27,8 @@ data(gbsg)
 \description{
 Breast cancer dataset used in Royston and Sauerbrei (2008) book.
 }
+\examples{
+data(gbsg)
+str(gbsg)
+}
 \keyword{data}

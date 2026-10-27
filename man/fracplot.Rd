@@ -72,7 +72,7 @@ for example, \code{"red"}.}
 
 \item{shape}{Shape of component-plus-residual points. Common ggplot2
 shape codes include \code{1} for open circles and \code{16} for solid circles.
-The default is \code{1}. See \code{\link[ggplot2:scale_shape]{ggplot2::scale_shape()}}.}
+The default is \code{16}. See \code{\link[ggplot2:scale_shape]{ggplot2::scale_shape()}}.}
 
 \item{size_points}{Numeric size of component-plus-residual points,
 in millimetres, for example, \code{1} or \code{2}. The default is \code{1}.
@@ -118,12 +118,12 @@ fit <- mfp2(
 )
 
 # Recommended interface
-plots <- plot(fit, terms = "age")
+plots <- plot(fit, terms = "cavol")
 plots
 
 \donttest{
 # Deprecated compatibility interface
-old_plots <- fracplot(fit, terms = "age")
+old_plots <- fracplot(fit, terms = "cavol")
 }
 
 }

@@ -36,7 +36,7 @@
 #'   `"lightblue"` or `"#56B4E9"`.
 #' @param shape Shape of component-plus-residual points. Common ggplot2
 #'   shape codes include `1` for open circles and `16` for solid circles.
-#'   The default is `1`. See [ggplot2::scale_shape()].
+#'   The default is `16`. See [ggplot2::scale_shape()].
 #' @param size_points Numeric size of component-plus-residual points,
 #'   in millimetres, for example, `1` or `2`. The default is `1`.
 #'   See [ggplot2::geom_point()].
@@ -452,27 +452,29 @@
 #' poisson_plots[["age"]]
 #'
 #' ## Negative-binomial models: overdispersed counts
-#' d_count$overdispersed <- rnbinom(
-#'   nrow(d_count),
-#'   mu = with(d_count, exposure * exp(0.03 * (age - 50))),
-#'   size = 2
-#' )
+#' if (requireNamespace("fastglm", quietly = TRUE)) {
+#'   d_count$overdispersed <- rnbinom(
+#'     nrow(d_count),
+#'     mu = with(d_count, exposure * exp(0.03 * (age - 50))),
+#'     size = 2
+#'   )
 #'
-#' fit_negbin <- mfp2(
-#'   overdispersed ~ fp(age, df = 1, select = 1) +
-#'     offset(log(exposure)),
-#'   data = d_count,
-#'   family = "negbin",
-#'   verbose = FALSE
-#' )
+#'   fit_negbin <- mfp2(
+#'     overdispersed ~ fp(age, df = 1, select = 1) +
+#'       offset(log(exposure)),
+#'     data = d_count,
+#'     family = "negbin",
+#'     verbose = FALSE
+#'   )
 #'
-#' # Contrasts are differences on the log-mean scale.
-#' negbin_plots <- plot(
-#'   fit_negbin,
-#'   type = "contrasts",
-#'   ref = list(age = 50)
-#' )
-#' negbin_plots[["age"]]
+#'   # Contrasts are differences on the log-mean scale.
+#'   negbin_plots <- plot(
+#'     fit_negbin,
+#'     type = "contrasts",
+#'     ref = list(age = 50)
+#'   )
+#'   print(negbin_plots[["age"]])
+#' }
 #'
 #' ## GEE models: component-plus-residual plots for grouped observations
 #' # Illustrate 25 groups with four observations each.
@@ -491,24 +493,31 @@
 #' gee_plots[["age"]]
 #'
 #' ## Multinomial models: category-specific panels
-#' d_multi <- iris
-#' d_multi$wide <- as.integer(d_multi$Sepal.Width > 3)
+#' set.seed(5)
+#' d_multi <- data.frame(age = runif(200, 30, 75), wide = rbinom(200, 1, 0.5))
+#' eta_b <- with(d_multi, -0.5 + 0.04 * (age - 50) + 0.6 * wide)
+#' eta_c <- with(d_multi, -0.3 + 0.07 * (age - 50) - 0.4 * wide)
+#' p_multi <- cbind(1, exp(eta_b), exp(eta_c))
+#' p_multi <- p_multi / rowSums(p_multi)
+#' d_multi$type <- factor(
+#'   apply(p_multi, 1, function(p) sample(c("A", "B", "C"), 1, prob = p))
+#' )
 #'
 #' fit_multinomial <- mfp2(
-#'   Species ~ fp(Sepal.Length, df = 1, select = 1) + wide,
+#'   type ~ fp(age, df = 1, select = 1) + wide,
 #'   data = d_multi,
-#'   family = multinomial_family(reference = "setosa"),
+#'   family = multinomial_family(reference = "A"),
 #'   keep = "wide",
 #'   verbose = FALSE
 #' )
 #'
-#' # Each panel compares a non-reference species with setosa.
+#' # Each panel compares a non-reference category with category A.
 #' multinomial_plots <- plot(
 #'   fit_multinomial,
-#'   terms = "Sepal.Length",
+#'   terms = "age",
 #'   partial_only = TRUE
 #' )
-#' multinomial_plots[["Sepal.Length"]]
+#' multinomial_plots[["age"]]
 #'
 #' # For a numeric binary predictor, use observed values explicitly.
 #' # Compare wide = 1 with wide = 0 within each category comparison.
@@ -522,35 +531,38 @@
 #' binary_contrasts[["wide"]]
 #'
 #' ## Ordinal models: cutoff panels and shared contrasts
-#' set.seed(4)
-#' d_ordinal <- data.frame(age = runif(150, 30, 75))
-#' d_ordinal$severity <- cut(
-#'   0.04 * (d_ordinal$age - 50) + rlogis(150),
-#'   breaks = c(-Inf, -0.5, 0.5, Inf),
-#'   labels = c("low", "medium", "high"),
-#'   ordered_result = TRUE
-#' )
+#' if (requireNamespace("rms", quietly = TRUE) &&
+#'     utils::packageVersion("rms") >= "7.0-0") {
+#'   set.seed(4)
+#'   d_ordinal <- data.frame(age = runif(150, 30, 75))
+#'   d_ordinal$severity <- cut(
+#'     0.04 * (d_ordinal$age - 50) + rlogis(150),
+#'     breaks = c(-Inf, -0.5, 0.5, Inf),
+#'     labels = c("low", "medium", "high"),
+#'     ordered_result = TRUE
+#'   )
 #'
-#' fit_ordinal <- mfp2(
-#'   severity ~ fp(age, df = 1, select = 1),
-#'   data = d_ordinal,
-#'   family = ordinal_family(),
-#'   verbose = FALSE
-#' )
+#'   fit_ordinal <- mfp2(
+#'     severity ~ fp(age, df = 1, select = 1),
+#'     data = d_ordinal,
+#'     family = ordinal_family(),
+#'     verbose = FALSE
+#'   )
 #'
-#' # Panels compare medium/high with low, and high with low/medium.
-#' # Each panel includes its own cutoff intercept.
-#' ordinal_plots <- plot(fit_ordinal, partial_only = TRUE)
-#' ordinal_plots[["age"]]
+#'   # Panels compare medium/high with low, and high with low/medium.
+#'   # Each panel includes its own cutoff intercept.
+#'   ordinal_plots <- plot(fit_ordinal, partial_only = TRUE)
+#'   print(ordinal_plots[["age"]])
 #'
-#' # Contrasts omit cutoff intercepts and show one shared age effect.
-#' ordinal_contrasts <- plot(
-#'   fit_ordinal,
-#'   terms = "age",
-#'   type = "contrasts",
-#'   ref = list(age = 50)
-#' )
-#' ordinal_contrasts[["age"]]
+#'   # Contrasts omit cutoff intercepts and show one shared age effect.
+#'   ordinal_contrasts <- plot(
+#'     fit_ordinal,
+#'     terms = "age",
+#'     type = "contrasts",
+#'     ref = list(age = 50)
+#'   )
+#'   print(ordinal_contrasts[["age"]])
+#' }
 #'
 #' ## Cox models: contributions to log relative hazard
 #' data("gbsg")
@@ -650,7 +662,7 @@ plot.mfp2 <- function(x,
                       color_line = "black",
                       color_line_spike = "black",
                       color_fill = "#000000",
-                      shape = 1,
+                      shape = 16,
                       size_points = 1,
                       size_points_spike = 2,
                       linetype = "solid",
@@ -1833,12 +1845,12 @@ mfp2_plot_multinomial_impl <- function(model,
 #' )
 #'
 #' # Recommended interface
-#' plots <- plot(fit, terms = "age")
+#' plots <- plot(fit, terms = "cavol")
 #' plots
 #'
 #' \donttest{
 #' # Deprecated compatibility interface
-#' old_plots <- fracplot(fit, terms = "age")
+#' old_plots <- fracplot(fit, terms = "cavol")
 #' }
 #'
 #' @export

@@ -79,7 +79,7 @@ saz_decision_label <- function(decision,
   # never referenced in this branch.
   if (decision_int == saz_decision_codes[["binary_only"]]) {
     if (style == "plot_title") {
-      return("spike at zero \u2014 binary only")
+      return("spike at zero: binary only")
     }
 
     return(binary_label)
@@ -94,7 +94,7 @@ saz_decision_label <- function(decision,
   if (decision_int == saz_decision_codes[["cont_binary"]]) {
     if (style == "plot_title") {
       return(paste0(
-        "spike at zero \u2014 continuous + binary: ",
+        "spike at zero: continuous + binary, ",
         continuous_label
       ))
     }
@@ -107,7 +107,7 @@ saz_decision_label <- function(decision,
   # referenced in this branch.
   if (decision_int == saz_decision_codes[["continuous_only"]]) {
     if (style == "plot_title") {
-      return(paste0("spike at zero \u2014 continuous only: ", continuous_label))
+      return(paste0("spike at zero: continuous only, ", continuous_label))
     }
 
     return(continuous_label)

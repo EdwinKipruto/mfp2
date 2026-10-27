@@ -783,7 +783,8 @@
 #' )
 #'
 #' # Ordinal regression uses the optional rms package.
-#' if (requireNamespace("rms", quietly = TRUE)) {
+#' if (requireNamespace("rms", quietly = TRUE) &&
+#'     utils::packageVersion("rms") >= "7.0-0") {
 #'   fit_ordinal <- mfp2(
 #'     y_ordinal ~ x1 + x2, data = family_data,
 #'     family = ordinal_family(),
@@ -1825,7 +1826,7 @@ mfp2.default <- function(x,
                          df = 4,
                          center = TRUE,
                          subset = NULL,
-                         family = "gaussian",
+                         family = gaussian(),
                          criterion = NULL,
                          select = 0.05,
                          alpha = 0.05,
@@ -2996,7 +2997,7 @@ mfp2.formula <- function(formula,
                          df = 4,
                          center = TRUE,
                          subset = NULL,
-                         family = "gaussian",
+                         family = gaussian(),
                          criterion = NULL,
                          select = 0.05,
                          alpha = 0.05,
@@ -3597,7 +3598,9 @@ mfp2.formula <- function(formula,
       stop("! `offset` must have one value per observation.", call. = FALSE)
     }
     if (identical(family_string, "multinomial")) {
-      c_classes <- mfp2_multinomial_n_classes(y)
+      # `y` is not extracted until after offset validation, so read the
+      # response directly from the model frame here.
+      c_classes <- mfp2_multinomial_n_classes(model.extract(mf, "response"))
       if (!is.matrix(offset) || !ncol(offset) %in% c(c_classes - 1L, c_classes)) {
         stop(
           "! Multinomial `offset` must be an n x C class matrix or an n x (C - 1) reference-logit matrix.",
@@ -4169,6 +4172,15 @@ is_fp_term <- function(z) {
 #'
 #' @seealso [mfp2()], [summary.mfp2()], [predict.mfp2()]
 #'
+#' @examples
+#' data("prostate")
+#' fit <- mfp2(
+#'   lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+#'   data = prostate,
+#'   verbose = FALSE
+#' )
+#' coef(fit)
+#'
 #' @export
 coef.mfp2 <- function(object, ...) {
   object$coefficients
@@ -4205,6 +4217,16 @@ coef.mfp2 <- function(object, ...) {
 #'   lower and upper confidence limits.
 #'
 #' @seealso [mfp2()], [summary.mfp2()], [vcov()]
+#'
+#' @examples
+#' data("prostate")
+#' fit <- mfp2(
+#'   lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+#'   data = prostate,
+#'   verbose = FALSE
+#' )
+#' confint(fit)
+#' confint(fit, parm = "svi.1", level = 0.9)
 #'
 #' @export
 confint.mfp2 <- function(object, parm, level = 0.95, ...) {
@@ -4293,6 +4315,16 @@ confint.mfp2 <- function(object, parm, level = 0.95, ...) {
 #' non-reference category for multinomial models.
 #'
 #' @seealso [mfp2()], [plot()], [stats::residuals()]
+#'
+#' @examples
+#' data("prostate")
+#' fit <- mfp2(
+#'   lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+#'   data = prostate,
+#'   verbose = FALSE
+#' )
+#' head(residuals(fit))
+#'
 #' @export
 residuals.mfp2 <- function(object, ...) {
   if (identical(object$family_string, "gee")) {

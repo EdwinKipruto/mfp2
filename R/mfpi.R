@@ -1,480 +1,373 @@
-#' Model Interactions with a Categorical Grouping Variable
+#' Test Interactions with a Categorical Grouping Variable
 #'
-#' Investigate whether the association between an outcome and a continuous,
-#' binary, or categorical variable differs between groups. Continuous
-#' associations can be modelled using fractional polynomials (FPs).
+#' Test whether the association between an outcome and a continuous, binary,
+#' or categorical predictor differs between groups. Fractional polynomials
+#' (FPs) allow nonlinear associations for continuous predictors.
 #'
 #' @details
-#' `mfpi()` first selects an adjustment model using [mfp2()]. It then evaluates
-#' each variable in `interaction_vars` separately, comparing a model with a
-#' common association across groups against a model with group-specific
-#' associations.
+#' `mfpi()` first selects an adjustment model using [mfp2()]. It then tests
+#' each variable in `interaction_vars` separately for interaction with
+#' `group_var`, comparing a common association across groups with
+#' group-specific associations.
 #'
-#' Each comparison includes group main effects and the selected adjustment
-#' terms, excluding the variable currently being tested. The function returns
-#' a separate interaction model for each tested variable; it does not combine
-#' the selected interactions into one model.
+#' Both models include group main effects and the selected adjustment terms.
+#' The adjustment terms are held fixed, except that the variable being tested
+#' is modelled separately as part of the interaction comparison.
+#' A separate interaction model is returned for each tested variable;
+#' selected interactions are not combined into a single model.
 #'
-#' @param x A predictor matrix or data frame for the default method. Do not
-#'   include an intercept column. See *Data requirements*.
+#' @param x A numeric predictor matrix or data frame for the default method,
+#' without an intercept column. Include the grouping variable, all variables
+#' to test for interaction, and any adjustment variables. Data frames also
+#' accept logical predictors and a factor or character grouping variable.
+#' Represent other categorical predictors using numeric dummy variables.
+#' For categorical predictors represented by multiple columns, use
+#' `term_groups` to identify which columns belong together so that each
+#' predictor is assessed as a whole rather than as separate dummy variables.
 #' @param y The response for the default method, with one observation per row
-#'   of `x`. Its format must match `family`; see *Supported models*.
+#' of `x`. Supply a response appropriate for `family`: a numeric response
+#' for ordinary GLMs, a binary response or two-column matrix of integer
+#' success and failure counts for binomial models, class labels or a
+#' class-count matrix for multinomial models, ordered categories for ordinal
+#' models, or a [survival::Surv()] object for survival models.
 #' @param formula A model formula containing the response, grouping variable,
-#'   interaction variables, and adjustment variables. See *Formula interface*.
+#' interaction variables, and adjustment variables. Supply original variables
+#' in `data`; categorical predictors are encoded and assessed as complete
+#' terms. Use `fp()` or `fp2()` to specify variable-specific adjustment-model
+#' and preprocessing settings. These settings override the corresponding
+#' global defaults but do not determine the interaction form, which is set
+#' by `interaction_forms`. Include offsets using `offset(...)` and survival
+#' strata using `strata(...)`. See *Formula interface*.
 #' @param data A data frame containing the variables used in `formula`.
-#' @param group_var A character string naming the categorical grouping
-#'   variable, which must have at least two observed groups.
-#' @param interaction_vars A non-empty character vector naming the variables
-#'   to test for interaction with `group_var`.
+#' Formula expressions, weights, and subsetting expressions are evaluated
+#' using these data.
+#' @param group_var A single character string naming the categorical grouping
+#' variable whose interactions with the variables in `interaction_vars`
+#' are to be tested. It must be included in `x` or `formula`. This argument
+#' must be supplied. The variable must have at least two observed groups
+#' in the data used for fitting and cannot also appear in `interaction_vars`
+#' or belong to `term_groups`. The reference is the first observed factor
+#' level, the first observed character value, or the smallest observed
+#' logical or numeric value. Supply a factor with the desired level order
+#' to choose the reference explicitly.
+#' @param interaction_vars A non-empty character vector naming variables to
+#' test separately for interaction with `group_var`. This argument must be
+#' supplied. Variables must be included in `x` or `formula`. For categorical
+#' predictors, name the complete term rather than individual contrast
+#' columns. Each analysis includes group main effects and the selected
+#' adjustment terms, excluding the variable currently being tested. The
+#' resulting interactions are not combined into a single model.
 #' @param interaction_forms An optional named character vector specifying
-#'   `"linear"`, `"fp1"`, or `"fp2"` for each tested variable. Unspecified forms
-#'   default to `"fp1"` for continuous variables and `"linear"` for binary and
-#'   categorical variables. See *Interaction forms*.
-#' @param flex How FP powers are selected: `"flex1"`, `"flex2"`, `"flex3"`
-#'   (default), or `"flex4"`. See *Flexibility levels* and
-#'   *Statistical interpretation*.
-#' @param p_interact The interaction p-value threshold, in `(0, 1]`.
-#'   Default: `0.05`. Used only with `criterion = "pvalue"`.
-#' @param min_improvement A positive minimum AIC or BIC improvement required
-#'   to select an interaction. `NULL` uses 2. See *Interaction selection*.
-#' @param include_group_var Whether to force the grouping variable into the
-#'   initial adjustment model. Default: `FALSE`. See *Adjustment model*.
-#' @param show_models Whether to print summaries of selected interaction
-#'   models when `verbose = TRUE`. Default: `FALSE`.
-#' @param weights Optional strictly positive observation weights.
-#'   See *Weights, offsets, and strata*.
-#' @param offset An optional offset for the default method, added to the linear
-#'   predictor in both fitting stages. See *Weights, offsets, and strata*.
-#' @param cycles The maximum number of MFP fitting cycles. A positive integer;
-#'   default: 10.
-#' @param scale Positive scaling factors, or `NULL` for automatic scaling.
-#'   Structural-zero predictors use an automatic scale of 1.
-#'   See *Predictor settings* and *Shifting, scaling, and centring*.
-#' @param shift Finite shifting constants, or `NULL` for automatic shifting.
-#'   See *Predictor settings* and *Shifting, scaling, and centring*.
-#' @param df The maximum FP complexity in the adjustment model: 1 for linear,
-#'   2 for FP1, 4 for FP2, or a larger even positive integer. Default: 4.
-#'   See *Predictor settings*.
+#' the interaction form for each variable tested for interaction, for example
+#' `c(age = "fp1", stage = "linear")`. Use `"linear"` for a linear,
+#' binary, or categorical effect, `"fp1"` for a one-term fractional
+#' polynomial, or `"fp2"` for a two-term fractional polynomial, allowing
+#' repeated powers. `NULL` and unspecified entries default to `"fp1"` for
+#' continuous variables and `"linear"` for binary and categorical variables.
+#' FP requests for binary or categorical variables are changed to `"linear"`
+#' with a warning.
+#' @param flex A single character string controlling FP power selection.
+#' `"flex1"` selects powers in the model without interaction and reuses
+#' them in the interaction model. `"flex2"` selects shared powers in the
+#' interaction model and reuses them in the model without interaction.
+#' `"flex3"` (default) selects powers separately for the two models but
+#' uses common powers across groups in the interaction model.
+#' `"flex4"` works like `"flex3"` but allows different FP powers across
+#' groups. All options estimate group-specific coefficients in the
+#' interaction model. Ignored for `"linear"` interactions.
+#' P-values for `"flex3"` and `"flex4"` are approximate because the
+#' selected models can be non-nested.
+#' @param p_interact The p-value threshold for selecting interactions,
+#' greater than 0 and at most 1. Default: `0.05`. Used only with
+#' `criterion = "pvalue"`. An interaction is selected when its p-value
+#' is below this threshold. If a multiple-testing adjustment is requested
+#' through `p_adjust_method`, the adjusted p-value is compared with the
+#' threshold.
+#' @param min_improvement A single finite positive minimum improvement required
+#' to select an interaction with `criterion = "aic"` or `"bic"`.
+#' `NULL` uses 2. An interaction is selected when the information criterion
+#' for the model without interaction minus that for the interaction model
+#' is strictly greater than this value. Unused with `criterion = "pvalue"`;
+#' it does not affect adjustment-model selection.
+#' @param include_group_var A logical value indicating whether to force the
+#' grouping variable into the initial adjustment model. Default: `FALSE`,
+#' which excludes it from that stage. Group main effects are included in
+#' every subsequent interaction comparison regardless of this setting.
+#' @param show_models A logical value indicating whether to print summaries
+#' of selected interaction models. Default: `FALSE`. Printing requires
+#' `verbose = TRUE`; this setting does not change which models are fitted
+#' or returned.
+#' @param weights An optional numeric vector of observation weights greater
+#' than zero, with one value per observation in the original data.
+#' `NULL` gives equal weights. Weights are used in both adjustment-model
+#' selection and interaction fitting. In the formula method, weights can
+#' refer to a column in `data`.
+#' @param offset An optional numeric offset for the default method, added
+#' to the linear predictor with its coefficient fixed at one in both
+#' adjustment-model selection and interaction fitting. Supply one value
+#' per observation in the original data. For multinomial models, supply
+#' a matrix with one row per observation and either `C` or `C - 1` columns,
+#' where `C` is the number of outcome classes. `NULL` specifies no offset.
+#' In the formula method, include `offset(...)` in the formula.
+#' @param cycles A positive integer giving the maximum number of MFP fitting
+#' cycles used to select the adjustment model. Default: 10.
+#' @param scale Predictor scaling factors greater than zero, or `NULL` for
+#' automatic scaling. Use `1` to disable scaling. In the default method,
+#' supply a single value for all predictors or a named numeric vector
+#' specifying values for individual columns of `x`. Unspecified columns
+#' use automatic scaling. In the formula method, supply a single value
+#' or `NULL`; use `fp()` or `fp2()` for variable-specific settings.
+#' Predictors with structural zeros use an automatic scale of 1 unless
+#' a scale is supplied explicitly. Binary predictors, the grouping
+#' variable, and categorical interaction variables are not scaled.
+#' @param shift Constants added to predictors before scaling and FP
+#' transformation, or `NULL` for automatic shifting. Use `0` to disable
+#' shifting. In the default method, supply a single value for all predictors
+#' or a named numeric vector specifying values for individual columns of `x`.
+#' Unspecified columns use automatic shifting. In the formula method, supply
+#' a single value or `NULL`; use `fp()` or `fp2()` for variable-specific
+#' settings. Values used in nonlinear FP transformations must be positive
+#' after shifting. A supplied shift is not increased automatically.
+#' Predictors with structural zeros, binary predictors, the grouping
+#' variable, and predictors modelled only linearly are not shifted.
+#' @param df The maximum FP complexity allowed in the adjustment model:
+#' `1` for linear, `2` for FP1, `4` for FP2, or a positive even integer
+#' `2m` for an FP of degree `m`. Default: `4`. In the default method,
+#' supply a single value for all predictors or a named numeric vector
+#' specifying values for individual columns of `x`. Unspecified columns
+#' use the default; categorical terms are treated as linear. In the formula
+#' method, supply a single value; use `fp()` or `fp2()` for variable-specific
+#' settings. Use `interaction_forms` to specify the interaction form.
 #' @param center Whether to centre transformed predictors. Default: `TRUE`.
-#'   See *Predictor settings* and *Shifting, scaling, and centring*.
-#' @param subset An optional logical vector or vector of unique positive row
-#'   indices selecting observations. The formula method also accepts an
-#'   expression using `data`. See *Data requirements*.
-#' @param family The regression family. Default: `"gaussian"`.
-#'   See *Supported models*.
-#' @param fitter The GLM fitting method: `"base"` (default) or `"fastglm"`.
-#'   See *Fitting options*.
-#' @param criterion The selection criterion for adjustment and interaction
-#'   models: `"pvalue"` (default), `"aic"`, or `"bic"`.
-#' @param select The variable-selection p-value threshold for the adjustment
-#'   model, in `[0, 1]`. Default: `0.05`. See *Adjustment model* and
-#'   *Predictor settings*.
-#' @param alpha The FP-degree selection threshold for the adjustment model,
-#'   in `[0, 1]`. Default: `0.05`. See *Adjustment model* and
-#'   *Predictor settings*.
-#' @param keep An optional character vector naming adjustment variables or
-#'   complete categorical terms that must be retained.
-#' @param force_max_fp_vars An optional character vector naming adjustment
-#'   variables that must be retained at the maximum FP degree allowed by `df`.
-#'   See *Adjustment model*.
-#' @param xorder The order of variable assessment in the adjustment model:
-#'   `"ascending"` (default), `"descending"`, or `"original"`.
-#'   See *Adjustment model*.
-#' @param powers An optional named list of candidate FP powers for adjustment
-#'   and interaction functions. See *Interaction forms*.
-#' @param ties The Cox method for tied event times: `"efron"` (default) or
-#'   `"breslow"`. Ignored for other families.
-#' @param strata Optional survival-model strata for the default method.
-#'   See *Weights, offsets, and strata*.
-#' @param nocenter Values identifying Cox predictor columns that should not
-#'   be recentred by the Cox fitter. Default: `c(-1, 0, 1)`, as in
-#'   [survival::coxph()]. Use `NULL` to allow recentring of all columns.
-#' @param acd_vars Adjustment variables to model using an approximate
-#'   cumulative distribution (ACD) transformation. Available directly only
-#'   in the default method. See *Special transformations*.
-#' @param zero_vars Variables for which exact zeros are treated separately
-#'   from the positive continuous component. See *Special transformations*.
-#' @param catzero_vars Adjustment variables requiring a positive-part function
-#'   and a separate indicator for exact zeros. See *Special transformations*.
-#' @param spike_vars Adjustment variables to assess using the spike-at-zero
-#'   procedure. See *Special transformations*.
-#' @param min_saz_prop The minimum proportion required in each component of
-#'   a spike-at-zero adjustment variable. A number in `(0, 0.5)`;
-#'   default: `0.10`.
-#' @param ftest Whether to use F-tests instead of likelihood-ratio chi-square
-#'   tests for Gaussian p-value comparisons in both fitting stages.
-#'   Default: `FALSE`. Ignored for other families.
-#' @param control Control settings for the regression fitter, or `NULL` for
-#'   defaults. See *Fitting options*.
-#' @param winsorize Whether to Winsorise continuous interaction variables.
-#'   Default: `FALSE`. See *Winsorisation*.
-#' @param winsorize_probs The lower and upper Winsorisation probabilities,
-#'   in increasing order within `[0, 1]`. Default: `c(0.01, 0.99)`.
-#' @param center_type The centring reference for interaction functions:
-#'   `"grand"` (default) or `"group"`. See
-#'   *Shifting, scaling, and centring*.
-#' @param p_adjust_method A method accepted by [stats::p.adjust()].
-#'   Default: `"none"`. See *Multiple testing*.
-#' @param verbose Whether to print progress and selection results.
-#'   Default: `TRUE`.
-#' @param digits The number of decimal places in printed interaction results,
-#'   excluding FP powers and degrees of freedom. A positive integer;
-#'   default: 3.
-#' @param term_groups An optional named list grouping numeric columns into
-#'   complete categorical terms for the default method.
-#'   See *Categorical variables*.
-#' @param ... Additional arguments are not supported.
-#'
-#' @section Interaction forms:
-#' Specify the interaction form before fitting:
-#'
-#' - `"linear"` fits a linear continuous effect, a binary effect, or a complete
-#'   categorical effect in each group, without searching FP powers.
-#' - `"fp1"` selects one FP power.
-#' - `"fp2"` selects a two-term FP function, including repeated powers.
-#'
-#' The function does not select between these three forms. Unspecified forms,
-#' including when `interaction_forms = NULL`, default to `"fp1"` for continuous
-#' variables and `"linear"` for binary and categorical variables. Explicit
-#' requests for `"fp1"` or `"fp2"` for binary or categorical variables are
-#' changed to `"linear"` with a warning.
-#'
-#' The default candidate powers are
-#' `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where zero denotes the natural
-#' logarithm. This gives eight FP1 functions and 36 FP2 combinations.
-#' Power 1 is included, so an FP1 search can select a linear function.
-#' Repeated FP2 powers use the usual logarithmic second term.
-#'
-#' Supply `powers` as a named list to change the candidate set for individual
-#' variables, for example `powers = list(age = c(0, 0.5, 1))`.
-#' These candidates apply to both adjustment and interaction functions.
-#'
-#' @section Flexibility levels:
-#' For FP interactions, `flex` determines how powers are selected:
-#'
-#' - `"flex1"` selects powers in the model without interaction and uses them
-#'   in every group.
-#' - `"flex2"` selects shared powers in the interaction model and uses those
-#'   powers in the model without interaction.
-#' - `"flex3"` selects powers separately for the models with and without
-#'   interaction. The interaction powers remain common to all groups.
-#' - `"flex4"` allows each group to have its own powers and selects the
-#'   common function separately.
-#'
-#' Group-specific coefficients are estimated under every option.
-#' `flex` has no effect on interactions specified as `"linear"`.
-#'
-#' @section Adjustment model:
-#' The adjustment model is selected once using the MFP procedure in [mfp2()].
-#' Its selected terms and transformations are then held fixed during the
-#' separate interaction analyses. Each analysis excludes the tested variable
-#' from its adjustment terms because its main effect and interaction are
-#' fitted explicitly.
-#'
-#' By default, the grouping variable is excluded from the initial adjustment
-#' model. Set `include_group_var = TRUE` to force it into that model.
-#' Group main effects are included in every interaction comparison regardless
-#' of this setting.
-#'
-#' With `criterion = "pvalue"`, `select` controls variable retention and
-#' `alpha` controls FP-degree selection. Setting `select = 1` retains a
-#' variable; setting `alpha = 1` requires the maximum permitted FP degree.
-#' With `"aic"` or `"bic"`, adjustment-model selection uses the corresponding
-#' information criterion.
-#'
-#' Use `keep` to retain specified adjustment terms. Use `force_max_fp_vars`
-#' to retain specified variables at their maximum permitted FP degree under
-#' any criterion; powers within that degree are still selected from the data.
-#' For a spike-at-zero adjustment variable, this retains its full permitted
-#' representation.
-#'
-#' `xorder = "ascending"` processes terms from the smallest to the largest
-#' p-value for their contribution to the initial full linear model.
-#' Each p-value compares that model with a model omitting the complete term,
-#' while retaining the other terms. `"descending"` reverses this order;
-#' `"original"` preserves the predictor or formula term order.
-#'
-#' These settings control adjustment-model selection. They do not determine
-#' the interaction form, which is set by `interaction_forms`.
-#' If no adjustment terms are selected, the interaction analyses proceed
-#' without them.
-#'
-#' @section Interaction selection:
-#' Each requested interaction is selected when:
-#'
-#' - its raw or adjusted p-value is strictly below `p_interact` for
-#'   `criterion = "pvalue"`;
-#' - `AIC_main_minus_int` is strictly greater than `min_improvement` for
-#'   `criterion = "aic"`;
-#' - `BIC_main_minus_int` is strictly greater than `min_improvement` for
-#'   `criterion = "bic"`.
-#'
-#' Positive AIC or BIC differences favour the interaction. The default
-#' improvement threshold is 2. `min_improvement` does not affect the
-#' adjustment-model selection thresholds.
-#'
-#' The reported AIC and BIC values use MFPI complexity allowances for searched
-#' FP powers and should not be compared directly with [stats::AIC()] or
-#' [stats::BIC()] results.
-#'
-#' @section Statistical interpretation:
-#' Interaction p-values are based on likelihood-ratio comparisons, or
-#' Gaussian F-tests when requested. They do not account fully for uncertainty
-#' from selecting the adjustment model and FP functions.
-#'
-#' P-values for `"flex3"`, and `"flex4"` are approximate. With
-#' `"flex3"` and `"flex4"`, different selected powers can make the compared
-#' models non-nested.
-#' If the interaction model has a larger deviance than the model without
-#' interaction beyond numerical tolerance, its p-value is reported as `NA`;
-#' AIC and BIC comparisons remain available.
-#'
-#' For two groups and a single outcome linear predictor, interaction tests
-#' use 1 degree of freedom for FP1 and 2 for FP2 with `"flex1"`, `"flex2"`,
-#' and `"flex3"`. With `"flex4"`, the corresponding values are 2 and 4.
-#' These follow Royston and Sauerbrei (2014, Web Appendix, Table 2).
-#'
-#' More flexible functions can be unstable with sparse data. Inspect the fitted
-#' functions and the distributions of the tested variables when interpreting an
-#' interaction.
-#'
-#' @section Multiple testing:
-#' P-values are unadjusted by default. Set `p_adjust_method` to a method such
-#' as `"holm"`, `"bonferroni"`, or `"BH"` to adjust across the requested
-#' interaction tests.
-#'
-#' There is one planned test per variable in `interaction_vars`. Unavailable
-#' p-values remain `NA` and are included in the planned number of tests.
-#' An interaction with an unavailable p-value cannot be selected by the
-#' p-value criterion.
-#'
-#' This adjustment applies only to `criterion = "pvalue"` and does not
-#' correct for model-selection uncertainty.
-#'
-#' @section Data requirements:
-#' The grouping variable and all interaction variables must be included in
-#' `x` or `formula`. The grouping variable cannot also be an interaction
-#' variable or a member of `term_groups`.
-#'
-#' For the default method, supply numeric predictors in a matrix or data frame.
-#' Data frames also accept logical predictors and a factor or character
-#' grouping variable. Predictor names must be unique, non-missing, non-empty,
-#' and contain no backticks.
-#'
-#' Missing and non-finite fitting values are not supported. The response,
-#' weights, offset, and strata must correspond to the predictor rows.
-#' At least five observations and two groups must remain after subsetting.
-#' Each group needs at least two observations, or three if any FP2
-#' interaction is requested.
-#'
-#' These minimum counts do not guarantee that a model can be estimated.
-#' The requested effects must have sufficient variation within groups and
-#' must be distinguishable from the other model terms. FP searches for
-#' continuous variables with five or fewer distinct values produce a warning.
-#'
-#' The reference group is the first observed factor level, the first retained
-#' distinct character value, or the smallest observed logical or numeric
-#' value. To choose a reference explicitly, supply a factor with the desired
-#' level order.
-#'
-#' @section Formula interface:
-#' Supply original variables in `data`. Use `fp()` or `fp2()` to specify
-#' variable-specific FP and preprocessing settings. These settings override
-#' the corresponding global defaults.
-#'
-#' Global `zero_vars`, `catzero_vars`, `spike_vars`, and
-#' `force_max_fp_vars` settings are combined with the corresponding options
-#' in the formula wrappers.
-#'
-#' The wrappers do not set the interaction form. For example,
-#' `fp(age, df = 4)` permits FP2 in the adjustment model, while
-#' `interaction_forms = c(age = "linear")` requests a linear age interaction.
-#'
-#' Use `fp(variable, acd = TRUE)` for ACD transformations, `offset(...)`
-#' for offsets, and `strata(...)` for survival strata. The direct `acd_vars`,
-#' `offset`, and `strata` arguments are unavailable in the formula method.
-#'
-#' @section Categorical variables:
-#' In the formula interface, categorical predictors are represented and
-#' assessed as complete terms. They can be adjustment variables or interaction
-#' variables with form `"linear"`. Do not wrap categorical predictors in
-#' `fp()` or `fp2()`.
-#'
-#' In the default interface, represent a categorical predictor by numeric
-#' contrast columns and identify them with a named list, for example
-#' `term_groups = list(stage = c("stageII", "stageIII"))`.
-#' Each column can belong to only one term.
-#'
-#' Name the complete term, such as `"stage"`, in `interaction_vars` or `keep`.
-#' Individual columns of a grouped term cannot be tested separately.
-#' Grouped terms are linear and cannot use special transformations or
-#' `force_max_fp_vars`.
-#'
-#' Binary and categorical interaction variables retain their coding and are
-#' not shifted, scaled, centred, Winsorised, or subjected to an FP search.
-#' For formula-based prediction, supply categorical variables in their
-#' original form.
-#'
-#' @section Predictor settings:
-#' In the default method, `df`, `select`, `alpha`, `center`, `shift`, and
-#' `scale` accept either an unnamed scalar or a named vector.
-#' A scalar supplies a common setting. A named vector sets only the specified
-#' columns of `x`; omitted columns use the argument's default.
-#' Names must be unique and match predictor columns. Unnamed vectors of
-#' length greater than one are not accepted.
-#'
-#' In the formula method, these global arguments must be scalars.
-#' Use `fp()` or `fp2()` for variable-specific settings.
-#'
-#' @section Shifting, scaling, and centring:
-#' Predictors are shifted and scaled before FP modelling. `NULL` requests
-#' automatic values; `shift = 0` disables shifting and `scale = 1` disables
-#' scaling. Explicit values must be finite, and scales must be positive.
-#' A supplied shift is not increased automatically if it leaves values
-#' unsuitable for a nonlinear FP transformation.
-#'
-#' Linear-only and structural-zero predictors use a zero shift.
-#' Binary predictors and the grouping variable use zero shift and unit scale.
-#' Structural-zero predictors (`zero_vars`, `catzero_vars`, `spike_vars`, or
-#' the corresponding `fp()` options) that contain exact zeros use an automatic
-#' scale of 1, as in [mfp2()]: scaling would add a constant to logarithmic
-#' terms on the positive values only and make the selected powers depend on
-#' the scale factor. An explicitly supplied scale is still used.
-#'
-#' For interaction functions, `center_type = "grand"` centres transformed
-#' values using a common mean across groups; `"group"` uses within-group
-#' means. With `"flex4"`, a separate centring value is calculated for each
-#' group's selected function. Fitted centring values are reused for prediction.
-#'
-#' Structural-zero variables follow the [mfp2()] convention, both as
-#' interaction and as adjustment variables: their uncentred continuous
-#' functions are zero at exact zeros, and centring subtracts the mean of the
-#' complete column (zeros included) from every observation. Centring is
-#' therefore a pure intercept and group-effect reparameterisation and does not
-#' change fitted values, tests, or interaction functions. For a structural-zero
-#' interaction variable, each group must retain at least two positive
-#' observations for a linear or FP1 form, or three for FP2.
-#'
-#' @section Special transformations:
-#' The following options require nonnegative variables. Negative values must
-#' be recoded explicitly if they are intended to represent structural zeros.
-#'
-#' - `zero_vars` applies the continuous function only to positive values,
-#'   with zero continuous contribution at exact zeros before centring.
-#' - `catzero_vars` additionally includes an indicator for exact zeros and
-#'   implies positive-part modelling.
-#' - `spike_vars` assesses alternative representations of the zero and positive
-#'   components using the spike-at-zero procedure.
-#'
-#' For adjustment variables, these can also be specified using
-#' `fp(variable, zero = TRUE)`, `catzero = TRUE`, or `spike = TRUE`.
-#' ACD transformations are available for adjustment variables through
-#' `acd_vars` or `fp(variable, acd = TRUE)`. With structural-zero handling,
-#' ACD is estimated from positive values only.
-#'
-#' Interaction variables support explicit `zero_vars` handling, but not ACD,
-#' categorical-zero indicators, or spike-at-zero selection. Unsupported
-#' options are disabled with a warning; explicit zero handling is preserved.
-#' A zero-handled interaction variable must retain positive observations
-#' after subsetting. Binary variables use ordinary binary modelling.
-#'
-#' Spike-at-zero assessment requires at least `min_saz_prop` of observations
-#' in each component. Variables that fail this requirement retain the
-#' applicable zero or categorical-zero handling without spike-at-zero selection.
-#' If a variable contains no zeros, special zero handling is disabled.
-#'
-#' @section Winsorisation:
-#' With `winsorize = TRUE`, continuous interaction values below or above the
-#' specified empirical quantiles are replaced by those limits.
-#' No observations are removed.
-#'
-#' Limits are calculated from the fitting observations after shifting and
-#' scaling and are reused during prediction. Binary, categorical, and
-#' structural-zero interaction variables are excluded.
-#' Inspect influential observations and report any Winsorisation used.
-#'
-#' @section Supported models:
+#' In the default method, supply a single logical value for all predictors
+#' or a named logical vector specifying values for individual columns of `x`.
+#' Unspecified columns use `TRUE`. In the formula method, supply a single
+#' value; use `fp()` or `fp2()` for variable-specific settings.
+#' For interaction functions, `center_type` determines the reference mean.
+#' Binary and categorical interaction variables are not centred.
+#' For predictors with structural zeros, the mean includes zero observations
+#' and is subtracted from every observation.
+#' @param subset An optional logical vector indicating which observations
+#' to include, or a vector of unique positive row numbers. Logical values
+#' must not be missing, and row numbers must be within the data range.
+#' `NULL` uses all observations. The formula method also accepts an
+#' expression using `data`. Supply responses, weights, offsets, and strata
+#' for the original data; the same subset is applied to all of them.
+#' At least five observations and two groups must remain, with at least
+#' two observations per group, or three if any FP2 interaction is requested.
+#' These minimum counts do not guarantee that the models can be fitted.
+#' @param family The regression family or model. Default: `"gaussian"`.
 #' Supported GLM families are `"gaussian"`, `"binomial"`, `"poisson"`,
-#' `"Gamma"`, and `"inverse.gaussian"`, supplied as a family name, function,
-#' or object. Responses must satisfy the corresponding family requirements.
-#' Grouped binomial responses require integer success and failure counts.
-#'
-#' Additional models are:
-#'
-#' - `"negbin"` for negative-binomial regression;
-#' - `"multinomial"` or [multinomial_family()] for outcomes with at least
-#'   three classes, supplied as class labels or a matrix of class counts;
-#' - `"ordinal"` or [ordinal_family()] for ordered outcomes with at least
-#'   three categories;
-#' - `"cox"` for a right-censored [survival::Surv()] response;
-#' - [survreg_family()] for parametric survival regression with a
-#'   non-counting-process `Surv` response.
-#'
+#' `"Gamma"`, and `"inverse.gaussian"`, supplied as a name, function,
+#' or family object. Use `"negbin"` for negative-binomial regression
+#' (requires `fastglm`), or `"multinomial"` or [multinomial_family()]
+#' for outcomes with at least three classes, supplied as class labels
+#' or a matrix of class counts.
+#' Use `"ordinal"` or [ordinal_family()] for ordered outcomes with at
+#' least three categories (requires `rms` version 7.0-0 or later).
+#' An ordered factor sets the category order; otherwise numeric categories
+#' are ordered numerically and character or unordered-factor categories
+#' alphabetically.
+#' Use `"cox"` for right-censored survival data or [survreg_family()]
+#' for parametric survival regression. Both require a [survival::Surv()]
+#' response. The response must meet the selected family's requirements.
 #' Quasi-likelihood, GEE, and Fine--Gray models are not supported.
-#'
-#' Multinomial models share FP powers across outcome logits but estimate
-#' separate regression coefficients for each logit. Their interaction degrees
-#' of freedom account for these separate coefficients.
-#'
-#' Ordinal models use common slopes across response cut-points.
-#' Supply an ordered factor to define the category order explicitly;
-#' otherwise, numeric categories are ordered increasingly and character or
-#' unordered-factor categories alphabetically. Ordinal fitting requires
-#' the optional `rms` package (version 7.0-0 or later).
-#'
-#' @section Weights, offsets, and strata:
-#' Weights must be finite and strictly positive and are used in both fitting
-#' stages. Ordinal models use the supplied case weights without rescaling them.
-#'
-#' Offsets must be finite and are used in both stages. In the default method,
-#' supply the `offset` argument. In the formula interface, include `offset(...)`
-#' in the formula; a direct `offset` argument is not available. Weight and
-#' formula offset expressions are evaluated in `data` and then in the formula
-#' environment.
-#'
-#' For Cox models, strata define separate baseline hazards. For `survreg`
-#' models, they define separate scale parameters. The default method accepts
-#' stratum labels or a matrix or data frame of stratification variables.
-#' The formula method uses `strata(...)`.
-#'
-#' @section Fitting options:
-#' `fitter = "fastglm"` requires the optional `fastglm` package.
-#' Ordinary GLMs warn and retry with the base fitter if it is unavailable
-#' or fitting fails. Negative-binomial models require `fastglm` and select
-#' it automatically. Survival models are unaffected by `fitter`.
-#'
-#' Supply `control` using the appropriate settings for the model, usually
-#' [stats::glm.control()], [survival::coxph.control()], or
-#' [survival::survreg.control()]. For `fastglm`, `epsilon` and `maxit`
-#' control regression convergence; `trace = TRUE` is not supported.
-#' For negative-binomial models, these controls do not change the separate
-#' dispersion-estimation settings.
+#' @param fitter The GLM fitting method: `"base"` (default) or `"fastglm"`.
+#' The latter requires the optional `fastglm` package. Ordinary GLMs warn
+#' and retry with the base fitter if `fastglm` is unavailable or fitting
+#' fails. Negative-binomial models require `fastglm` and select it
+#' automatically. Survival models are unaffected by this argument.
+#' @param criterion The selection criterion for the adjustment model and
+#' interactions: `"pvalue"` (default), `"aic"`, or `"bic"`.
+#' With `"pvalue"`, `select` and `alpha` control adjustment-model selection,
+#' while `p_interact` and `p_adjust_method` control interaction selection.
+#' With `"aic"` or `"bic"`, `min_improvement` sets the improvement required
+#' to select an interaction.
+#' @param select The p-value threshold for retaining variables in the
+#' adjustment model, between 0 and 1 inclusive. Default: `0.05`.
+#' Used only with `criterion = "pvalue"`; setting it to `1` retains the
+#' variable. In the default method, supply a single value for all predictors
+#' or a named numeric vector specifying values for individual columns of `x`.
+#' Unspecified columns use `0.05`. In the formula method, supply a single
+#' value; use `fp()` or `fp2()` for variable-specific settings.
+#' Use `p_interact` to set the threshold for selecting interactions.
+#' @param alpha The p-value threshold for selecting the FP degree in the
+#' adjustment model, between 0 and 1 inclusive. Default: `0.05`.
+#' Used only with `criterion = "pvalue"`. Setting `alpha = 1` forces the
+#' maximum FP degree allowed by `df`, but the variable can still be removed
+#' during variable selection. Use `select = 1` or `keep` to ensure that it
+#' remains in the model. In the default method, supply a single value for
+#' all predictors or a named numeric vector specifying values for individual
+#' columns of `x`. Unspecified columns use `0.05`. In the formula method,
+#' supply a single value; use `fp()` or `fp2()` for variable-specific settings.
+#' Use `interaction_forms` to specify the interaction form.
+#' @param keep An optional character vector naming predictors that must
+#' remain in the initial adjustment model. For a categorical predictor,
+#' naming the complete term or any of its dummy variables retains the
+#' whole term. FP degrees and powers are still selected. The default is
+#' `NULL`, which does not force any predictors to remain in the model.
+#' @param term_groups An optional named list grouping dummy variables for
+#' categorical predictors in the default method, for example
+#' `list(stage = c("stageII", "stageIII"))`. This ensures each predictor
+#' is assessed as a whole. Use the list name, such as `"stage"`, in
+#' `interaction_vars` to test the complete predictor. Each column can belong
+#' to only one group, and `group_var` cannot be included. Grouped predictors
+#' are linear and cannot use special transformations or `force_max_fp_vars`.
+#' Default: `NULL`. The formula method groups categorical predictors
+#' automatically.
+#' @param force_max_fp_vars An optional character vector naming adjustment
+#' variables that must remain in the model at the maximum FP degree allowed
+#' by `df`, regardless of the selection criterion. FP powers are still
+#' selected from the data. The default is `NULL`. For spike-at-zero variables,
+#' the full permitted model is retained. This option cannot be used for
+#' grouped categorical predictors. In the formula method, you can also request
+#' the maximum FP degree for individual variables through `fp()` or `fp2()`.
+#' This argument does not change the interaction form specified by
+#' `interaction_forms`.
+#' @param xorder The order in which adjustment terms are assessed:
+#' `"ascending"` (default) orders terms from smallest to largest p-value
+#' for their contribution to the initial full linear model;
+#' `"descending"` reverses that order; `"original"` preserves predictor
+#' or formula term order. Each ordering p-value compares the full linear
+#' model with a model omitting the complete term while retaining the others.
+#' @param powers An optional named list of candidate FP powers, for example
+#' `list(age = c(0, 0.5, 1))`. The default is `NULL`, which uses
+#' `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` for all variables. Unspecified
+#' variables also use these powers. Power `0` represents the natural
+#' logarithm, and power `1` represents a linear function. These powers
+#' are used for both adjustment and interaction functions. FP2 models
+#' allow repeated powers. In the formula method, powers specified in
+#' `fp()` or `fp2()` override this argument for the same variable.
+#' @param ties The method for handling tied event times in Cox models:
+#'   `"efron"` (default) or `"breslow"`. Ignored for other families.
+#' @param strata Optional survival-model strata for the default method.
+#' Supply a vector of group labels or a matrix or data frame of grouping
+#' variables, with one row per observation in the original data and no
+#' missing values. The default is `NULL`, meaning no stratification.
+#' Each stratum has its own baseline hazard in Cox models or scale
+#' parameter in `survreg` models. In the formula method, use
+#' `strata(...)` in the formula.
+#' @param nocenter A numeric vector of values used to determine which
+#' predictor columns the Cox fitter leaves uncentred. A column is not
+#' centred if all its values are in this vector. The default is
+#' `c(-1, 0, 1)`, as in [survival::coxph()]. Use `NULL` to allow centring
+#' of all columns. Applies only to Cox models and is separate from FP
+#' centring controlled by `center` and `center_type`.
+#' @param acd_vars An optional character vector naming adjustment variables
+#' to transform using an approximate cumulative distribution (ACD).
+#' The default is `NULL`, meaning no ACD transformations are requested.
+#' This argument is available only in the default method; in the formula
+#' method, use `fp(variable, acd = TRUE)`. For variables with structural
+#' zeros, the ACD is estimated using positive values only. ACD transformations
+#' cannot be used for grouped categorical predictors and are disabled with
+#' a warning for variables tested for interaction.
+#' @param zero_vars An optional character vector naming variables whose
+#' continuous function applies only to positive values, with zero
+#' contribution at zeros before centring. Values must not be negative.
+#' No separate zero indicator is added. The default is `NULL`.
+#' This option supports adjustment variables and variables tested for
+#' interaction. For interaction testing, each group needs at least two
+#' positive observations for a linear or FP1 form, or three for FP2.
+#' In the formula method, you can also use `fp(variable, zero = TRUE)`.
+#' Do not list the same adjustment variable in `catzero_vars`.
+#' This option is ignored for binary variables and variables without zeros.
+#' @param catzero_vars An optional character vector naming adjustment
+#' variables to model using a continuous function for positive values
+#' and a separate indicator for zeros. Values must not be negative.
+#' The default is `NULL`. Do not list the same variable in `zero_vars`.
+#' In the formula method, you can also use `fp(variable, catzero = TRUE)`.
+#' This option cannot be used for grouped categorical predictors and is
+#' disabled with a warning for variables tested for interaction; any
+#' separately requested `zero_vars` handling is retained. It is ignored
+#' for binary variables and variables without zeros.
+#' @param spike_vars An optional character vector naming adjustment variables
+#' for spike-at-zero modelling. Values must not be negative, and the zero
+#' and positive components must each meet `min_saz_prop`. Default: `NULL`.
+#' In the formula method, use `fp(variable, spike = TRUE)`.
+#' Not supported for binary or grouped categorical predictors, or variables
+#' tested for interaction.
+#' @param min_saz_prop The minimum proportion of zero and positive observations
+#' required for spike-at-zero modelling. Must be greater than 0 and less
+#' than 0.5. Default: `0.10`, requiring at least 10% in each component.
+#' Variables that do not meet this requirement skip spike-at-zero selection.
+#' @param ftest Whether to use F-tests instead of likelihood-ratio chi-square
+#' tests for Gaussian adjustment-model selection and interaction testing.
+#' Default: `FALSE`. Other families use chi-square tests and issue a warning
+#' if `TRUE` is supplied.
+#' @param control Fitting controls used in both adjustment-model selection
+#' and interaction fitting. Use [stats::glm.control()],
+#' [survival::coxph.control()], or [survival::survreg.control()] as appropriate.
+#' Default: `NULL`, which uses the fitter's defaults. For `fastglm`, use
+#' `epsilon` and `maxit`; `trace = TRUE` is not supported.
+#' @param winsorize A logical value indicating whether to cap continuous
+#' variables tested for interaction at the quantiles specified by
+#' `winsorize_probs`. Default: `FALSE`. No observations are removed,
+#' and the same limits are used for prediction. Binary, categorical,
+#' and structural-zero variables are excluded.
+#' @param winsorize_probs Two probabilities specifying the lower and upper
+#' limits when `winsorize = TRUE`, in increasing order between 0 and 1.
+#' Default: `c(0.01, 0.99)`, corresponding to the first and ninety-ninth
+#' percentiles.
+#' @param center_type A character string specifying how interaction functions
+#' are centred: `"grand"` (default) uses means across all groups, while
+#' `"group"` uses means within each group. With `"flex4"`, each group's
+#' function has its own centring value. The same values are used for
+#' prediction. Applies only when `center = TRUE`; binary and categorical
+#' variables tested for interaction are not centred.
+#' @param p_adjust_method A character string specifying the multiple-testing
+#' adjustment for interaction p-values, using a method from [stats::p.adjust()],
+#' such as `"holm"`, `"bonferroni"`, or `"BH"`. Default: `"none"`.
+#' With `criterion = "pvalue"`, adjusted p-values are compared with
+#' `p_interact`. Each variable in `interaction_vars` counts as one test,
+#' including those with unavailable p-values. Unused for AIC or BIC selection.
+#' @param digits A positive integer giving the number of decimal places in
+#' printed interaction results, excluding FP powers and degrees of freedom.
+#' Default: 3. This affects printed output rather than fitting precision.
+#' @param verbose A logical value indicating whether to print fitting progress
+#' and selection results. Default: `TRUE`. Set to `FALSE` to suppress this
+#' output, including the model summaries requested by `show_models`.
+#' @param ... Not used.
 #'
 #' @return
-#' An object of class `"mfpi"`. Use `summary()`, `coef()`, `vcov()`,
-#' `predict()`, and `plot()` to examine the results.
+#' An object of class `"mfpi"` containing the adjustment model, interaction
+#' results, and fitted interaction models. Each variable is tested separately;
+#' selected interactions are not combined into a single model.
 #'
-#' Documented components include:
+#' The main components are:
 #'
-#' - `all_model_metrics`: interaction results for every evaluated variable,
-#'   including p-values, degrees of freedom, information-criterion comparisons,
-#'   and selected powers.
-#' - `best_model_metrics`: results for interactions selected by `criterion`.
-#' - `all_interaction_models`: fitted interaction models for all evaluated
-#'   variables.
-#' - `best_interaction_model`: fitted models for selected interactions.
-#' - `adjustment_model`: the selected [mfp2()] adjustment model, accepting
-#'   prediction data on the original covariate scale.
-#' - `interaction_forms`: the form used for each tested variable.
-#' - `group_level_map`: the correspondence between fitted group values
-#'   and original group labels.
-#' - `winsorize_limits`: fitted Winsorisation limits after shifting and scaling,
-#'   when requested.
-#' - `criterion`: the selection criterion.
-#' - `p_adjust_method`: the multiple-testing adjustment method.
-#' - `call`: the matched function call.
+#' - `all_model_metrics`: results for every tested interaction, including
+#'   p-values, test degrees of freedom, AIC and BIC comparisons between models
+#'   with and without interaction, and selected FP powers.
+#' - `best_model_metrics`: results for interactions that meet the selection
+#'   rule specified by `criterion` and its associated threshold.
+#' - `all_interaction_models`: fitted interaction models for all tested
+#'   variables, including those whose interactions were not selected.
+#' - `best_interaction_model`: fitted interaction models for variables
+#'   whose interactions were selected.
+#' - `adjustment_model`: the initial adjustment model selected using [mfp2()].
+#'   Its selected terms and transformations are used in the interaction
+#'   analyses. It accepts prediction data on the original covariate scale.
+#' - `interaction_forms`: the interaction form used for each tested variable:
+#'   `"linear"`, `"fp1"`, or `"fp2"`.
+#' - `group_level_map`: the mapping between the internal group codes used
+#'   for fitting and the original group labels.
+#' - `winsorize_limits`: the lower and upper limits used when Winsorisation
+#'   is requested, calculated after shifting and scaling. These limits
+#'   are reused for prediction.
+#' - `criterion`: the criterion used for model selection: `"pvalue"`,
+#'   `"aic"`, or `"bic"`.
+#' - `p_adjust_method`: the multiple-testing adjustment method used for
+#'   interaction p-values.
+#' - `call`: the matched function call, recording the supplied arguments.
+#'
+#' Use `summary()` to inspect interaction results, `coef()` and `vcov()`
+#' to extract coefficients and covariance matrices, and `predict()` and
+#' `plot()` to examine fitted associations and differences between groups.
 #'
 #' @references
+#' Kipruto, E., Royston, P. and Sauerbrei, W.
+#' Multivariable Fractional Polynomial Interaction Models in R.
+#'
 #' Royston, P. and Sauerbrei, W. (2004). A new approach to modelling
 #' interactions between treatment and continuous covariates in clinical trials
 #' by using fractional polynomials. *Statistics in Medicine*, 23, 2509–2525.
@@ -498,11 +391,15 @@
 #' @examples
 #' data("prostate")
 #'
-#' # Specify each interaction form separately from the adjustment settings.
+#' # Test FP1 and linear interactions with a categorical grouping variable.
+#' # The grouping variable, svi, must appear in the formula and be named
+#' # in group_var.
 #' fit <- mfpi(
 #'   lpsa ~ svi + fp(age) + fp(cavol) + fp(weight) + fp(bph) + fp(cp),
 #'   data = prostate,
+#'   family = gaussian(),
 #'   group_var = "svi",
+#'   p_interact = 0.9,
 #'   interaction_vars = c("cavol", "age"),
 #'   interaction_forms = c(cavol = "fp1", age = "linear"),
 #'   flex = "flex1",
@@ -512,7 +409,7 @@
 #' print(fit)
 #' summary(fit)
 #'
-#' # Examine an interaction even if it was not selected.
+#' # Examine the cavol interaction even if it was not selected.
 #' pred <- predict(
 #'   fit,
 #'   terms = "cavol",
@@ -524,8 +421,9 @@
 #' pred$differences
 #'
 #' \donttest{
+#' # Plot the fitted cavol functions and differences between groups.
 #' if (requireNamespace("patchwork", quietly = TRUE)) {
-#'   plot(fit, terms = "cavol", model = "all", plot_type = "both")
+#'   plot(fit, terms = "cavol")
 #' }
 #' }
 #'
@@ -670,7 +568,7 @@ mfpi.default <- function(
     df                = 4,
     center            = TRUE,
     subset            = NULL,
-    family            = "gaussian",
+    family            = gaussian(),
     criterion         = c("pvalue", "aic", "bic"),
     select            = 0.05,
     alpha             = 0.05,
@@ -2075,7 +1973,7 @@ mfpi.formula <- function(formula,
                          df                = 4,
                          center            = TRUE,
                          subset            = NULL,
-                         family            = "gaussian",
+                         family            = gaussian(),
                          criterion         = c("pvalue", "aic", "bic"),
                          select            = 0.05,
                          alpha             = 0.05,
@@ -2536,6 +2434,14 @@ mfpi.formula <- function(formula,
   if (!is.null(group_var)) {
     gv_raw <- mf[[group_var]]
 
+    if (is.null(gv_raw)) {
+      stop(
+        "! `group_var` must be included in the model formula.\n",
+        sprintf("i Add `%s` to the right-hand side of the formula.", group_var),
+        call. = FALSE
+      )
+    }
+
     if (is.factor(gv_raw)) {
       gv_factor <- droplevels(gv_raw)
       group_levels_original <- levels(gv_factor)
@@ -2880,8 +2786,8 @@ mfpi.formula <- function(formula,
     x                 = x,
     y                 = y,
     group_var         = group_var,
-    interaction_vars         = interaction_vars,
-    interaction_forms    = interaction_forms,
+    interaction_vars  = interaction_vars,
+    interaction_forms = interaction_forms,
     flex              = flex,
     p_interact        = p_interact,
     min_improvement   = min_improvement,
@@ -2911,7 +2817,7 @@ mfpi.formula <- function(formula,
     zero_vars         = zero_vars_final,
     catzero_vars      = catzero_vars_final,
     spike_vars        = spike_vars_final,
-    min_saz_prop = min_saz_prop,
+    min_saz_prop      = min_saz_prop,
     ftest             = ftest,
     control           = control,
     winsorize         = winsorize,
@@ -2922,6 +2828,7 @@ mfpi.formula <- function(formula,
     digits            = digits,
     term_groups       = grouped_formula_terms
   )
+
   fit$formula_interface <- TRUE
   fit$formula <- formula_user
   fit$formula_terms <- stats::delete.response(terms_model)

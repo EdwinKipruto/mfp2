@@ -301,6 +301,13 @@ test_that("summary FP labels do not reapply preprocessing scale", {
     ),
     x = matrix(1, nrow = 1L, dimnames = list(NULL, "x.1")),
     coefficients = c("x.1" = 2.5),
+    term_to_columns = list(x = "x"),
+    transformed_to_model_columns = c("basis_x" = "x.1"),
+    transformed_column_to_source = c("basis_x" = "x"),
+    transformed_column_component = c("basis_x" = "fp_basis"),
+    transformed_column_zero_handled = c("basis_x" = FALSE),
+    transformed_column_centered = c("basis_x" = TRUE),
+    centers = c("basis_x" = 0.12512345),
     transformations = data.frame(
       shift = 3,
       scale = 100,
@@ -315,6 +322,39 @@ test_that("summary FP labels do not reapply preprocessing scale", {
   expect_true(grepl("x + 3", label, fixed = TRUE))
   expect_false(grepl("/100", label, fixed = TRUE))
   expect_false(any(grepl("/100", formula, fixed = TRUE)))
+
+  # The centre is keyed by transformed column, not coefficient name.
+  # Display rounding applies to both the coefficient and the centre.
+  expect_match(formula, "2.500 *", fixed = TRUE)
+  expect_match(formula, " - 0.125)", fixed = TRUE)
+  formula4 <- mfp2_summary_formula_strings(object, classified, digits = 4L)
+  expect_match(formula4, "2.5000 *", fixed = TRUE)
+  expect_match(formula4, " - 0.1251)", fixed = TRUE)
+
+  basis <- mfp2_summary_basis_table(object, classified)
+  expect_equal(basis$center, 0.12512345)
+  expect_equal(basis$coef, 2.5)
+  expect_false(grepl("/100", basis$term, fixed = TRUE))
+
+  # Negative centres are added; an uncentred column ignores stored centres.
+  object$centers[] <- -0.12512345
+  expect_match(
+    mfp2_summary_formula_strings(object, classified),
+    " + 0.125)", fixed = TRUE
+  )
+  object$transformed_column_centered[] <- FALSE
+  expect_false(grepl(
+    "0.125", mfp2_summary_formula_strings(object, classified), fixed = TRUE
+  ))
+  expect_equal(mfp2_summary_basis_table(object, classified)$center, 0)
+
+  # Missing centring metadata must not silently produce an incorrect equation.
+  object$transformed_column_centered[] <- TRUE
+  object$centers[] <- NA_real_
+  expect_error(
+    mfp2_summary_formula_strings(object, classified),
+    "No finite centering constant", fixed = TRUE
+  )
 })
 
 
@@ -339,6 +379,23 @@ test_that("summary shows unscaled ACD definitions for new fits", {
       dimnames = list(NULL, c("x.1", "A_x.1"))
     ),
     coefficients = c("x.1" = 0.4, "A_x.1" = 1.2),
+    term_to_columns = list(x = "x"),
+    transformed_to_model_columns = c(
+      "basis_direct" = "x.1", "basis_acd" = "A_x.1"
+    ),
+    transformed_column_to_source = c(
+      "basis_direct" = "x", "basis_acd" = "x"
+    ),
+    transformed_column_component = c(
+      "basis_direct" = "fp_basis", "basis_acd" = "acd_basis"
+    ),
+    transformed_column_zero_handled = c(
+      "basis_direct" = FALSE, "basis_acd" = FALSE
+    ),
+    transformed_column_centered = c(
+      "basis_direct" = TRUE, "basis_acd" = TRUE
+    ),
+    centers = c("basis_direct" = 0.2, "basis_acd" = 0.35),
     transformations = data.frame(
       shift = 2,
       scale = 1,
@@ -373,6 +430,11 @@ test_that("summary shows unscaled ACD definitions for new fits", {
   expect_false(any(grepl("/", definitions, fixed = TRUE)))
   expect_true(any(grepl("pnorm", definitions, fixed = TRUE)))
   expect_true(any(grepl("A(x)", formulas, fixed = TRUE)))
+  expect_match(formulas, "0.400 * ((x + 2) - 0.200)", fixed = TRUE)
+  expect_match(formulas, "1.200 * (A(x) - 0.350)", fixed = TRUE)
+  basis <- mfp2_summary_basis_table(object, classified)
+  expect_equal(basis$center, c(0.2, 0.35))
+  expect_equal(basis$coef, c(0.4, 1.2))
 })
 
 

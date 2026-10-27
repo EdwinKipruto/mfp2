@@ -102,6 +102,9 @@ library(ggplot2)
 library(patchwork)
 library(survival)
 library(formatR)
+
+has_rms <- requireNamespace("rms", quietly = TRUE) &&
+  utils::packageVersion("rms") >= "7.0-0"
 ```
 
 # Introduction to the `mfp2` package
@@ -122,7 +125,7 @@ Additional functionality includes support for sigmoid relationships
 through the approximate cumulative distribution (ACD) transformation,
 spike-at-zero (SAZ) modelling for semi-continuous covariates, and
 interaction modelling between categorical grouping variables and
-continuous covariates through `mfpi()`. These extensions are implemented
+continuous, binary, or categorical covariates through `mfpi()`. These extensions are implemented
 with attention to computational efficiency, including compiled code for
 performance-critical transformation steps, and are accompanied by
 documented functions and vignettes that illustrate the main modelling
@@ -134,19 +137,21 @@ modelling of sigmoid relationships between a continuous covariate `x`
 and an outcome variable `y`. In `mfp2`, ACD modelling is available
 through the main `mfp2()` function.
 
-The `mfp2()` function also implements SAZ modelling for semi-continuous
-covariates with a point mass at zero. SAZ modelling is useful when zero
-values may represent a distinct subgroup, while positive values are
-modelled using an FP or linear function. In `mfp2`, an SAZ covariate is
-initially represented by two components: a binary indicator for the zero
-part and an FP or linear function for the positive part of the covariate.
-After this full SAZ representation has been considered, the algorithm
-evaluates whether both components are needed, whether only the FP or
-linear positive-part component should be retained, or whether only the
-binary zero indicator should be retained. If the covariate is not
-selected, both components are dropped. For more details on the SAZ
-algorithm, see the `mfp2()` documentation and the dedicated SAZ vignette
-available within the package.
+The `mfp2()` function implements spike-at-zero (SAZ) modelling for semi-continuous
+covariates with a point mass at zero. An SAZ covariate has two potential components: a binary indicator distinguishing zero from positive values and an FP or linear function applied to
+positive values. With p-value selection, a two-stage procedure is used. Stage 1 
+determines whether to retain the covariate and selects the function for its 
+positive values, with the binary indicator included in each candidate model 
+containing the covariate. If the covariate is retained, Stage 2 determines 
+whether to retain both components, only the binary indicator, or only the positive 
+component. With AIC or BIC selection, these decisions are made in a single stage. Models 
+containing neither component, either component alone, or both components are 
+compared, and the model with the smallest criterion value is selected. FP powers
+are selected separately for models with and without the binary indicator. Both
+procedures are integrated into the MFP backfitting algorithm, allowing several
+SAZ covariates to be assessed alongside other predictors. For details of the SAZ
+procedures, see Kipruto and Sauerbrei (2026). Code examples are provided in the 
+package’s dedicated SAZ vignette.
 
 Beyond `mfp2()`, the package provides `mfpi()`, a dedicated function for
 multivariable fractional polynomial interaction (MFPI) analysis. The
@@ -157,27 +162,63 @@ when assessing whether the effect of a grouping variable varies across
 the range of a continuous covariate (Royston and Sauerbrei, 2004).
 Thus, within the `mfp2` package, `mfp2()` is the main function for MFP,
 MFPA/ACD, and SAZ modelling, whereas `mfpi()` is the dedicated function
-for interaction analysis. For more details on MFPI, see the `mfpi()`
-documentation and the dedicated MFPI vignette available within the
-package.
+for interaction analysis. For more details on MFPI, see Kipruto, Royston
+and Sauerbrei (2026) and the `mfpi()` documentation. Code examples are provided
+in the package’s dedicated MFPI vignette.
 
-Currently, the package implements Gaussian, binomial, Poisson, and Cox
-regression models. Binomial family objects may use links other than the default
-logit; for example, `binomial(link = "probit")` fits a binomial probit model.
-Future development may extend this implementation to
-other likelihood-based regression models, such as Gamma and inverse
-Gaussian GLMs, negative binomial regression, and parametric survival
+## Supported model families
+
+The `family` argument selects the outcome model. The following families
+are available in `mfp2()`.
+
+| Model | Example `family` specification | Response |
+|:--|:--|:--|
+| Gaussian linear regression | `gaussian()` | A numeric outcome |
+| Binomial regression | `binomial()` | A binary outcome or `cbind(successes, failures)` |
+| Poisson regression | `poisson()` | Nonnegative integer counts |
+| Gamma regression | `Gamma()` | Positive continuous values |
+| Inverse-Gaussian regression | `inverse.gaussian()` | Positive continuous values |
+| Negative-binomial regression | `"negbin"` | Nonnegative integer counts |
+| Multinomial regression | `multinomial_family(reference = "class1")` | At least three classes, supplied as labels or class counts |
+| Ordinal regression | `ordinal_family()` | At least three ordered categories |
+| Cox proportional hazards regression | `"cox"` | A right-censored `survival::Surv()` response |
+| Parametric survival regression | `survreg_family(dist = "weibull")` | A `Surv()` response supported by `survival::survreg()` |
+| Fine–Gray competing-risks regression | `finegray_family(etype = "event")` | A multi-state `Surv()` response with the event of interest identified |
+| Generalized estimating equations (GEE) | `gee_family(family = gaussian())` | Repeated or clustered Gaussian, binomial, Poisson, or Gamma responses |
+
+Ordinary GLM families can be supplied as a name, function, or family object.
+For example, `binomial(link = "probit")` changes the binomial link.
+`"multinomial"` and `"ordinal"` are shorthand alternatives to the
+corresponding family constructors. Quasi-likelihood GLM families are not
+supported.
+
+Negative-binomial models require `fastglm` package. Ordinal models require the
+optional `rms` package, version 7.0-0 or later. GEE models use `geepack`;
+their cluster identifiers are supplied through `id` and measurement order,
+when needed, through `waves`. Rows belonging to each cluster must be
+contiguous.
+
+These are the families supported by `mfp2()`. The interaction function
+`mfpi()` supports the ordinary GLM, negative-binomial, multinomial, ordinal,
+Cox, and parametric survival models, but does not support GEE or Fine–Gray
 models.
 
-The `mfp2()` function offers two interfaces for input data. The first
-interface, the matrix interface, allows direct input of the covariate
-matrix `x` and the outcome `y`. The second interface, the formula
-interface, uses a formula object together with a data frame, similar to
-the `glm()` function with slight modifications. Both interfaces use the
-same MFP fitting machinery, but the formula interface additionally constructs
-the model matrix and can expand nominal factors. The matrix interface requires
-all predictors, including categorical indicators, to be supplied as numeric
-matrix columns.
+## Choosing an interface
+
+We recommend the **formula interface** for most analyses because it is
+easier to use and handles categorical predictors automatically. Supply a
+formula and a data frame, use `fp()` for continuous predictors whose FP
+settings you want to specify, and include factors directly. The formula
+interface constructs the numeric model matrix and assesses each
+categorical predictor as a complete term.
+
+The **matrix interface** accepts a numeric covariate matrix `x` and a
+response `y`. It is useful when a numeric design matrix is already
+available. Categorical predictors must be encoded numerically, with
+`term_groups` identifying columns that belong to the same predictor.
+
+Both interfaces use the same MFP fitting machinery. We give one short
+matrix example below and use formulas for the remaining analyses.
 
 The package also includes several example datasets. We will illustrate
 working with `mfp2` using the prostate dataset. Details about the
@@ -189,15 +230,16 @@ Royston, and Willi Sauerbrei. We acknowledge the comments and
 suggestions provided by Georg Heinze and Gregory Steiner, which helped
 us improve our package. The R package is maintained by Edwin Kipruto,
 while the Stata MFP and MFPA programs are maintained by Patrick Royston.
-Parts of the text and some recommendations, for example Section 2.3.3,
-have been taken from the Stata programs MFP and MFPA.
+Parts of the text and some recommendations have been taken from the
+Stata programs MFP and MFPA.
 
 # Estimation algorithm
 
 The estimation algorithm used in `mfp2` processes covariates
 sequentially using a backfitting approach. First, assuming linear
 effects for all covariates, the algorithm calculates the p-value for
-each covariate using likelihood-ratio tests. The covariates are then
+each covariate using likelihood-ratio tests for likelihood-based models
+(or Gaussian F-tests when requested). GEE models use Wald-based comparisons. The covariates are then
 ordered according to these p-values. By default, they are arranged in
 decreasing order of statistical significance (i.e. ascending order of
 p-values), so that covariates with stronger evidence of association are
@@ -250,7 +292,7 @@ help to resolve the issue.
 
 ## Installation
 
-To install and load the `mfp2` package, enter the following command in
+To install and load the `mfp2` package, enter the following commands in
 the R console:
 
 ```{r, eval=FALSE}
@@ -263,75 +305,87 @@ library(mfp2)
 
 # Linear regression
 
-The default `family` in `mfp2` package is `family = "gaussian"`, which
-fits a Gaussian linear model. We will use the prostate cancer data
-(Stamey et al., 1989) included in our package to demonstrate how to fit
-this model. The dataset contains seven covariates (six continuous
-(`age`, `pgg45`, `cavol`, `weight`, `bph`, and `cp`) and one binary
-(`svi`)) and a continuous outcome variable log prostate-specific antigen
-(lpsa) of 97 male patients with prostate cancer. Our aim is to determine
-variables with influence on the outcome and whether non-linear
-functional relationships exist between the covariates and the outcome
-variable.
+By default, `mfp2()` uses `family = gaussian()`, which fits a Gaussian
+linear model. We illustrate this using the prostate cancer dataset
+(Stamey et al., 1989) included in the package. The dataset contains observations
+from 97 men with prostate cancer. It includes six continuous covariates: `age`,
+`pgg45`, `cavol`, `weight`, `bph`, and `cp`. The binary covariate, `svi`, 
+indicates seminal vesicle invasion. The outcome, `lpsa`, is the logarithm of the
+prostate-specific antigen concentration. Our aim is to identify covariates 
+associated with the outcome. We also assess whether these associations are better
+described by linear or nonlinear functions.
 
 Load the `prostate` dataset from the `mfp2` package and display the
 first six rows
 
-```{r out.lines = 10}
-# Load prostate data
+```{r prostate-data, out.lines=10}
 data("prostate")
 head(prostate, 6)
-
-# create covariate matrix x and numeric vector y 
-x <- as.matrix(prostate[,2:8])
-y <- as.numeric(prostate$lpsa)
 ```
 
 The command `data("prostate")` loads a data frame from the `mfp2`
-package. We create a matrix `x` and a numeric vector `y` from the data
-frame to be used by the matrix interface of the `mfp2()` function.
+package.
 
-# Fitting MFP models using the matrix and formula interfaces
+# Fitting MFP models using the formula interface
 
-The default interface of `mfp2()` requires a matrix of covariates `x`
-and a numeric vector of response `y` for continuous outcomes. If you
-have one covariate, make sure you convert it into a matrix with a single
-column.
+We first fit a Gaussian linear model using the formula interface.
+Continuous predictors are written inside `fp()` to make the intended
+FP modelling explicit. The binary variable `svi` is included directly.
 
-We demonstrate how to fit the Gaussian linear model using the default
-parameters. The formula interface uses the `fp()` function to state that
-continuous variables should be modelled using fractional polynomials
-(with default parameters). The two approaches lead to the same results
-as demonstrated by calling `summary()` with the fitted models as input.
-
-```{r}
-# default interface
-fit_default <- mfp2(x, y, verbose = FALSE)
-summary(fit_default)
-
-# formula interface
-fit_formula <- mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) + fp(cp),
-                    data = prostate, 
-                    verbose = FALSE)
+```{r prostate-formula-fit}
+fit_formula <- mfp2(
+  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) +
+    fp(weight) + fp(bph) + fp(cp),
+  data = prostate,
+  family = gaussian(),
+  verbose = FALSE
+)
 summary(fit_formula)
 ```
 
-The main distinction between the formulas used in `mfp2()` and `glm()`
-functions in **R** is the inclusion of the `fp()` function within the
-formula. The presence of the `fp()` function in the formula indicates
-that the variables included within it should undergo FP transformation,
-provided that the degree of freedom (df) is not equal to 1. A df of 1
-indicates a linear relationship, which does not require transformation.
-Note that `df` is an argument of the `fp()` function.
+The formula interface in `mfp2()` uses standard R formula syntax.
+Use `fp()` to specify predictor-specific FP and preprocessing settings.
+The `df` argument sets the maximum allowed FP complexity. For example,
+`fp(age, df = 2)` allows up to FP1, whereas `fp(age, df = 1)` allows
+only a linear function. Selection may choose a simpler function or
+exclude the variable.
 
-The variable `svi` is a binary variable and is therefore not passed to
-the `fp()` function. This is because binary or factor variables should
-not undergo FP transformation. If a binary variable is passed to the
-`fp()` function, the program will automatically set the `df` to 1,
-treating the variable as linear. However, passing a factor variable to
-the `fp()` function will result in an error. For more details on how
-`mfp2` handles categorical variables, refer to the section on [handling
-categorical variables](#handling-categorical).
+Continuous predictors do not need to be enclosed in `fp()` to be
+considered for FP modelling. Predictors outside `fp()` use the
+settings supplied to `mfp2()`. With the default `df = 4`, eligible
+continuous predictors can have linear, FP1, or FP2 functions.
+See [Setting degrees of freedom](#df_vars).
+
+Binary and categorical predictors do not require FP transformations.
+Binary variables are automatically assigned `df = 1`. A factor should
+be included directly rather than wrapped in `fp()`; wrapping a factor
+produces an error. See [Handling categorical variables](#handling-categorical).
+
+## A short matrix-interface example
+
+For an existing numeric design matrix, supply `x` and `y` directly and
+omit the intercept column. With one predictor, use `drop = FALSE` to
+retain a one-column matrix. The following example uses the same predictors
+and settings as the formula fit above.
+
+```{r prostate-matrix-fit}
+x <- as.matrix(prostate[
+  , c("age", "svi", "pgg45", "cavol", "weight", "bph", "cp")
+])
+y <- prostate$lpsa
+
+fit_matrix <- mfp2(x, y, family = gaussian(), verbose = FALSE)
+summary(fit_matrix)
+```
+
+The formula interface handles factors automatically and selects each
+categorical predictor as a whole. For the matrix interface, create the
+dummy variables yourself. Use `term_groups` to identify which columns
+belong to the same categorical predictor so they are selected together.
+
+To specify settings for individual predictors, use named vectors whose
+names match the columns of `x`. For example, `df = c(age = 2)` sets the
+maximum complexity for `age` to FP1.
 
 # Shifting and scaling of covariates {#shifting-scaling}
 
@@ -362,67 +416,52 @@ The values used by a fitted model are stored in its `transformations`
 component:
 
 ```{r inspect-shift-scale}
-fit_default$transformations[, c("shift", "scale"), drop = FALSE]
+fit_formula$transformations[, c("shift", "scale"), drop = FALSE]
 ```
 
-This table reports the shift and scale used for each model term. For example, a
-shift of 1 means that `mfp2()` added 1 before evaluating the selected FP
-function. A scale of 10 means that the shifted values were divided by 10 during
-FP power selection.
+This table reports the shift and scale used for each predictor.
+For example, `pgg45` has a shift of 1 and a scale of 100. Its values
+were therefore transformed to `(pgg45 + 1) / 100` during FP power
+selection.
 
-The scale is used for numerical stability during power selection and is removed
-before the final model is fitted. A fitted shift remains part of the selected
-function. Prediction data should always be supplied on the original variable
-scale; `predict()` applies the fitted preprocessing automatically.
+In standard FP modelling, scaling improves numerical stability without
+affecting power selection. For predictors with exact zeros handled using
+`zero`, `catzero`, or `spike`, scaling can affect power selection.
+These predictors therefore use a scale of 1 by default.
+
+Scaled predictors are back-scaled before the final model is fitted.
+The fitted shift remains part of the selected function. Supply prediction
+data on the original variable scale; `predict()` applies the required
+preprocessing automatically.
 
 ## Manually specifying shifts and scales
 
-Most users should allow `mfp2()` to select shifts and scales automatically.
-Manual values can be supplied when a transformation is prespecified or when
-several analyses must use exactly the same preprocessing.
+Usually, shifts and scales can be calculated automatically by `mfp2()`.
+Supply specific values when needed, for example to use the same shifts
+and scales across several analyses.
 
-With the matrix interface, supply one value for each covariate:
+With the formula interface, specify manual values in the relevant
+`fp()` terms:
 
-```{r manual-shift-scale-matrix, eval = FALSE}
-fit_manual <- mfp2(
-  x,
-  y,
-  shift = c(
-    age = 0,
-    svi = 0,
-    pgg45 = 1,
-    cavol = 0,
-    weight = 0,
-    bph = 0,
-    cp = 0
-  ),
-  scale = c(
-    age = 10,
-    svi = 1,
-    pgg45 = 100,
-    cavol = 10,
-    weight = 100,
-    bph = 1,
-    cp = 10
-  )
-)
-```
-
-With the formula interface, specify the values in each `fp()` term:
-
-```{r manual-shift-scale-formula, eval = FALSE}
+```{r manual-shift-scale-formula, eval=FALSE}
 fit_manual <- mfp2(
   lpsa ~
     fp(age, shift = 0, scale = 10) +
-    svi +
     fp(pgg45, shift = 1, scale = 100) +
     fp(cavol, shift = 0, scale = 10) +
     fp(weight, shift = 0, scale = 100) +
-    fp(bph, shift = 0, scale = 1) +
-    fp(cp, shift = 0, scale = 10),
-  data = prostate
+    fp(bph, shift = 1, scale = 1) +
+    fp(cp, shift = 1, scale = 10) +
+    svi,
+  data = prostate,
+  family = gaussian()
 )
 ```
+
+For the matrix interface, `shift` and `scale` accept either a single
+value or named vectors such as `scale = c(age = 10, cavol = 10)`.
+Unspecified predictors use automatically estimated values; settings are
+matched by column name rather than position.
 
 Set `shift = 0` to prevent automatic shifting and `scale = 1` to prevent
 automatic scaling for a variable. Manually supplied values must be suitable for
@@ -468,15 +507,11 @@ mfp2(lpsa ~ fp(age) + fp(cavol), data = prostate, subset = keep_rows)
 mfp2(lpsa ~ fp(age) + fp(cavol), data = prostate, subset = c(10, 3, 8, 15, 20))
 ```
 
-Numeric row positions must be unique. Their supplied order is retained rather
-than sorted. In the matrix interface, `subset` is evaluated in the calling
-environment because there is no formula data mask. Matrix column names are not
-available as standalone variables, so write an explicit matrix expression when
-needed:
-
-```{r subset-matrix-example, eval=FALSE}
-mfp2(x, y, subset = x[, "age"] >= 60)
-```
+Numeric row positions must be unique. Their supplied order is retained
+rather than sorted. In the matrix interface, `subset` is evaluated in
+the calling environment because there is no formula data mask. Matrix
+column names are not available as standalone variables; use an expression
+such as `subset = x[, "age"] >= 60`.
 
 Observation-level `weights`, external `offset` values, and matrix-interface
 `strata` must remain aligned with the original rows, even when a subset is used.
@@ -485,395 +520,310 @@ cross-validation folds. Prepare those analysis data explicitly before fitting.
 
 ### Factors and grouped terms after subsetting
 
-Subsetting may remove categorical levels. In formula fits, unused levels are
-dropped before the fitted design matrix is constructed. When default contrasts
-are used, `model.matrix()` regenerates the appropriate lower-dimensional
-contrast basis. A factor with fewer than two retained levels cannot be fitted.
+Subsetting may remove all observations from some factor levels. In formula
+fits, `mfp2()` drops these unused levels. With default contrasts, it then
+creates the numeric columns needed to represent the remaining levels.
+At least two levels must remain.
 
-Factor-specific custom contrasts are preserved when all fitted levels remain.
-If subsetting removes levels from a factor with custom contrasts, `mfp2()` stops
-rather than guessing a reduced contrast basis, because no unique reconstruction
-is generally available.
+If you have assigned custom contrasts to a factor, these specify how its
+levels are represented by numeric columns. They are kept when all levels
+remain after subsetting. If any levels are removed, `mfp2()` stops.
+You must then update the contrasts to match the remaining levels.
 
-The matrix interface receives only numeric columns and therefore cannot rebuild
-factor levels or contrasts. Its supplied columns remain unchanged. A mapped
-`term_groups` block is rejected when subsetting reduces its estimable dimension,
-because the original categorical representation cannot be reconstructed safely.
+The matrix interface uses the numeric columns you supply. It cannot
+recreate factor levels or their coding. If subsetting makes columns
+within a `term_groups` group redundant, `mfp2()` stops because the
+group can no longer be fitted as supplied.
 
 # Setting degrees of freedom for each variable {#df_vars}
 
-The degrees of freedom (df) for each covariate (excluding the intercept)
-are twice the degrees of freedom of the FP. For instance, if the maximum
-allowed complexity of variable $x1$ is a second-degree FP (FP2), then
-the degrees of freedom assigned to this variable should be 4. To find
-the best fitting function, FSP selects power terms $p1$ and $p2$ and the
-corresponding regression coefficients $\beta_1$ and $\beta_2$. The
-default `df` is 4 ($m = 2$) for each covariate.
+The `df` argument controls the maximum fractional polynomial (FP)
+complexity allowed for a continuous predictor.
 
-After assigning the default degrees of freedom to each variable, the
-program overrides the default value if a variable has only a very small
-number of unique values as such variables may not be handled as other
-continuous variable. As proposed in the Stata program the rules for
-overriding the default degrees of freedom are as follows:
+| `df` | Most complex function allowed |
+|------|-------------------------------|
+| `1` | Linear effect |
+| `2` | FP1: one power term |
+| `4` | FP2: two power terms |
+| `6` | FP3: three power terms |
+| `2m` | FPm: *m* power terms |
 
-- If a variable has 2-3 distinct values, it is assigned `df` = 1
-  (linear).\
-- If a variable has 4-5 distinct values, it is assigned `df` = min(2,
-  default).\
-- If a variable has 6 or more distinct values, it is assigned `df` =
-  default.
+The default is `df = 4`, which allows up to FP2. This is an upper limit:
+selection may choose a simpler function or exclude the predictor, unless
+other settings prevent this.
 
-These three rules apply to formula fits and to matrix fits that use a scalar
-`df`. A matrix fit may instead supply an explicit `df` value for every column.
-In that case, variables with 2--3 distinct values are still forced to `df = 1`,
-but supplied values for variables with 4 or more distinct values are retained.
-This interface-specific distinction matters when a per-column `df` vector is
-used.
+For models with one coefficient per FP term, each term contributes two
+selection degrees of freedom: one for selecting its power and one for
+estimating its coefficient. An FP2 function therefore uses four selection
+degrees of freedom.
 
-These rules ensure that the appropriate `df` are assigned to variables.
-For instance, it is not sensible to fit an FP2 function to a variable
-with only 3 distinct values (StataCorp, 2023).
+In multinomial models, the selected powers are shared across response
+categories, but each non-reference category has its own coefficients.
+Model comparisons account for both these coefficients and the search for
+shared powers. The `df` settings in the table still control the maximum
+FP complexity.
 
-The following code illustrates how to set different `df` for each
-variable. In the default interface, the `df` of the binary variable
-`svi` is explicitly set to 1 (linear), while in the formula interface,
-there is no need to specify the `df`, as the program automatically
-assigns `df = 1` for binary variables.
+You can set a different limit for each predictor using
+`fp(x, df = value)` in the formula interface or a named vector such as
+`df = c(x = value)` in the matrix interface.
 
-If the user attempts to enter `df = 4` for `svi` in the default
-interface, the program will reset the `df` to 1 and issue a warning.
+Predictors with few distinct values are subject to the following rules:
 
-```{r eval = FALSE}
-# Default Interface
-mfp2(x,y, df = c(4, 1, 4, 4, 4, 4, 4))
+- With 2–3 distinct values, `df` is set to `1`, even if a higher
+  predictor-specific value is supplied.
+- With 4–5 distinct values, a default or global `df` setting is capped
+  at `2`; a predictor-specific setting overrides this cap.
+- With 6 or more distinct values, the requested `df` is retained.
 
-# Formula Interface
-mfp2(lpsa ~ fp(age, df = 4) + svi + fp(pgg45, df = 4) + fp(cavol, df = 4) + 
-       fp(weight, df = 4) + fp(bph, df = 4) + fp(cp, df = 4),
-     data = prostate)
-```
+These restrictions reduce the complexity allowed for predictors with
+limited variation. The following example allows up to FP1 for `age`, up to FP2 
+for `cavol`, and only a linear effect for `cp`. The binary predictor `svi` is
+automatically restricted to a linear effect.
 
-In addition, if the user does not explicitly assign `df` to variables,
-the program will automatically assign `df = 4` to each variable,
-corresponding to $m
-= 2$ as the default for MFP modelling. It is important to note that even
-if a continuous variable is not passed to the `fp()` function in the
-formula interface, the `df` of that variable will still be set to the
-default value and will later be adjusted based on the unique values. The
-following examples are all equivalent:
-
-```{r eval = FALSE}
-# Default Interface
-mfp2(x,y)
-
-# Formula Interface, all continuous variables passed to the fp() function
-mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) + fp(cp), 
-     data = prostate)
-
-# Formula Interface, `cp` not passed to the fp() function
-mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) + cp, 
-     data = prostate)
-
-# Formula Interface, all covariates not passed to the fp() function
-mfp2(lpsa ~ age + svi + pgg45 + cavol + weight + bph + cp, 
-     data = prostate)
-```
-
-# Tuning parameters for MFP
-
-The two key components of MFP are variable selection with backward
-elimination (BE) and function selection for continuous variables through
-the function selection procedure (FSP). The `mfp2()` function has an
-argument called `criterion`, which allows the user to specify the
-criterion applied for variable and function selection.
-
-The default criterion is `pvalue`, which enables the user to set two
-nominal significance levels: $\alpha_1$ for variable selection with BE
-and $\alpha_2$ for comparing the fit of the functions (linear, best FP1,
-best FP2 and so on) within the FSP. The choice of these significance
-levels strongly influences the complexity and stability of the final
-model. Please refer to the section on [nominal significance
-levels](#nominal-significance-levels) for instructions on setting the
-nominal significance levels.
-
-The `mfp2` package also supports alternative approaches to variable and
-function selection based on information criteria. Within the MFP
-framework, each covariate is evaluated in turn while adjusting for the
-other covariates through the backfitting algorithm. For each covariate,
-the algorithm compares candidate models, such as the null, linear, FP1,
-and FP2 models, and selects the model with the smallest AIC or BIC,
-depending on whether `criterion = "aic"` or `criterion = "bic"` is
-specified; see the section on [information
-criteria](#information-criteria).
-
-The "null" model refers to a model without the covariate of interest. A
-"linear" model assumes a linear relationship with the outcome variable,
-while an FP1 model assumes a non-linear relationship using the FP1
-function. The `criterion` argument allows users to specify whether they
-want to use AIC or BIC criteria for both variable and function
-selection. If AIC or BIC is selected as the criterion, the nominal
-significance levels set through the `select` and `alpha` arguments will
-be ignored. For details on using AIC and BIC in variable and function
-selection, see the section on [information
-criteria](#information-criteria).
-
-## Nominal significance levels {#nominal-significance-levels}
-
-The `mfp2()` function has the arguments `select` and `alpha` for setting
-the nominal significance level for variable selection by BE and for
-testing between FP models of different degrees, respectively. When using
-these arguments, you should ensure that the `criterion` is set to
-`"pvalue"` to correctly use the specified significance levels.
-
-For variable selection, a significance level can be set using the
-`select` argument. A value of 1 (`select = 1`) for all variables forces
-them all into the model. Setting the nominal significance level to be 1
-for a given variable forces it into the model, leaving others to be
-selected or not. A variable is dropped if its removal leads to a
-nonsignificant increase in deviance. Default is `select = 0.05` for each
-variable.
-
-On the other hand, the `alpha` argument is used to determine the
-complexity of the selected FP function. A value of 1 (`alpha = 1`) will
-choose the most complex FP function permitted for a given variable. For
-example, if FP2 is the most complex function allowed for a continuous
-variable, setting `alpha = 1` will select the best FP2 function. Default
-is `alpha = 0.05` for each continuous variable.
-
-The rules for setting `select` and `alpha` are the same as those for
-setting `df`. The following R codes shows how to set equal nominal
-significance levels for variable and function selection
-$(\alpha_1 = \alpha_2 = 0.05)$ for each variable and produces identical
-results. Setting different nominal significance levels is
-straightforward. Simply replace the value 0.05 with the desired
-significance level of your choice.
-
-```{r eval = FALSE}
-# Default Interface
-mfp2(x,y, select = rep(0.05, ncol(x)), alpha = rep(0.05, ncol(x)))
-
-# Formula Interface
-mfp2(lpsa ~ fp(age, select = 0.05) + svi + fp(pgg45, select = 0.05) + 
-       fp(cavol, select = 0.05) + fp(weight, select = 0.05) + 
-       fp(bph, select = 0.05) + fp(cp, select = 0.05), 
-     select = 0.05, alpha = 0.05, 
-     data = prostate)
-```
-
-In the formula interface, binary variables such as `svi` that are not
-passed in the `fp()` function utilize the global `select` argument. In
-our example, the global parameter is set to `select = 0.05`. If several
-binary variables exist in the model, the global parameters will be used
-for all of them. However, if specific parameters need to be set for
-individual binary variables, the user can use the `fp()`function. In
-summary, if a variable is not passed through the `fp` function, it will
-utilize the global parameters.
-
-Suppose we want to force the variables `"age"` and `"svi"` in the model.
-To achieve this, we have two options:
-
-- Set `select = 1` for `age` and `svi` in the `mfp2()` function.\
-- Alternatively, we can use the `keep` argument, which resets the
-  nominal significance levels for `age` and `svi` to 1 if they are
-  different from 1. This ensures that these variables are retained in
-  the model.
-
-```{r eval = FALSE}
-# default Interface
-# Set select to 1 for variables "age" and "svi"
-mfp2(x,y, 
-     select = c(1, 1, 0.05, 0.05, 0.05, 0.05, 0.05),
-     alpha = rep(0.05, ncol(x)))
-
-# use keep argument
-mfp2(x,y,
-     select = rep(0.05, ncol(x)), 
-     alpha = rep(0.05, ncol(x)), 
-     keep = c("age", "svi"))
-
-# formula Interface
-# use fp() function and set select to 1 for "age" and "svi"
-mfp2(lpsa ~ fp(age, select = 1) + fp(svi, df = 1, select = 1) + fp(pgg45, select = 0.05) + 
-       fp(cavol, select = 0.05) + fp(weight, select = 0.05) + fp(bph, select = 0.05) + fp(cp, select = 0.05), 
-     select = 0.05, alpha = 0.05, data = prostate)
-
-# use keep argument
-mfp2(lpsa ~ fp(age, select = 0.05) + svi + fp(pgg45, select = 0.05) + fp(cavol, select = 0.05) + 
-       fp(weight, select = 0.05) + fp(bph, select = 0.05) + fp(cp, select = 0.05), 
-     select = 0.05, alpha = 0.05, 
-     keep = c("age", "svi"), 
-     data = prostate)
-```
-
-## Information criteria {#information-criteria}
-
-Instead of using nominal significance levels for variable and function
-selection, an alternative approach is to directly use adapted versions
-of AIC or BIC, defined below.
-
-$$\begin{aligned}
-AIC & = -2 \log(L) + 2k \\
-BIC & = -2 \log(L) + \log(n) \times k,
-\end{aligned}$$
-
-where $\log(L)$ is the maximum log-likelihood of the fitted model, which
-measures how well the model fits the data. The parameter $k$ corresponds
-to the number of estimated parameters in the model (regression estimates
-and FP powers) and $n$ is the sample size; for Cox models, $n$ is the
-number of observed events. AIC and BIC both account for model fit and
-model complexity, with lower values indicating better-fitting MFP
-models.
-
-For instance, let's assume we want to select the best model for a
-variable of interest ($z$) with fixed adjustment variables $x1$ (with
-power $p = 3$ as the best FP1 function) and $x2$ (linear function was
-pre-specified). Then, we can compare the AIC and BIC of different
-models, such as FP2, FP1, linear, and null models for $z$. The
-adjustment models all have the same number of parameters (2 for $x1$, 1
-for $x2$, and perhaps an intercept if it exists). For $z$, we have 4, 2,
-and 1 parameter(s) for FP2, FP1, and linear models, respectively, for a
-model without an intercept. In a model without an intercept, the total
-number of parameters, including adjustment variables, for variable z are
-7 (4 + 3) for FP2, 5 (2 + 3) for FP1, and 4 (1 + 3) for a linear model.
-These total number of parameters for each model type is used in
-calculating the AIC and BIC. The model with the smallest AIC or BIC is
-then selected for $z$.
-
-In the `mfp2` package, this can be done by setting the `criterion`
-argument in `mfp2()` to either `"aic"` or `"bic"`. If certain variables,
-such as `age` and `svi`, should be forced into the model, the `keep`
-argument can be used.
-
-The argument `force_max_fp` can be used to force selection of the most
-complex permitted FP function for a covariate. For example, if the
-maximum complexity allowed for a covariate $z$ is FP2, setting
-`force_max_fp = TRUE` for $z$ forces the best FP2 function to be
-selected under p-value, AIC, or BIC selection. Under the p-value
-criterion this is analogous to setting `select = 1` and `alpha = 1`.
-For an eligible spike-at-zero covariate, forcing applies to the complete
-maximum representation: the maximum positive-component FP function plus
-the binary zero indicator. The Stage 2 SAZ reduction step is skipped for
-a forced term, because none of its reduced representations is allowed to
-replace the requested maximum representation.
-
-The following R code demonstrates how to implement this approach using
-both the default and formula interfaces, as well as how to force
-specific variables into the model:
-
-```{r, eval=FALSE}
-# Default Interface
-mfp2(x, y, criterion = "aic", keep = c("age", "svi"))
-
-# Formula Interface
-mfp2(lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) +  fp(cp),
-     criterion = "aic", keep = c("age", "svi"), data = prostate)
-```
-
-# Model comparison tests
-
-The function selection procedure (FSP) in `mfp2()` compares a sequence of
-candidate models for each variable under consideration. For example, when the
-most complex permitted FP function is FP2 and `criterion = "pvalue"`, the FSP
-compares the best-fitting FP2 model with the null model, the linear model, and
-the best-fitting FP1 model.  For each candidate model, the deviance, defined as
-$-2\log(L)$, is computed. The corresponding deviance differences and p-values
-are then used to guide model selection.
-
-For Gaussian models, `mfp2()` provides two options for calculating p-values: the
-F-test and the Chi-square test. The Chi-square test is used by default. For
-non-Gaussian models, including logistic, Poisson, and Cox regression models, the
-Chi-square test is used. Further details are available in the
-[MFP Stata manual](https://www.stata.com/manuals/rfp.pdf).
-
-To use the F-test for Gaussian models, set `ftest = TRUE`, as shown below. To use
-the Chi-square test, set `ftest = FALSE`.
-
-```{r, eval=FALSE}
-# Default Interface
-mfp2(x, y,
-     criterion = "pvalue", 
-     ftest = TRUE)
-
-# Formula Interface
-mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) +  fp(cp),
-     criterion = "pvalue", 
-     ftest = TRUE, 
-     data = prostate)
-```
-
-Please note that, for Gaussian models, the p-values reported by the `mfp`
-program in Stata are based on the F-test. Therefore, if results from `mfp2` are
-to be compared with those from Stata, `ftest = TRUE` should be specified in
-**R**, since the default in `mfp2` is `ftest = FALSE`.
-
-The older `mfp` package in **R** uses the Chi-square test for all model types.
-Consequently, for Gaussian models, its results may differ from those obtained
-from the Stata `mfp` program. In summary, `mfp2` can reproduce the Gaussian-model
-results from Stata when `ftest = TRUE`, and can reproduce the behaviour of the
-older **R** `mfp` package when `ftest = FALSE`.
-
-# Subject-matter knowledge may require changes in fractional polynomial powers
-
-By default, `mfp2()` uses the predefined set of powers
-
-$$
-S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}
-$$
-
-for each continuous covariate, as proposed by Royston and Altman (1994).
-However, in some situations, users may wish to restrict or modify the set of
-candidate powers on the basis of subject-matter knowledge. This can be done
-using the `powers` argument, which takes a named list of power vectors.
-
-More extreme powers may also be considered when they are scientifically
-plausible or when they may improve model fit. For example, if one of the
-boundary FP2 functions, such as $(-2, -2)$ or $(3, 3)$, is selected, it may be
-reasonable to examine whether a more extreme function, such as $(-3, -3)$ or
-$(4, 4)$, provides a better model fit.
-
-The following example illustrates how different power sets can be assigned to
-continuous covariates. For the `age` covariate, two powers, 1 and 0.5, are
-evaluated. This gives three possible FP2 functions, with power combinations
-$(0.5, 0.5)$, $(0.5, 1)$, and $(1, 1)$, as well as the corresponding FP1
-functions. The linear function, corresponding to power 1, is also allowed.
-
-The `cavol` variable is assigned the powers 1, 0, and 1. The remaining
-continuous variables, namely `pgg45`, `weight`, `bph`, and `cp`, are not
-assigned user-defined power sets. Therefore, the default power set $S$ is used
-for these variables, and all possible fractional polynomial functions up to the
-degree specified by `df` are considered.
-
-When using the `fp()` function in the formula interface, the supplied powers must
-be given as a vector rather than a list, because they apply only to the
-individual variable inside that `fp()` term.
-
-```{r, eval=FALSE}
-# Create a named list of user-defined power sets for selected covariates
-custom_powers <- list( age = c(1, 0.5), cavol = c(1, 0, 1))
-
-# Default interface
-mfp2(x, y, criterion = "pvalue", powers = custom_powers)
-
-# Formula interface
-mfp2(lpsa ~ fp(age, powers = c(1, 0.5)) + svi + fp(pgg45) + fp(weight) +
-       fp(cavol, powers = c(1, 0, 1)) + fp(bph) + fp(cp),
-  data = prostate
+```{r predictor-df-settings, eval=FALSE}
+mfp2(
+  lpsa ~ fp(age, df = 2) + svi + fp(pgg45) + fp(cavol, df = 4) +
+    fp(weight) + fp(bph) + fp(cp, df = 1),
+  data = prostate,
+  family = gaussian()
 )
 ```
 
-## Candidate FP powers
+In the matrix interface, the corresponding predictor-specific settings are:
 
-Candidate FP powers can be supplied either through the top-level `powers`
-argument or term by term inside `fp()` or `fp2()` in the formula interface. The
-values define a set of candidate base powers, not a final selected FP power
-vector. Duplicate candidate powers are removed. For example, `powers = c(4, 4)`
-is treated as the single candidate set `powers = 4`; repeated selected powers
-such as FP2(4, 4) are generated internally when an FP2 model is fitted.
+```r
+df = c(age = 2, cp = 1)
+```
 
-In the formula interface, powers supplied inside `fp()` or `fp2()` take
-precedence over powers supplied through the top-level `powers` argument for the
-same variable. This avoids ambiguity when a variable-specific formula term and a
-global `powers` list both specify candidate powers.
+Unspecified ordinary predictor columns start with the default of `4`,
+subject to the restrictions above.
+
+Continuous predictors do not need to be wrapped in `fp()` to be
+considered for FP modelling. For example, the following call uses the
+default maximum complexity, adjusted for the number of distinct values:
+
+```{r default-predictor-df, eval=FALSE}
+mfp2(
+  lpsa ~ age + svi + pgg45 + cavol + weight + bph + cp,
+  data = prostate,
+  family = gaussian()
+)
+```
+# Tuning parameters for MFP
+
+MFP selects predictors and their functional forms through iterative
+backfitting. Each predictor is evaluated in turn while adjusting for
+the current forms of the other predictors.
+
+The `criterion` argument in `mfp2()` controls selection. The default
+is `"pvalue"` for likelihood-based models and `"aic"` for GEE models.
+The available criteria are described below.
+
+## Nominal significance levels {#nominal-significance-levels}
+
+With `criterion = "pvalue"`, two arguments control selection.
+Both default to `0.05`:
+
+- `select` controls whether a predictor is retained. Setting
+  `select = 1` forces inclusion while still allowing function selection.
+- `alpha` controls comparisons between functional forms. Setting
+  `alpha = 1` selects the most complex FP function permitted for a
+  retained predictor; it does not prevent variable removal.
+
+For GEE models, p-value selection uses Wald-based comparisons.
+
+In the formula interface, predictors outside `fp()` use the global
+`select` and `alpha` settings. Predictors inside `fp()` use its settings,
+which default to `0.05`. Set these directly inside `fp()` to change
+them for an individual predictor.
+
+The following example retains `age` and `svi` while allowing selection
+of the other predictors. The functional form of `age` is still selected.
+
+```{r retained-predictors, eval=FALSE}
+mfp2(
+  lpsa ~ fp(age, select = 1) + fp(svi, df = 1, select = 1) +
+    fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) + fp(cp),
+  data = prostate,
+  family = gaussian(),
+  criterion = "pvalue"
+)
+```
+
+In the matrix interface, use a single unnamed value for a common
+setting or named vectors for predictor-specific settings, such as
+`select = c(age = 1, svi = 1)`. Columns omitted from a named vector use
+the defaults. Unnamed vectors with more than one value are not accepted.
+
+## Information criteria {#information-criteria}
+
+With `criterion = "aic"` or `criterion = "bic"`, selection balances
+model fit against complexity. The permitted model with the lowest
+criterion value is selected. The significance levels specified through
+`select` and `alpha` do not apply.
+
+For likelihood-based models, the criteria are
+
+$$
+\begin{aligned}
+AIC &= -2 \log(L) + 2k, \\
+BIC &= -2 \log(L) + \log(n)\,k,
+\end{aligned}
+$$
+
+where $\log(L)$ is the maximised log-likelihood, or partial
+log-likelihood for Cox models. The parameter count $k$ includes fitted
+coefficients, other estimated model parameters such as dispersion or
+scale, and an allowance for selecting FP powers. The sample size $n$
+is usually the number of observations; Cox models use the number of
+observed events, and Fine–Gray models use the number of events of the
+selected type.
+
+For example, in a model with one coefficient per FP term, a predictor
+contributes four selection degrees of freedom for FP2, two for FP1,
+one for a linear effect, and zero if omitted. Parameters common to the candidate 
+models (adjustment variables) contribute equally to their penalties and
+therefore do not affect their ranking.
+
+For GEE models, `"aic"` uses an MFP-adjusted QICu score, and `"bic"`
+uses the package's QBIC score instead of the criteria above.
+
+## Retaining predictors and forcing functional forms
+
+Use `keep` to retain predictors under any selection criterion while
+allowing their functional forms to be selected. This example uses AIC
+and retains `age` and `svi`:
+
+```{r aic-selection, eval=FALSE}
+mfp2(
+  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) +
+    fp(weight) + fp(bph) + fp(cp),
+  data = prostate,
+  family = gaussian(),
+  criterion = "aic",
+  keep = c("age", "svi")
+)
+```
+
+To retain a predictor at its maximum permitted complexity, use
+`fp(variable, force_max_fp = TRUE)` in the formula interface or name
+it in `force_max_fp_vars` in the matrix interface. For example, if
+FP2 is the maximum permitted form, this setting selects the best FP2
+function and prevents omission or simplification. It applies under
+all selection criteria.
+
+For an eligible spike-at-zero predictor, forcing retains both the
+binary zero indicator and the maximum permitted FP function for
+positive values.
+
+# Model comparison tests
+
+With `criterion = "pvalue"`, the function selection procedure (FSP)
+uses a sequence of model comparisons to select each predictor's
+functional form. When FP2 is the maximum permitted complexity, it
+compares the best FP2 model with:
+
+1. The null model, to decide whether to retain the predictor.
+2. The linear model, to decide whether a curved effect is needed.
+3. The best FP1 model, to decide whether FP2 is needed.
+
+The procedure stops when a comparison supports omission or a simpler
+form. The other predictors remain in their current forms throughout
+these comparisons.
+
+For likelihood-based models, comparisons use differences in deviance,
+defined here as $-2\log(L)$, with p-values calculated using a chi-square
+distribution by default. For Gaussian models, set `ftest = TRUE` to
+use F-tests instead:
+
+```{r gaussian-ftest, eval=FALSE}
+mfp2(
+  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) +
+    fp(weight) + fp(bph) + fp(cp),
+  data = prostate,
+  family = gaussian(),
+  criterion = "pvalue",
+  ftest = TRUE
+)
+```
+
+Stata uses F-tests for Gaussian model comparisons, so use
+`ftest = TRUE` when comparing these results with Stata. Other settings must also 
+match for the results to be comparable. For Cox models, this includes the 
+handling of tied event times: Stata defaults to the Breslow method, whereas 
+`mfp2()` defaults to Efron. Set `ties = "breslow"` in `mfp2()` to match Stata's
+default, or specify `efron` in Stata to use Efron in both.. Further details are
+available in the [Stata FP manual](https://www.stata.com/manuals/rfp.pdf).
+
+GEE models use Wald-based comparisons under `criterion = "pvalue"`.
+The `ftest` argument applies only to Gaussian likelihood-based models.
+
+# Choosing FP powers using subject-matter knowledge
+
+By default, `mfp2()` considers the candidate powers proposed by
+Royston and Altman (1994):
+
+$$
+S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}.
+$$
+
+A power of zero represents a logarithm. You can restrict or extend
+this set using the `powers` argument when subject-matter knowledge
+supports other choices.
+
+For example, if the selected FP2 powers are at the boundary of the
+default set, such as $(-2, -2)$ or $(3, 3)$, scientific considerations
+may justify exploring powers beyond that boundary, such as $-3$ or $4$.
+
+## Specifying candidate powers
+
+The top-level `powers` argument takes a named list, with one numeric
+vector for each predictor whose candidate powers you want to change.
+Predictors omitted from the list use the default set.
+
+```{r candidate-powers, eval=FALSE}
+custom_powers <- list(age = c(0.5, 1), cavol = c(0, 1))
+
+mfp2(
+  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) +
+    fp(weight) + fp(bph) + fp(cp),
+  data = prostate,
+  family = gaussian(),
+  powers = custom_powers
+)
+```
+
+With `df = 4`, the candidate powers for `age` allow FP1 functions
+with power `0.5` or `1`, and three FP2 combinations:
+$(0.5, 0.5)$, $(0.5, 1)$, and $(1, 1)$. A linear effect and omission
+remain possible unless other settings prevent them.
+
+Alternatively, supply a numeric vector inside each `fp()` or `fp2()`
+term:
+
+```{r candidate-powers-in-formula, eval=FALSE}
+mfp2(
+  lpsa ~ fp(age, powers = c(0.5, 1)) + svi + fp(pgg45) +
+    fp(cavol, powers = c(0, 1)) + fp(weight) + fp(bph) + fp(cp),
+  data = prostate,
+  family = gaussian()
+)
+```
+
+Powers supplied inside a formula term take precedence over top-level
+settings for the same predictor. If both are supplied, `mfp2()` issues
+a warning.
+
+## Candidate powers and selected powers
+
+The `powers` argument defines the values searched, rather than the
+final combination of powers. Duplicate candidate values are removed:
+for example, `c(1, 0, 1)` is treated as `c(0, 1)`.
+
+Repeated powers are generated automatically when fitting FP2 or
+higher-degree functions. For example, `powers = 4` inside `fp()` allows
+the FP2 combination $(4, 4)$ when `df = 4`; writing
+`powers = c(4, 4)` does not force that combination to be selected.
 
 # Explanation of output from the model-selection algorithm
 
@@ -896,8 +846,9 @@ function is selected.
 
 For non-continuous variables, such as binary variables or dummy variables created
 from categorical covariates, no FP function selection is performed. These
-variables are treated as linear terms with `df = 1`. At each visit, the model
-including the variable is compared with the null model that excludes it. If the
+variables are treated as linear terms with `df = 1`. For a categorical
+predictor, all of its columns are assessed together as one term. At each visit,
+the model including the complete term is compared with the model excluding it. If the
 test is significant at the specified `select` level, the variable is retained;
 otherwise, it is removed at that visit. Thus, for non-continuous variables, the
 procedure only assesses variable inclusion, whereas for continuous variables it
@@ -926,16 +877,24 @@ default, variables are ordered according to their p-values from the initial full
 linear model, so that variables with stronger evidence of association are
 considered first.
 
-To explain the output of the MFP algorithm, we use the default interface of
+To explain the output of the MFP algorithm, we use the formula interface of
 `mfp2()` to fit an MFP model with the default settings. All continuous variables
 are assigned `df = 4`, so that FP2 is the most complex permitted function. The
 criterion is set to `"pvalue"`, and the nominal significance levels for variable
 selection and function selection are both set to 0.05. For this Gaussian model,
 we set `ftest = TRUE`, so that p-values are calculated using the F-test.
 
-```{r out.lines = 103}
-fit <- mfp2(x, y, criterion = "pvalue", select = 0.05, alpha = 0.05, 
-            ftest = TRUE)
+```{r algorithm-output, out.lines=103}
+fit <- mfp2(
+  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) +
+    fp(weight) + fp(bph) + fp(cp),
+  data = prostate,
+  family = gaussian(),
+  criterion = "pvalue",
+  select = 0.05,
+  alpha = 0.05,
+  ftest = TRUE
+)
 ```
 
 The **R** output first displays the degrees of freedom used for each variable,
@@ -1017,260 +976,426 @@ second cycle.
 
 # Methods defined for `mfp2`
 
-After fitting an MFP model with `mfp2()`, several methods can be applied to the
-resulting model object to extract information or perform post-estimation tasks.
-For example, an MFP model for a Gaussian outcome can be fitted with the default
-settings as follows:
+Methods for fitted `mfp2` objects allow you to inspect the selected
+functions, extract coefficients, make predictions, and plot fitted
+relationships.
 
-```{r, eval=TRUE, tidy=TRUE, tidy.opts=list(width.cutoff = 80)}
-fit <- mfp2(x, y, verbose = FALSE)
+The examples below use a Gaussian model fitted to the prostate data:
+
+```{r gaussian-methods, eval=TRUE}
+fit <- mfp2(
+  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) +
+    fp(weight) + fp(bph) + fp(cp),
+  data = prostate,
+  family = gaussian(),
+  verbose = FALSE
+)
+
 class(fit)
 ```
 
-The object `fit` has class `mfp2` and inherits from `glm` and `lm`. If
-`family = "cox"`, the fitted object inherits from `coxph` in the **survival**
-package. As a result, methods defined for `glm`, `lm`, or `coxph` objects can
-also be used with fitted `mfp2` objects, where appropriate.
+This object has classes `mfp2`, `glm`, and `lm`. Other model families
+retain their corresponding fitted-model classes, such as `coxph`,
+`multinom`, `orm`, `geeglm`, and `survreg`. Compatible methods from
+these classes remain available, but prediction types and other options
+depend on the fitted family.
 
-To display the final fitted model, enter the object name, for example `fit`, or
-use `print(fit)`. The `print()` method provides a summary of the final MFP
-model, including the parameters used during model selection, such as shifting
-and scaling factors, initial degrees of freedom (`df_initial`), nominal
-significance levels (`select` and `alpha`), and other relevant settings.
+## Inspecting the selected model
 
-The output also reports the final degrees of freedom (`df_final`). A value of
-`df_final = 0` indicates that the corresponding variable was eliminated from the
-final model, as also shown in the `selected` column. The `power` column gives the
-final FP powers selected for each variable; variables that were eliminated are
-assigned `NA`. The `acd` column indicates whether the ACD transformation was
-applied to a covariate and is displayed only when at least one covariate was
-specified for ACD transformation.
+Entering `fit` or calling `print(fit)` displays the model details,
+selection results, preprocessing settings, final coefficients, and
+model-fit statistics.
 
-```{r, eval= TRUE}
+```{r print-gaussian-model, eval=TRUE}
 print(fit)
 ```
 
-To display the regression coefficients from the final MFP model, use `coef()` or
-`summary()`. In the model output, FP-transformed variables are named using dot
-extensions. For example, if a variable is represented by an FP2 function, its two
-transformed terms are labelled as `var.1` and `var.2`.
+In this example, `cavol` is selected as an FP1 function with power
+zero, corresponding to `log(cavol)`. The predictors `svi` and `weight`
+are retained as linear effects. The remaining predictors are excluded.
 
-The displayed regression coefficients multiply the final transformed basis.
-Automatic scale factors are removed from that basis before the final fit, but an
-estimated shift remains part of it. For example, a coefficient may multiply
-$\phi(x + s)$ rather than the raw predictor $x$. Interpret coefficients together
-with `transformations` and the selected powers; prediction still expects the
-original predictor values.
+The function-selection tables show:
 
-```{r, eval= TRUE}
-# extract only regression coefficients
-coef(fit)
+- `Selected`: whether the predictor is retained.
+- `df (init->final)`: the initial complexity allowed and the final
+  selection degrees of freedom. A final value of zero indicates
+  exclusion.
+- `Function`: the selected representation, such as `linear`, `FP(0)`,
+  or `out`.
+- `power1`, `power2`, and further power columns where applicable:
+  the selected FP powers. Excluded predictors have `NA` powers.
 
-# display regression coefficients with other statistics
+For this model, the final predictor degrees of freedom are two for
+`cavol` and one each for `svi` and `weight`. The model-fit table
+therefore reports four degrees of freedom, excluding the intercept.
+These counts include the allowance for selecting FP powers.
+
+The Detailed Settings table also reports the selection thresholds
+and flags for ACD and zero handling. For a shorter report, use:
+
+```{r compact-model-report, eval=TRUE}
+print(fit, detailed_settings = FALSE)
+```
+
+The underlying information can be extracted directly:
+
+```{r extract-selection-details, eval=TRUE}
+get_selected_variable_names(fit)
+fit$fp_terms
+fit$transformations
+```
+
+## Summarising the fitted effects
+
+The `summary()` method separates linear effects from nonlinear
+functions:
+
+```{r summarise-gaussian-model, eval=TRUE}
 summary(fit)
 ```
 
-Users can generate predictions for new or existing data using the `predict()`
-function. To illustrate this, consider the prostate dataset. Suppose we want to
-obtain predictions for the first five rows of the covariate matrix `x`, treating
-them as new observations. This can be done as follows:
+For linear terms, it reports coefficients, standard errors, test
+statistics, p-values, and confidence intervals. For nonlinear terms,
+it reports a joint test of the predictor's fitted terms rather than
+presenting each coefficient as a separate effect.
 
-```{r out.lines = 10, eval=TRUE}
-# Extract the first five observations from x
-new_observations <- x[1:5, ]
-dim(new_observations)
+For likelihood-based models, the nonlinear-term test compares the
+final model with a model that omits the predictor, using
+selection-adjusted degrees of freedom. GEE models use a block Wald
+test. These summary tests describe the final model; they are not
+the sequence of tests used during function selection.
 
-# Generate predictions for these observations with their standard errors
-predict(fit, newdata = new_observations, se.fit = TRUE)
+Use the following options to display nonlinear formulas and their
+individual coefficients, or to obtain the underlying model-specific
+summary:
+
+```{r detailed-model-summary, eval=TRUE}
+summary(fit, formulas = TRUE, basis = TRUE)
+summary(fit, raw = TRUE)
 ```
 
-When `newdata` is supplied, `predict()` applies the same transformations that
-were used when fitting the model. In particular, any shifting required for FP
-transformations is based on the shifting factors estimated from the development
-data.
+## Extracting and interpreting coefficients
 
-For models fitted with an explicit matrix-interface offset, predictions on
-`newdata` must also supply the corresponding `newoffset`. Formula-interface
-offset expressions are reconstructed from the variables present in `newdata`.
+Use `coef()` to extract the fitted coefficients, `vcov()` for their
+covariance matrix, and `confint()` for coefficient confidence intervals:
 
-Users should note that, if a new observation contains values outside the range
-of the development data, the original shifting factor may not be sufficient to
-make all transformed covariate values positive. Prediction is undefined when a
-selected logarithmic or negative-power FP term receives a non-positive value
-after the fitted shift has been applied. In that situation, `predict()` stops
-with an informative error identifying the affected variables and rows.
+```{r extract-model-coefficients, eval=TRUE}
+coef(fit)
+vcov(fit)
+confint(fit)
+```
 
-Fitted FP functions can be visualized using `plot(fit)`. The `plot()`
-method is the recommended graphical interface for fitted `mfp2` objects;
-the older `fracplot()` function remains available for backward
-compatibility.
+For this Gaussian model, `confint()` returns Wald confidence intervals.
+
+Each coefficient applies to the expression shown in the `Basis`
+column. If a value appears in the `Center` column, subtract it from
+that expression first.
+
+For example, the `cavol` row shows `log(cavol)` as the basis, a centre
+of `1.350`, and a coefficient of `0.540`. Its contribution to the
+prediction is therefore
+
+$$
+0.540 \times \{\log(\mathrm{cavol}) - 1.350\}.
+$$
+
+The intercept and the contributions from the other predictors are
+then added to obtain the complete prediction.
+
+Using the rounded values in the output above, the fitted mean is
+
+$$
+\begin{aligned}
+\widehat{\mathrm{lpsa}} \approx {}&
+2.331
++ 0.540\{\log(\mathrm{cavol}) - 1.350\} \\
+&+ 0.679\,\mathrm{svi}
++ 0.014(\mathrm{weight} - 41.310).
+\end{aligned}
+$$
+
+The preprocessing scale factors are removed before the final fit,
+but fitted shifts remain part of the transformations. Thus, a shifted
+FP term uses a function of $x+s$. Centring constants refer to the
+transformed terms, not necessarily to the original predictor values.
+
+For functions with several terms, internal coefficient names may
+include suffixes such as `.1` and `.2`. Use the labelled output from
+`print()` or `summary(fit, basis = TRUE)` to identify their meaning.
+
+Standard errors and confidence intervals are conditional on the
+selected model; they do not include uncertainty from variable or
+function selection.
+
+## Making predictions
+
+Supply predictor values on their original scale. The prediction
+method applies the fitted transformations and centring automatically.
+
+```{r gaussian-prediction, eval=TRUE}
+new_observations <- prostate[1:5, , drop = FALSE]
+
+pred <- predict(
+  fit,
+  newdata = new_observations,
+  type = "response",
+  se.fit = TRUE
+)
+
+pred$fit
+pred$se.fit
+```
+
+Here, `fit` contains predicted mean `lpsa` values, and `se.fit`
+contains their standard errors. These are standard errors for the
+estimated means, not prediction intervals for individual outcomes.
+
+For this Gaussian identity-link model, `"response"` and `"link"`
+give the same predictions. For other families, the distinction
+matters: for example, a binomial model with a logit link returns
+probabilities with `"response"` and log-odds with `"link"`.
+
+You can extract the fitted contribution of an individual predictor:
+
+```{r predict-selected-term, eval=TRUE}
+predict(
+  fit,
+  newdata = new_observations,
+  type = "terms",
+  terms = "cavol",
+  terms_seq = "data",
+  add_intercept = FALSE
+)
+```
+
+The result is a named list with one data frame for each requested
+predictor. Here, `$cavol` contains five rows, corresponding to the
+five observations supplied in `new_observations`. Its columns are:
+
+- `variable`: the original predictor value.
+- `variable_pre`: the value after applying the fitted shift, before
+  the FP transformation. Here it equals `variable` because the shift
+  for `cavol` is zero.
+- `value`: the fitted contribution of the transformed and centred
+  predictor.
+- `se`: the standard error of that contribution.
+- `lower` and `upper`: the limits of its 95% confidence interval.
+
+For example, when `cavol = 0.56`, its contribution to predicted
+`lpsa` is approximately `-1.043`, with a 95% confidence interval from
+`-1.324` to `-0.761`. This is one part of the prediction: the intercept
+and contributions from the other predictors are excluded.
+
+Setting `terms_seq = "data"` evaluates the supplied observations
+rather than an equally spaced grid. Confidence intervals are
+conditional on the selected model and do not include uncertainty
+from variable or function selection.
+
+Prediction reuses the shifts estimated during fitting. It stops if
+a supplied value is incompatible with a selected transformation,
+such as a non-positive value after shifting when a logarithm is
+required.
+
+For complete-model predictions, formula offsets are reconstructed
+from variables in `newdata`. If an offset was supplied separately
+through the `offset` argument, supply new values through `newoffset`.
+Offsets are excluded from term predictions.
+
+See `?predict.mfp2` for family-specific prediction types and options.
 
 # Graphical presentation of FP functions
 
-The regression coefficients $\hat{\beta}$ for FP terms provide only
-limited information about the fitted function for a variable of interest.
-A more informative approach is to visualize the fitted function,
-especially for variables with nonlinear effects (Royston and Sauerbrei,
-2008).
+Plots are usually more informative than individual coefficients for
+understanding a fitted FP function, particularly when the relationship
+is nonlinear (Royston and Sauerbrei, 2008).
 
-The recommended way to produce graphical displays from a fitted `mfp2`
-object is to use the S3 `plot()` method. The method returns a list of
-`ggplot2` objects, one for each selected variable requested. The `fracplot()`
-function remains available for backward compatibility, but `plot()` is the
-preferred interface for new code and is used throughout this vignette.
+Use `plot()` to display fitted functions from an `mfp2` model. It returns
+a named list of `ggplot2` objects, one for each requested predictor.
+The `terms` argument selects predictors by their original names;
+the default, `terms = NULL`, includes all retained predictors.
 
-Given a fitted `mfp2` object, `plot()` produces plots of the selected
-functions, together with pointwise confidence intervals. As with all
-data-derived models, model-based confidence intervals may be too narrow
-because they do not account for uncertainty from variable and function
-selection. Bootstrap methods can be used to obtain more realistic
-estimates of standard errors and pointwise confidence intervals
-(Sauerbrei and Royston, 2007). The variable to be plotted can be
-specified using the `terms` argument. If `terms = NULL`, which is the
-default, `plot()` returns a list of plots for all variables included in
-the final model.
+The older `fracplot()` interface is deprecated.
 
-By default, `plot()` produces a component-plus-residual plot because
-`partial_only = FALSE`. For Gaussian models with constant weights and a
-single covariate, this corresponds to a plot of the outcome against the
-covariate, with the fitted function added. For other normal-error
-models, weighted residuals are calculated and added to the fitted
-values. In models with two or more covariates, the plotted function is
-the partial linear predictor for the variable of interest and includes
-the intercept.
+## Fitted functions and residuals
 
-For generalized linear models and Cox models, `plot()` displays fitted
-values on the scale of the linear predictor. For generalized linear
-models, deviance residuals are added to the partial linear predictor.
-For Cox models, martingale residuals are added instead. These
-component-plus-residual values are shown as points in the plot. Such
-plots can reveal the amount of residual variation across the covariate
-range and may indicate lack of fit or influential observations (Royston
-and Sauerbrei, 2008; StataCorp, 2023).
+By default, `plot()` displays the fitted contribution with pointwise
+95% confidence intervals and component-plus-residual points. Each
+point combines the predictor's fitted contribution with a residual
+from the complete model. This helps assess the relationship while
+accounting for the other predictors.
 
-If `partial_only = TRUE`, `plot()` displays only the partial linear
-predictor, without adding residuals. Further details on
-component-plus-residual plots are available in the
-[Stata postestimation manual](https://www.stata.com/manuals/rmfppostestimation.pdf).
+For example, plot the selected function for `cavol`:
 
-For example, the fitted function for `cavol` can be plotted as follows:
-
-```{r, eval=TRUE, fig.cap="\\label{fig:fig2}Prostate data. Graphical presentation of results from an FP analysis", fig.width=7, fig.height=5, out.width="100%", fig.align="center"}
-plots <- plot(fit)
-
-# plots is a list
-class(plots)
-
-# The plot of cavol is the first element of the list
-plots[[1]] + ggplot2::ylab("Partial predictor + residuals")
+```{r plot-cavol, eval=TRUE, fig.cap="Prostate data. Fitted function for cavol with pointwise 95% confidence intervals and component-plus-residual points.", fig.width=7, fig.height=5, out.width="100%", fig.align="center"}
+plots <- plot(fit, terms = "cavol")
+plots[["cavol"]]
 ```
 
-\newpage
+The vertical scale depends on the model. For Gaussian identity-link
+models, it is the response scale used for fitting: here, `lpsa`.
+For logistic models, it is log-odds; for Cox models, it is log relative
+hazard. Term plots include the intercept where applicable, but Cox
+models have no intercept.
 
-The `plot()` method also allows a reference value to be included in the
-plot. This is useful when the aim is to display contrasts relative to a
-selected reference point. To do this, set `type = "contrasts"` and
-provide the reference value using the `ref` argument. If `ref = NULL`,
-which is the default, the average value is used as the reference for
-continuous variables, and the minimum value is used for binary
-variables. For example, to use 30 as the reference value for the
-continuous variable `cavol`, use the following code:
+GLM plots add deviance residuals, whereas Cox plots add martingale
+residuals. For an unweighted Gaussian identity-link model with only
+one predictor, the component-plus-residual points reproduce the
+observed response values. For non-Gaussian models, these points
+provide a diagnostic display rather than an exact adjustment of
+the observed response.
 
-```{r, eval=TRUE, fig.cap="\\label{fig:fig3}Prostate data. Illustration on how to use reference points (ref point = 30)", fig.width=7, fig.height=5, out.width="100%", fig.align="center"}
-plots <- plot(fit, type = "contrasts", ref = list(cavol = 30))
-plots[[1]] + ggplot2::ylab("Partial predictor")
+To hide the residual points and show only the fitted function and
+confidence interval, set `partial_only = TRUE`:
+
+```{r plot-cavol-function-only, eval=TRUE}
+curves <- plot(fit, terms = "cavol", partial_only = TRUE)
+curves[["cavol"]]
 ```
 
-In some cases, a fitted function plotted using the original observed
-covariate values may appear very sharp near extreme values. This can
-occur when only a few observations are available in the extreme part of
-the covariate distribution.
+The confidence intervals describe uncertainty in the fitted function,
+not the spread of individual outcomes. They treat the selected model
+as fixed and do not account for uncertainty from variable or function
+selection.
 
-The `plot()` method provides two options for the covariate values used
-in the plot. The first option, `terms_seq = "data"`, uses the original
-covariate values from the data used to fit the model. The second option,
-`terms_seq = "equidistant"`, generates an equally spaced sequence of
-values over the observed covariate range.
+## Contrasts relative to a reference value
 
-To illustrate these options, we use the `art` dataset included in the
-`mfp2` package. This dataset is described in Royston and Sauerbrei
-(2008, Chapter 10), and the outcome variable is continuous. In this
-example, we fit an MFP model with a single covariate, $x5$.
+Set `type = "contrasts"` to display the difference between the fitted
+contribution at each predictor value and its contribution at a
+reference value. Supply the reference on the original predictor scale
+through `ref`.
 
-```{r, eval=TRUE, fig.cap="Art data. Illustration of the `terms_seq` argument in `plot.mfp2()`. In the original data, the selected function was FP(0, 3), equivalent to $\\beta_0 + \\beta_1 \\log(x_5) + \\beta_2 x_5^3$. The function is plotted using the original observed values of `x5` (right panel) and an equally spaced sequence of values over the observed range of `x5` (left panel). The two functions are identical up to approximately x5 = 62. Beyond this value, the plot based on the original values appears nearly linear because there are no observations between 62.21 and 235. In contrast, the equally spaced sequence clearly displays the fitted FP2 curve.", fig.width=7, fig.height=5, out.width="100%", fig.align="center"}
-# load art data
+For example, compare each value of `cavol` with `cavol = 30`:
+
+```{r plot-cavol-contrasts, eval=TRUE, fig.cap="Prostate data. Differences in fitted mean lpsa relative to cavol = 30, with pointwise 95% confidence intervals.", fig.width=7, fig.height=5, out.width="100%", fig.align="center"}
+contrasts <- plot(
+  fit,
+  terms = "cavol",
+  type = "contrasts",
+  ref = list(cavol = 30)
+)
+
+contrasts[["cavol"]]
+```
+
+The contrast is zero at the reference value. A positive value indicates
+a higher fitted mean `lpsa` than at `cavol = 30`, holding the other
+predictors fixed. The intercept and centring constants cancel from
+this comparison. Contrast plots do not include residual points.
+
+If a reference is omitted, the defaults are:
+
+- The smaller observed value for a numeric binary predictor.
+- The mean in the fitting data for other numeric predictors.
+- The first fitted level for a factor.
+
+## Choosing where to evaluate the function
+
+The `terms_seq` argument controls the predictor values used to draw
+the fitted curve:
+
+- `"data"` uses the observed values from the fitting data.
+- `"equidistant"` uses equally spaced values over the observed range.
+
+The default is `"data"` for term plots and `"equidistant"` for
+contrast plots. Residual points always remain at the observed
+predictor values.
+
+Both options represent the same fitted function. However, when
+observations are widely separated, connecting fitted values only at
+the observed points can conceal curvature between them. An equally
+spaced sequence shows the shape more clearly.
+
+The following example compares the two options using the `art` data:
+
+```{r plot-evaluation-values, eval=TRUE, fig.cap="Art data. The same fitted function evaluated at equally spaced values (left) and observed values (right). Residual points remain at the observed values in both panels.", fig.width=8, fig.height=5, out.width="100%", fig.align="center"}
 data("art")
 
-# fit mfp model using art data
-xx <- as.matrix(art[, "x5", drop = FALSE])
-yy <- as.numeric(art$y)
-fit2 <- mfp2(xx, yy, verbose = FALSE)
+fit2 <- mfp2(
+  y ~ fp(x5),
+  data = art,
+  family = gaussian(),
+  verbose = FALSE
+)
 
-# generate plot using original data
-plot1 <- plot(fit2)
-plot1[[1]] <- plot1[[1]] +
-  ggplot2::ylab("Partial predictor + residuals")
+observed <- plot(fit2, terms = "x5", terms_seq = "data")
+equidistant <- plot(fit2, terms = "x5", terms_seq = "equidistant")
 
-# generate plot using an equally spaced sequence
-plot2 <- plot(fit2, terms_seq = "equidistant")
-plot2[[1]] <- plot2[[1]] +
-  ggplot2::ylab("Partial predictor + residuals")
-
-# combine plots
-patchwork::wrap_plots(plot2[[1]], plot1[[1]], ncol = 2, widths = 8, heights = 4)
+patchwork::wrap_plots(
+  equidistant[["x5"]] + ggplot2::ggtitle("Equally spaced values"),
+  observed[["x5"]] + ggplot2::ggtitle("Observed values"),
+  ncol = 2
+)
 ```
-
 
 # Handling categorical variables {#handling-categorical}
 
-The formula interface accepts unordered and ordered factors directly. It uses
-`model.matrix()` to expand each factor into its configured contrast columns, but
-all columns generated from one factor are treated by `mfp2()` as one conceptual
-model term. The complete block is selected, retained, tested, or removed jointly.
-Naming the factor in `keep` protects the whole block from exclusion.
+The formula interface accepts unordered and ordered factors directly.
+R expands each factor into contrast columns using `model.matrix()`.
+`mfp2()` treats these columns as one predictor: they are selected,
+tested, or removed together. Naming the factor in `keep` retains the
+whole predictor.
+
+Convert numeric category codes to factors before fitting, and include
+factors directly in the formula rather than wrapping them in `fp()`.
 
 ## Unordered factors
 
-Unordered factors use their configured contrasts, which are treatment contrasts
-by default. With a factor containing \(k\) levels, the default representation has
-\(k-1\) columns relative to the reference level. `mfp2()` performs one joint test
-of those columns; it does not select individual dummy variables separately.
-General contrast construction is described in `?contrasts`, `?contr.treatment`,
-and `?model.matrix`.
+Under R's default contrast settings, an unordered factor with $k$
+levels is represented by $k-1$ treatment-contrast columns. Each column
+compares one category with the reference category.
+
+`mfp2()` assesses the complete factor effect rather than selecting
+individual category indicators. Other contrast settings can be used;
+see `?contrasts`, `?contr.treatment`, and `?model.matrix`.
 
 ## Ordered factors
 
-Ordered factors also enter as one joint term. Their default `contr.poly` basis
-contains \(k-1\) columns. The resulting `mfp2()` test is therefore an omnibus
-\(k-1\)-degree-of-freedom test of the complete ordered-factor effect. It is not a
-one-degree-of-freedom linear trend test and does not impose a monotonic effect.
+Ordered factors are also assessed as one predictor. By default, R uses
+polynomial contrasts (`contr.poly`), producing $k-1$ columns for a
+factor with $k$ levels.
 
-When subject-matter knowledge specifies a particular ordinal trend, create an
-explicit numeric score and restrict it to a linear effect. For example:
+These columns allow the complete ordered-factor effect to be fitted.
+Ordering the levels does not restrict the effect to a single linear
+trend or impose a monotonic relationship.
+
+If subject-matter knowledge supports a particular trend, assign
+numeric scores and restrict the score to a linear effect. For example,
+the following uses equally spaced scores for three severity categories:
 
 ```{r ordinal-score-example, eval=FALSE}
-dat$severity_score <- c(0, 1, 2)[match(dat$severity,
-                                      c("mild", "moderate", "severe"))]
-fit <- mfp2(y ~ fp(severity_score, df = 1) + fp(age), data = dat)
+dat$severity_score <- NA_real_
+dat$severity_score[dat$severity == "mild"] <- 0
+dat$severity_score[dat$severity == "moderate"] <- 1
+dat$severity_score[dat$severity == "severe"] <- 2
+
+fit <- mfp2(
+  y ~ fp(severity_score, df = 1) + fp(age),
+  data = dat
+)
 ```
 
-Factor contrast blocks are fixed linear terms. Shifting, scaling, FP, ACD,
-`zero`, `catzero`, and SAZ processing do not apply to them.
+Setting `df = 1` fits a linear effect of the score. Each one-step
+increase in severity is therefore assumed to have the same effect
+on the model's linear predictor.
+
 
 ## Formula-interface example
 
-The following example supplies both an ordered and an unordered factor directly.
+The following example includes `x4` as an ordered factor and `x9` as
+an unordered factor. Both are retained through `keep`.
 
-```{r categorical-formula-example, message=TRUE, warning=TRUE}
+```{r categorical-formula-example, eval=TRUE}
 data("art")
+dat <- art
 
-art$x4 <- ordered(art$x4, levels = c(1, 2, 3))
-art$x9 <- factor(art$x9, levels = c(1, 2, 3))
+dat$x4 <- ordered(dat$x4, levels = c(1, 2, 3))
+dat$x9 <- factor(dat$x9, levels = c(1, 2, 3))
 
 fit_formula <- mfp2(
   y ~ fp(x1) + x2 + fp(x3) + x4 + fp(x5) + fp(x6) +
     fp(x7) + x8 + x9 + fp(x10),
-  data = art,
+  data = dat,
+  family = gaussian(),
   keep = c("x4", "x9"),
   verbose = FALSE
 )
@@ -1278,263 +1403,481 @@ fit_formula <- mfp2(
 fit_formula
 ```
 
-For prediction from a formula fit, supply the original factor variables in
-`newdata`. The fitted levels and contrasts are reused. New or unknown levels are
-rejected by the standard `model.frame()` and `model.matrix()` checks.
+Factor contrast columns enter without FP transformations. Shifting,
+scaling, ACD, and zero-handling options do not apply to these blocks.
 
-## Matrix-interface example
+For prediction, supply the original factor variables in `newdata`.
+The fitted levels and contrasts are reused; new category levels are
+not accepted.
 
-The matrix interface requires numeric columns. When several generated columns
-represent one factor, identify them with `term_groups`; otherwise they would be
-considered separate selection candidates.
+## Categorical predictors in the matrix interface
 
-```{r categorical-matrix-example, message=TRUE, warning=TRUE}
-mm <- model.matrix(
-  y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
-  data = art
-)
+The matrix interface requires numeric columns. If several columns
+represent one categorical predictor, group them with `term_groups`
+so they are assessed together.
 
-x_matrix <- mm[, colnames(mm) != "(Intercept)", drop = FALSE]
-y_matrix <- art$y
+For example, suppose `x` contains `stageII` and `stageIII`, representing
+a three-level factor with stage I as the reference:
 
-x4_columns <- grep("^x4", colnames(x_matrix), value = TRUE)
-x9_columns <- grep("^x9", colnames(x_matrix), value = TRUE)
-
+```{r categorical-matrix-example, eval=FALSE}
 fit_matrix <- mfp2(
-  x = x_matrix,
-  y = y_matrix,
-  term_groups = list(x4 = x4_columns, x9 = x9_columns),
-  keep = c("x4", "x9"),
-  verbose = FALSE
+  x,
+  y,
+  family = gaussian(),
+  term_groups = list(stage = c("stageII", "stageIII")),
+  keep = "stage"
 )
-
-fit_matrix
 ```
 
-The subsetting rules for factors and grouped matrix terms are described in
-[Subsetting and analysis populations](#subsetting-analysis-populations).
+Use the group name, here `"stage"`, in `keep`. Grouped columns are
+restricted to linear terms (`df = 1`).
+
+The formula interface creates and groups factor contrasts automatically
+and is therefore simpler for most users. See
+[Subsetting and analysis populations](#subsetting-analysis-populations)
+for the rules applied when subsetting factors and grouped matrix terms.
 
 # Logistic regression
 
-Logistic regression is used to model binary outcomes. In `mfp2()`, logistic
-regression is fitted by setting `family = "binomial"`.
+To fit logistic regression with `mfp2()`, use `family = binomial()`,
+which uses the logit link by default. The equivalent shorthand is
+`family = "binomial"`.
 
-For illustration, we use the Pima Indians dataset included in the `mfp2`
-package. The dataset was downloaded from the
-[MFP website](https://mfp.imbi.uni-freiburg.de/book#dataset_tables). It
-originates from a study of 768 female Pima Indians, a population known to be
-particularly susceptible to diabetes. Of the 768 individuals, 268 developed
-diabetes. The dataset contains a binary outcome variable indicating the presence
-(1) or absence (0) of diabetes, together with eight covariates. Further details
-are given in Royston and Sauerbrei (2008, Chapter 9.7).
+We illustrate this using the `pima` dataset, available from the
+[MFP website](https://mfp.imbi.uni-freiburg.de/book/). It contains
+768 women, including 268 with diabetes, and eight candidate predictors.
+The outcome `y` is coded `1` for diabetes and `0` otherwise. The
+predictor named `diabetes` is the diabetes pedigree function.
 
-In `mfp2()`, a binomial response may be supplied as a binary 0/1 vector, a
-two-level factor, or a two-column matrix of grouped counts in the form
-`cbind(successes, failures)`. Apart from the `family` argument, the remaining
-arguments are nearly identical to those used for Gaussian models in both the
-default and formula interfaces.
+Missing values in the packaged dataset have already been imputed.
+Further details are given in `?pima` and Royston and Sauerbrei
+(2008, Section 9.7).
 
-```{r out.lines = 103}
-# Load pima data
+A binomial response can be supplied as a binary 0/1 vector, a two-level
+factor, or grouped counts using `cbind(successes, failures)`. For a
+factor response, the first level represents failure and the second
+represents success.
+
+```{r logistic-fit, eval=TRUE}
 data("pima")
 head(pima)
 
-# Covariate matrix
-x <- as.matrix(pima[, 2:9])
-
-# Binary outcome
-y <- as.vector(pima$y)
-
-# Fit MFP logistic regression model
 fit <- mfp2(
-  x, y,
-  family = "binomial",
+  y ~ fp(pregnant) + fp(glucose) + fp(diastolic) + fp(triceps) +
+    fp(insulin) + fp(bmi) + fp(diabetes) + fp(age),
+  data = pima,
+  family = binomial(),
   verbose = FALSE
 )
 
 fit
 ```
 
-The output shows that four continuous variables are selected: `glucose` with
-power 1, `bmi` with power -2, `diabetes` with power 1, and `age` with powers
-0 and 3. The selected functions can be visualized using the `plot()` method, as
-shown below.
+The example selects four predictors:
 
-```{r out.lines = 103, fig.show='hold', fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE, fig.width=7, fig.height=6, out.width="100%", fig.align="center"}
+- `glucose` and the diabetes pedigree function (`diabetes`), each
+  with power `1`.
+- `bmi`, with power `-2`.
+- `age`, with FP2 powers `0` and `3`.
+
+These effects describe changes in the log-odds of diabetes. For
+nonlinear functions, the shape is more informative than the individual
+coefficients.
+
+The following plots show the selected functions with pointwise
+95% confidence intervals and component-plus-residual points.
+The vertical axis is on the log-odds scale, not the probability scale.
+
+```{r logistic-functions, eval=TRUE, fig.cap="Pima data. Selected predictor contributions on the log-odds scale, with pointwise 95% confidence intervals and component-plus-residual points.", fig.width=7, fig.height=6, out.width="100%", fig.align="center"}
 plots <- plot(fit)
-
-# Rename y-label for all plots
-plots <- lapply(plots, function(v) {
-  v + ggplot2::ylab("Partial predictor + residuals")
-})
-
-# Combine multiple ggplot objects into a single figure
 patchwork::wrap_plots(plots, ncol = 2)
+```
+
+The following code displays the predicted probability of diabetes for
+each of the first five observations in `pima`:
+
+```{r logistic-probabilities, eval=TRUE}
+new_observations <- pima[1:5, , drop = FALSE]
+
+predict(fit, newdata = new_observations, type = "response")
 ```
 
 # Survival data
 
-We illustrate two analyses reported by Sauerbrei and Royston (1999). The example
-uses the `gbsg` dataset, which contains prognostic-factor data from the German
-Breast Cancer Study Group for patients with node-positive breast cancer. The
-response is recurrence-free survival time (`rectime`), and the censoring
-indicator is `censrec`. The dataset contains 686 patients, of whom 299
-experienced the event.
+We illustrate Cox regression using the `gbsg` dataset and the modelling
+approach described by Sauerbrei and Royston (1999). The data contain
+686 patients with node-positive breast cancer, including 299 who
+experienced an event.
 
-We use Cox regression to model the log hazard of recurrence as a function of
-several prognostic factors. Five covariates are continuous (`age`, `size`,
-`nodes`, `pgr`, and `er`), one is binary (`meno`), and `grade` is ordinal. The
-ordinal variable `grade` is represented using two dummy variables, `grade_1` and
-`grade_2`. The treatment variable, hormonal therapy (`hormon`), is forced into
-the model. As an alternative analysis, we also stratify the model by `hormon`.
+The response records time to death or cancer recurrence (`rectime`,
+in days), with `censrec = 1` indicating an event and `censrec = 0`
+indicating censoring. Use `Surv(rectime, censrec)` to construct the
+survival response.
 
-We first use `mfp2()` with the default settings to build a model from the initial
-set of eight covariates. The nominal significance levels for variable selection
-and FP function selection are set to 0.05 for all variables, except for
-`hormon`, which is forced into the model using the `keep` argument.
+## Fitting a Cox model
 
-For survival outcomes, the response variable must be created using
-`survival::Surv()`. Other arguments are used in the same way as described above
-for Gaussian models.
+The initial model contains five continuous predictors (`age`, `size`,
+`nodes`, `pgr`, and `er`), menopausal status (`meno`), tumour grade
+(`grade`), and hormonal therapy (`hormon`). We retain `hormon` using
+`keep`. The other predictors undergo selection at the default nominal
+significance levels of `0.05`.
 
-```{r out.lines = 103}
-# Load gbsg data
+Grade is included as a factor with two cumulative indicators:
+
+- `grade_1` is `1` for grades 2 and 3, and `0` for grade 1.
+- `grade_2` is `1` for grade 3, and `0` for grades 1 and 2.
+
+The factor is assessed jointly. The original published analysis
+allowed the two indicators to be selected separately, so its selected
+model may differ from this example.
+
+We specify `ties = "breslow"` to match the tie-handling method in the
+published Stata example. The default in `mfp2()` is `"efron"`.
+
+```{r cox-fit, eval=TRUE, warning=FALSE}
+library(survival)
 data("gbsg")
 
-# Encode grade manually using cumulative threshold indicators.
-# Construct the ordinal coding explicitly so that the thresholds and
-# reference category are visible in the vignette.
+# Specify the grade order and cumulative contrasts.
 grade_levels <- sort(unique(as.character(gbsg$grade)))
-grade_index <- match(as.character(gbsg$grade), grade_levels)
-
-if (length(grade_levels) != 3L || anyNA(grade_index)) {
-  stop(
-    "`grade` must contain exactly three non-missing ordered levels.",
-    call. = FALSE
-  )
-}
-
-# grade_1 compares grades 2 and 3 with grade 1.
-gbsg$grade_1 <- as.integer(grade_index >= 2L)
-
-# grade_2 compares grade 3 with grades 1 and 2.
-gbsg$grade_2 <- as.integer(grade_index >= 3L)
-
-# Preserve the source variable as an ordered factor for the formula example.
 gbsg$grade_ord <- ordered(gbsg$grade, levels = grade_levels)
 
-# Covariate matrix. Exclude the source grade variables and retain the manually
-# created grade indicators. They are grouped below as one conceptual term.
-x <- as.matrix(gbsg[, setdiff(
-  names(gbsg),
-  c("id", "grade", "grade_ord", "enodes", "rectime", "censrec")
-), drop = FALSE])
-head(x, 10)
+contrasts(gbsg$grade_ord) <- cbind(
+  grade_1 = c(0, 1, 1),
+  grade_2 = c(0, 0, 1)
+)
 
-# Create survival outcome
-y <- survival::Surv(gbsg$rectime, gbsg$censrec)
-
-# Fit MFP Cox model and force hormon into the model
 fit1 <- mfp2(
-  x, y,
+  Surv(rectime, censrec) ~
+    fp(age) + meno + fp(size) + fp(nodes) + fp(pgr) + fp(er) +
+    grade_ord + hormon,
+  data = gbsg,
   family = "cox",
-  term_groups = list(grade = c("grade_1", "grade_2")),
+  ties = "breslow",
   keep = "hormon",
-  control = survival::coxph.control(iter.max = 50),
+  control = coxph.control(iter.max = 50),
   verbose = FALSE
 )
 
 fit1
 ```
 
-Sauerbrei and Royston (1999) noted that, on medical grounds, the risk function
-for `nodes`, the number of positive lymph nodes, should be monotonic. However,
-the selected FP function for `nodes`, with powers $(-2, -1)$, was not
-monotonic. They therefore proposed a preliminary exponential transformation,
+## Using a monotonic function for positive lymph nodes
+
+In the published analysis, the selected function for the number of
+positive lymph nodes (`nodes`) had FP powers $(-2, -1)$ and was not
+monotonic. Sauerbrei and Royston (1999) considered a monotonic
+relationship more appropriate and proposed the preliminary
+transformation
 
 $$
-\text{enodes} = \exp(-0.12 \times \text{nodes}),
+\mathrm{enodes} = \exp(-0.12 \times \mathrm{nodes}).
 $$
 
-followed by fitting a degree-1 FP function for `enodes`. This produced a
-monotonic risk function. The value $-0.12$ was estimated univariately using
-nonlinear Cox regression. To ensure the desired direction of the transformation,
-Sauerbrei and Royston (1999) restricted the candidate powers for `enodes` to
-positive values. Their Model III can be fitted using the following R code, which
-yields results identical to those from the
-[Stata `mfp` command](https://www.stata.com/manuals13/rmfp.pdf):
+They estimated the constant $-0.12$ using univariate nonlinear Cox
+regression, then considered FP1 functions of `enodes` with positive
+powers.
 
-```{r out.lines = 103}
-# Replace nodes with enodes, retaining the grouped grade indicators.
-x <- cbind(
-  x[, setdiff(colnames(x), "nodes"), drop = FALSE],
-  enodes = gbsg$enodes
-)
+The following model applies this strategy. Setting `df = 2` allows
+at most FP1, while `powers` restricts the candidate powers. The
+single-term form is monotonic; the fitted coefficient determines
+whether the hazard increases or decreases with `nodes`.
 
-# Fit MFP Cox model and force hormon into the model
+```{r cox-monotonic-fit, eval=TRUE}
+gbsg$enodes <- exp(-0.12 * gbsg$nodes)
+
 fit2 <- mfp2(
-  x, y,
+  Surv(rectime, censrec) ~
+    fp(age) + meno + fp(size) +
+    fp(enodes, df = 2, powers = c(0.5, 1, 2, 3)) +
+    fp(pgr) + fp(er) + grade_ord + hormon,
+  data = gbsg,
   family = "cox",
-  term_groups = list(grade = c("grade_1", "grade_2")),
+  ties = "breslow",
   keep = "hormon",
-  powers = list(enodes = c(0.5, 1, 2, 3)),
-  control = survival::coxph.control(iter.max = 50),
+  control = coxph.control(iter.max = 50),
   verbose = FALSE
 )
 
 fit2
 ```
 
-See Figure 1 in Sauerbrei and Royston (1999) for the fitted functions for
-`nodes`, with powers $(-2, -1)$, and for `enodes`.
+See Figure 1 in Sauerbrei and Royston (1999) for the published fitted
+functions, and the
+[Stata MFP example](https://www.stata.com/manuals13/rmfp.pdf)
+for the corresponding model specifications.
 
 ## Stratified Cox model
 
-The stratified Cox model is an extension of the Cox proportional hazards (PH)
-model that allows the baseline hazard to differ across strata (Therneau et al.,
-2000). This is useful when a covariate does not satisfy the PH assumption. The
-model includes covariates that are assumed to satisfy the PH assumption, while
-the stratification variable itself is not estimated as a regression coefficient.
-Instead, it is used to define subgroups with separate baseline hazard functions.
+A stratified Cox model allows a separate baseline hazard for each
+stratum. The other predictors share the same selected functions and
+coefficients across strata. This can be useful when the proportional
+hazards assumption is unsuitable for the stratification variable.
 
-Similar to `coxph()` in the **survival** package, the `mfp2()` formula interface
-uses `strata()` in the formula. The matrix interface uses the `strata` argument.
-Supplying `strata` directly to `mfp2.formula()` is deprecated. The fitted MFP
-model assumes that the selected FP functions and their coefficients are common
-across strata. Therefore, users should assess whether this assumption is
-appropriate for their data.
+To stratify by hormonal therapy, replace its regression term with
+`strata(hormon)`:
 
-As an illustration, we stratify the analysis by hormonal therapy (`hormon`). The
-following code shows how to fit a stratified Cox model using both the default
-and formula interfaces.
-
-```{r out.lines = 103}
-# Default interface
-hormon_column <- match("hormon", colnames(x))
-fit2 <- mfp2(
-  x[, -hormon_column, drop = FALSE],
-  y,
-  family = "cox",
-  strata = x[, hormon_column],
-  term_groups = list(grade = c("grade_1", "grade_2")),
-  verbose = FALSE
-)
-
-fit2
-
-# Formula interface
+```{r stratified-cox-fit, eval=TRUE}
 fit3 <- mfp2(
-  survival::Surv(rectime, censrec) ~ age + meno + size + enodes + pgr + er +
-    grade_ord + survival::strata(hormon),
-  family = "cox",
+  Surv(rectime, censrec) ~
+    fp(age) + meno + fp(size) +
+    fp(enodes, df = 2, powers = c(0.5, 1, 2, 3)) +
+    fp(pgr) + fp(er) + grade_ord + strata(hormon),
   data = gbsg,
+  family = "cox",
+  ties = "breslow",
+  control = coxph.control(iter.max = 50),
   verbose = FALSE
 )
 
 fit3
 ```
 
+This model estimates separate baseline hazards for the hormonal-therapy
+groups, without estimating a coefficient for `hormon`. The remaining
+predictors are subject to MFP selection.
+
+Use `strata()` inside the formula for formula-interface models. In
+the matrix interface, supply stratum membership through the `strata`
+argument. The separate `strata` argument is deprecated for formula
+fits.
+
+# Examples for additional outcome families
+
+The following examples use simulated data and the formula interface
+to illustrate fitting, prediction, and plotting. The `keep` argument
+retains the specified predictors while allowing selection of their
+functional forms.
+
+## Multinomial regression
+
+Use `multinomial_family()` for an outcome with three or more unordered
+categories. This example simulates three response categories, a
+continuous predictor `x`, and a categorical predictor `group`.
+
+```{r multinomial-data}
+set.seed(1101)
+n_multinom <- 500
+
+dat_multinom <- data.frame(
+  x = runif(n_multinom, 0.5, 4),
+  group = factor(sample(c("A", "B"), n_multinom, replace = TRUE))
+)
+
+eta2 <- 0.2 + 5 * log(dat_multinom$x) +
+  0.4 * (dat_multinom$group == "B")
+eta3 <- -0.3 + 0.4 * dat_multinom$x -
+  0.4 * (dat_multinom$group == "B")
+probabilities <- cbind(class1 = 1, class2 = exp(eta2), class3 = exp(eta3))
+probabilities <- probabilities / rowSums(probabilities)
+
+dat_multinom$outcome <- factor(
+  vapply(seq_len(n_multinom), function(i) {
+    sample(colnames(probabilities), size = 1, prob = probabilities[i, ])
+  }, character(1)),
+  levels = colnames(probabilities)
+)
+
+head(dat_multinom)
+```
+
+The model uses `class1` as the reference category. Setting `df = 2`
+allows a linear or FP1 function for `x`. The selected power is shared
+across the non-reference categories, but each category has its own
+coefficients. Both predictors are retained through `keep`.
+
+```{r multinomial-fit}
+fit_multinom <- mfp2(
+  outcome ~ fp(x, df = 2) + group,
+  data = dat_multinom,
+  family = multinomial_family(reference = "class1"),
+  keep = c("x", "group"),
+  verbose = FALSE
+)
+```
+
+Use `type = "response"` to obtain predicted category probabilities.
+The result has one row per observation and one column per category;
+the probabilities in each row sum to one.
+
+```{r multinomial-prediction}
+predict(
+  fit_multinom,
+  newdata = dat_multinom[1:6, c("x", "group")],
+  type = "response"
+)
+```
+
+The plot for `x` contains a panel for each non-reference category:
+`class2` versus `class1`, and `class3` versus `class1`. The fitted
+contributions and pointwise 95% confidence intervals are on the
+log-odds scale. Setting `partial_only = TRUE` hides the residual
+points.
+
+```{r multinomial-plot}
+multinom_plots <- plot(fit_multinom, terms = "x", partial_only = TRUE)
+print(multinom_plots[[1]])
+```
+
+## Ordinal regression
+
+Use `ordinal_family()` for an ordered outcome. Supply an ordered factor
+to define the category order explicitly. This example requires the
+`rms` package, version 7.0-0 or later; its chunks are evaluated
+only when that dependency is available.
+
+The simulation generates three ordered categories using an FP2 effect
+of `x`, with powers $(-1, 1)$, and an effect of `group`.
+
+```{r ordinal-data, eval=has_rms}
+set.seed(1102)
+n_ordinal <- 500
+
+dat_ordinal <- data.frame(
+  x = runif(n_ordinal, 0.5, 4),
+  group = factor(sample(c("A", "B"), n_ordinal, replace = TRUE))
+)
+latent <- 2 * (dat_ordinal$x - 2)^2 - 2 +
+  0.5 * (dat_ordinal$group == "B") + rlogis(n_ordinal)
+
+dat_ordinal$outcome <- ordered(
+  cut(
+    latent,
+    breaks = c(-Inf, 0.2, 1.3, Inf),
+    labels = c("low", "medium", "high")
+  ),
+  levels = c("low", "medium", "high")
+)
+
+head(dat_ordinal)
+```
+
+The default logistic link gives a proportional-odds model. Setting
+`df = 4` allows up to FP2 for `x`, although selection may choose a
+simpler form. Both predictors are retained through `keep`.
+
+```{r ordinal-fit, eval=has_rms}
+fit_ordinal <- mfp2(
+  outcome ~ fp(x, df = 4) + group,
+  data = dat_ordinal,
+  family = ordinal_family(),
+  keep = c("x", "group"),
+  verbose = FALSE
+)
+```
+
+Use `type = "response"` to obtain category probabilities. The result
+has one row per observation and columns for `low`, `medium`, and
+`high`. Each row sums to one.
+
+```{r ordinal-prediction, eval=has_rms}
+predict(
+  fit_ordinal,
+  newdata = dat_ordinal[1:5, c("x", "group")],
+  type = "response",
+  se.fit = FALSE
+)
+```
+
+The plot contains a panel for each response cutoff: `medium/high`
+versus `low`, and `high` versus `low/medium`. The panels share the
+same predictor effect but have different cutoff intercepts. Fitted
+contributions and pointwise 95% confidence intervals are shown on
+the cumulative log-odds scale. Residual points are hidden by
+`partial_only = TRUE`.
+
+```{r ordinal-plot, eval=has_rms}
+ordinal_plots <- plot(fit_ordinal, terms = "x", partial_only = TRUE)
+print(ordinal_plots[[1]])
+```
+
+## Generalized estimating equations
+
+Use `gee_family()` for observations grouped within individuals or
+other clusters. This example simulates four measurements for each
+of 50 individuals. A shared individual effect creates correlation
+between measurements from the same person.
+
+```{r gee-data}
+set.seed(1103)
+n_individuals <- 50
+n_visits <- 4
+
+dat_gee <- data.frame(
+  id = rep(seq_len(n_individuals), each = n_visits),
+  visit = rep(seq_len(n_visits), times = n_individuals),
+  x = runif(n_individuals * n_visits, 0.5, 4),
+  group = factor(rep(
+    sample(c("A", "B"), n_individuals, replace = TRUE),
+    each = n_visits
+  ))
+)
+
+individual_effect <- rep(rnorm(n_individuals, sd = 0.6), each = n_visits)
+dat_gee$outcome <- 0.8 * log(dat_gee$x) +
+  0.4 * (dat_gee$group == "B") + individual_effect +
+  rnorm(nrow(dat_gee), sd = 0.5)
+```
+
+The model uses a Gaussian response with an identity link. The
+exchangeable working correlation assumes the same correlation between
+any two measurements within an individual. The `id` argument identifies
+individuals, and `waves` identifies measurement occasions. Rows are
+already ordered by individual and occasion.
+
+Setting `df = 2` allows a linear or FP1 function for `x`. Both
+predictors are retained through `keep`.
+
+```{r gee-fit}
+fit_gee <- mfp2(
+  outcome ~ fp(x, df = 2) + group,
+  data = dat_gee,
+  family = gee_family(family = gaussian(), corstr = "exchangeable"),
+  id = id,
+  waves = visit,
+  criterion = "aic",
+  keep = c("x", "group"),
+  verbose = FALSE
+)
+```
+
+For GEE, `"aic"` is the default criterion and uses an MFP-adjusted
+QICu score. The alternatives are `"bic"`, which uses QBIC, and
+`"pvalue"`, which uses Wald-based comparisons.
+
+The following code returns predicted population-average means and
+their standard errors for the first five observations. Only the
+predictor values are needed in `newdata`.
+
+```{r gee-prediction}
+predict(
+  fit_gee,
+  newdata = dat_gee[1:5, c("x", "group")],
+  type = "response",
+  se.fit = TRUE
+)
+```
+
+The result includes `fit` for the predicted means and `se.fit` for
+their standard errors. These describe uncertainty in the estimated
+means, not the variation of individual outcomes.
+
+The plot shows the fitted contribution of `x` on the outcome scale,
+with pointwise 95% confidence intervals. Setting `partial_only = TRUE`
+hides the residual points.
+
+```{r gee-plot}
+gee_plots <- plot(fit_gee, terms = "x", partial_only = TRUE)
+print(gee_plots[[1]])
+```
+
 # References
+
+Kipruto, E., Royston, P. and Sauerbrei, W. (2026). Multivariable Fractional
+Polynomial Interaction Models in R. *Journal of Statistical Software*.
+
+Kipruto, E. and Sauerbrei, W. (2026). Modelling Spike-at-Zero Covariates
+with Fractional Polynomials in R. *Journal of Statistical Software*.
 
 Sauerbrei, W., Royston, P. and Kipruto, E. (2025). Multivariable
 fractional polynomial models and extensions. In *International

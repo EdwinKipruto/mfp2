@@ -11,7 +11,7 @@
 #   - SE and CI are present when vcov is available
 #   - Non-ordinal families are unaffected
 
-skip_if_no_rms <- function() skip_if_not_installed("rms")
+skip_if_no_rms <- function() skip_if_not_installed("rms", minimum_version = "7.0-0")
 
 make_ordinal_data <- function(n = 300, seed = 7, k = 4) {
   set.seed(seed)

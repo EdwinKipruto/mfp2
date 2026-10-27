@@ -259,7 +259,7 @@ summary.mfp2 <- function(object,
   }
 
   formula_strings <- if (isTRUE(formulas)) {
-    mfp2_summary_formula_strings(object, classified)
+    mfp2_summary_formula_strings(object, classified, digits = digits)
   } else {
     NULL
   }
@@ -2984,7 +2984,7 @@ mfp2_design_column_info <- function(object) {
 #' @param classified Classification result from
 #'   `mfp2_summary_classify_terms()`.
 #'
-#' @return A data frame with columns `variable`, `term`, and `coef`, or
+#' @return A data frame with columns `variable`, `term`, `center`, and `coef`, or
 #'   `NULL` when no nonlinear terms are present or no coefficients match.
 #'
 #' @keywords internal
@@ -2994,13 +2994,29 @@ mfp2_summary_basis_table <- function(object, classified) {
   if (length(nl_vars) == 0L) return(NULL)
 
   coefs <- object$coefficients
+  design_info <- mfp2_design_column_info(object)
   rows <- list()
   for (v in nl_vars) {
     cols_v <- intersect(names(coefs), classified$cols_by_var[[v]])
     for (k in seq_along(cols_v)) {
+      row <- match(cols_v[[k]], design_info$model_column)
+      if (is.na(row)) {
+        stop(sprintf("No final design metadata found for coefficient '%s'.", cols_v[[k]]),
+             call. = FALSE)
+      }
+      center <- if (isTRUE(design_info$centered[[row]])) {
+        design_info$center[[row]]
+      } else {
+        0
+      }
+      if (!is.finite(center)) {
+        stop(sprintf("No finite centering constant found for coefficient '%s'.", cols_v[[k]]),
+             call. = FALSE)
+      }
       rows[[length(rows) + 1L]] <- data.frame(
         variable = if (k == 1L) v else "",
-        term     = mfp2_summary_term_label(object, classified, v, cols_v[k]),
+        term     = design_info$basis[[row]],
+        center   = center,
         coef     = unname(coefs[cols_v[k]]),
         row.names = NULL,
         stringsAsFactors = FALSE
@@ -3188,8 +3204,8 @@ mfp2_summary_shift_scale <- function(object, v) {
 #'
 #' Builds the printable fitted-function formula strings shown for nonlinear
 #' terms in the printed summary. Each formula is of the form
-#' `f(x) = b1 * label1 + b2 * label2 + ...`, using `signif()` rounding for
-#' coefficients so the display remains readable.
+#' `f(x) = b1 * label1 + b2 * label2 + ...`, using `digits` decimal places
+#' for coefficients and centering constants.
 #'
 #' @param object An `"mfp2"` model object.
 #' @param classified Classification result from
@@ -3200,19 +3216,39 @@ mfp2_summary_shift_scale <- function(object, v) {
 #'
 #' @keywords internal
 #' @noRd
-mfp2_summary_formula_strings <- function(object, classified) {
+mfp2_summary_formula_strings <- function(object, classified, digits = 3L) {
   nl_vars <- classified$variable_names[classified$is_nonlinear]
   if (length(nl_vars) == 0L) return(NULL)
 
   coefs <- object$coefficients
+  design_info <- mfp2_design_column_info(object)
   out <- character(length(nl_vars))
   for (i in seq_along(nl_vars)) {
     v <- nl_vars[i]
     cols_v <- intersect(names(coefs), classified$cols_by_var[[v]])
     terms <- vapply(cols_v, function(col) {
       b <- unname(coefs[col])
-      lbl <- mfp2_summary_term_label(object, classified, v, col)
-      sprintf("%s * %s", format(signif(b, 4), trim = TRUE), lbl)
+      row <- match(col, design_info$model_column)
+      if (is.na(row)) {
+        stop(sprintf("No final design metadata found for coefficient '%s'.", col),
+             call. = FALSE)
+      }
+      lbl <- design_info$basis[[row]]
+      if (isTRUE(design_info$centered[[row]])) {
+        center <- design_info$center[[row]]
+        if (!is.finite(center)) {
+          stop(sprintf("No finite centering constant found for coefficient '%s'.", col),
+               call. = FALSE)
+        }
+        # Use the stored centre, rounding only its displayed value.
+        # Preserve uncentred labels.
+        if (center != 0) {
+          operator <- if (center < 0) "+" else "-"
+          lbl <- sprintf("(%s %s %s)", lbl, operator,
+                         formatC(abs(center), format = "f", digits = digits))
+        }
+      }
+      sprintf("%s * %s", formatC(b, format = "f", digits = digits), lbl)
     }, character(1L))
     body <- paste(terms, collapse = " + ")
     # Tidy "+ -" into "- ".
@@ -3864,14 +3900,15 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
       cat("\n")
     }
 
-    # Optional: raw basis coefficients.
+    # Optional: coefficients and centering constants for nonlinear terms.
     if (!is.null(x$basis)) {
-      cat("Basis coefficients:\n")
+      cat("Coefficients for nonlinear terms:\n")
       bt <- x$basis
       disp_b <- data.frame(
         Variable = bt$variable,
-        Term = bt$term,
-        coef = format_print_decimal(bt$coef, digits),
+        Basis = bt$term,
+        Center = format_print_decimal(bt$center, digits),
+        Coefficient = format_print_decimal(bt$coef, digits),
         check.names = FALSE,
         stringsAsFactors = FALSE
       )

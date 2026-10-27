@@ -32,4 +32,8 @@ data(advanced_prostate_cancer)
 \description{
 Advanced prostate cancer dataset used in Royston and Sauerbrei (2008) book.
 }
+\examples{
+data(advanced_prostate_cancer)
+str(advanced_prostate_cancer)
+}
 \keyword{data}

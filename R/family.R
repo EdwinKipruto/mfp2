@@ -221,6 +221,21 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' Software}, 15(2), 1--11.
 #'
 #' @seealso [mfp2()], [geepack::geeglm()]
+#'
+#' @examples
+#' set.seed(1)
+#' d <- data.frame(id = rep(1:40, each = 3), x = runif(120, 1, 5))
+#' d$y <- log(d$x) + rnorm(40, sd = 0.5)[d$id] + rnorm(120, sd = 0.3)
+#'
+#' fit_gee <- mfp2(
+#'   y ~ fp(x, df = 2),
+#'   data = d,
+#'   family = gee_family(gaussian(), corstr = "exchangeable"),
+#'   id = d$id,
+#'   verbose = FALSE
+#' )
+#' coef(fit_gee)
+#'
 #' @export
 gee_family <- function(family = stats::gaussian(),
                        corstr = c("exchangeable", "independence", "ar1"),
@@ -406,8 +421,7 @@ multinomial_family <- function(reference = NULL) {
 #' A positive predictor coefficient indicates an association with higher
 #' outcome categories. Optional case weights must be finite and strictly
 #' positive. They are used without normalisation in selection and final fitting.
-#' Integer weights are equivalent to repeating observations for likelihood
-#' calculations. BIC uses the number of fitted rows as its sample size.
+#' BIC uses the number of fitted rows as its sample size.
 #'
 #' @return A family specification to supply as the \code{family} argument
 #'   of [mfp2()] or [mfpi()].
@@ -417,7 +431,8 @@ multinomial_family <- function(reference = NULL) {
 #' ordinal_family(link = "probit")
 #'
 #' \donttest{
-#' if (requireNamespace("rms", quietly = TRUE)) {
+#' if (requireNamespace("rms", quietly = TRUE) &&
+#'     utils::packageVersion("rms") >= "7.0-0") {
 #'   set.seed(44)
 #'   n <- 180
 #'   ordinal_data <- data.frame(

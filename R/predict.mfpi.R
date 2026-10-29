@@ -454,6 +454,8 @@ build_group_fp_basis <- function(cont_mat,
 #' - Binomial models with a logit link: log-odds scale.
 #' - Poisson and negative-binomial models with a log link: log of the
 #'   expected count.
+#' - Negative-binomial models with a square-root link: square root of the
+#'   expected count; with an identity link: the expected count.
 #' - Gamma models with an inverse link: reciprocal of the expected outcome.
 #' - Inverse-Gaussian models with an inverse-squared link: reciprocal of
 #'   the squared expected outcome.

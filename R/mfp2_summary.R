@@ -541,7 +541,7 @@ mfp2_summary_model_metadata <- function(object,
     if (is.character(link) && length(link) == 1L && !is.na(link)) {
       out$link <- link
     } else {
-      # The supported fastglm negative-binomial backend uses the log link.
+      # Fits without stored family metadata used the original log link.
       out$link <- "log"
     }
     if (is.numeric(object$theta) && length(object$theta) == 1L &&

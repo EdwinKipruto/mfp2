@@ -680,6 +680,15 @@ fit_glm <- function(x,
   }
   is_gaussian <- isTRUE(fit_flags$is_gaussian)
   is_negbin <- isTRUE(fit_flags$is_negbin)
+  negbin_link <- if (is_negbin) {
+    if (is.null(fit_flags$negbin_link)) {
+      mfp2_negbin_link(family)
+    } else {
+      fit_flags$negbin_link
+    }
+  } else {
+    NULL
+  }
   estimates_dispersion <- isTRUE(fit_flags$estimates_dispersion)
 
   has_predictors <- !is.null(x) && NCOL(x) > 0L
@@ -713,7 +722,8 @@ fit_glm <- function(x,
     }
 
     fit <- if (is_negbin) {
-      fit_glm_fastglm_nb(xx, y, weights, offset, control)
+      fit_glm_fastglm_nb(xx, y, weights, offset, control,
+                         link = negbin_link, fast = TRUE)
     } else if (identical(fitter, "fastglm")) {
       fit_glm_fastglm(xx, y, family, weights, offset, control)
     } else {
@@ -742,7 +752,8 @@ fit_glm <- function(x,
         intercept = TRUE
       )
     }
-    fit <- fit_glm_fastglm_nb(xx, y, weights, offset, control)
+    fit <- fit_glm_fastglm_nb(xx, y, weights, offset, control,
+                              link = negbin_link, fast = FALSE)
 
   } else {
 
@@ -1176,21 +1187,37 @@ fit_glm_fastglm <- function(x, y, family, weights, offset, control) {
 
 #' Fit a negative-binomial model with fastglm
 #'
-#' Fits candidate and final models with [fastglm::fastglm_nb()].
-#' Checks that the result contains finite values needed for model selection
-#' and counts the estimated dispersion parameter in the AIC. An error or
-#' incomplete result stops fitting; there is no alternative fitting method
-#' for negative-binomial models.
+#' Fits candidate and final models with [fastglm::fastglm_nb()] using the
+#' requested link. Checks that the result contains finite values needed for
+#' model selection and counts the estimated dispersion parameter in the AIC.
+#' There is no alternative fitting method for negative-binomial models.
+#'
+#' The square-root and identity links have a restricted feasible domain:
+#' `sqrt` requires a positive linear predictor and `identity` a positive mean
+#' for every observation. A fit outside that domain, or a backend error for
+#' one of these links, is reported through `mfp2_stop_fit()`, so a single FP
+#' power candidate is skipped while null, linear, and final fits stop. The
+#' link is never changed and fitted values are never clipped. Log-link
+#' backend errors keep their original strict behaviour.
+#'
+#' @param link Negative-binomial link: `"log"`, `"sqrt"`, or `"identity"`.
+#' @param fast Whether this is a repeated candidate fit.
 #'
 #' @keywords internal
 #' @noRd
-fit_glm_fastglm_nb <- function(x, y, weights, offset, control) {
+fit_glm_fastglm_nb <- function(x, y, weights, offset, control,
+                               link = "log", fast = TRUE) {
+  link <- mfp2_validate_negbin_link(link)
+  restricted_link <- !identical(link, "log")
+  stage <- if (isTRUE(fast)) "candidate" else "final"
+
   fit <- tryCatch(
     fastglm::fastglm_nb(
       x = x,
       y = y,
       weights = weights,
       offset = offset,
+      link = link,
       method = 0L,
       # Apply glm.control() to the inner IRLS fit. fastglm_nb-specific outer
       # optimization controls keep their documented defaults.
@@ -1198,13 +1225,57 @@ fit_glm_fastglm_nb <- function(x, y, weights, offset, control) {
       maxit = control$maxit
     ),
     error = function(e) {
-      stop(
-        "fastglm could not fit the requested negative-binomial model: ",
-        conditionMessage(e),
-        call. = FALSE
+      message <- paste0(
+        "fastglm could not fit the requested negative-binomial model (",
+        link, " link): ", conditionMessage(e)
       )
+      if (restricted_link) {
+        mfp2_stop_fit(message, fast = fast)
+      }
+      stop(message, call. = FALSE)
     }
   )
+
+  # Guard against a backend that ignores the requested link.
+  fitted_link <- if (is.list(fit$family)) fit$family$link else NULL
+  if (!identical(fitted_link, link)) {
+    stop(
+      "fastglm returned a negative-binomial fit with link '",
+      if (is.character(fitted_link)) fitted_link else "unknown",
+      "' instead of the requested '", link, "' link. ",
+      "Update fastglm to a version whose `fastglm_nb()` supports `link`.",
+      call. = FALSE
+    )
+  }
+
+  # The square-root and identity links can leave their feasible domain. Check
+  # it before any likelihood-based validation, because an infeasible mean also
+  # makes the log-likelihood non-finite.
+  if (restricted_link) {
+    eta <- fit$linear.predictors
+    mu <- fit$fitted.values
+    domain_ok <- is.numeric(eta) && length(eta) == NROW(y) &&
+      all(is.finite(eta)) &&
+      is.numeric(mu) && length(mu) == NROW(y) && all(is.finite(mu)) &&
+      all(mu > 0) &&
+      (!identical(link, "sqrt") || all(eta > 0))
+    if (!domain_ok) {
+      requirement <- if (identical(link, "sqrt")) {
+        "a positive linear predictor"
+      } else {
+        "a positive mean"
+      }
+      mfp2_stop_fit(
+        paste0(
+          "The ", stage, " negative-binomial model with the ", link,
+          " link has fitted values outside the link's valid domain; the ",
+          link, " link requires ", requirement, " for every observation. ",
+          "The link was not changed and fitted values were not adjusted."
+        ),
+        fast = fast
+      )
+    }
+  }
 
   # fastglm_nb() does not return glm.fit()-style working residuals. They
   # are not needed for negative-binomial candidate selection, which is based on
@@ -1248,7 +1319,7 @@ fit_glm_fastglm_nb <- function(x, y, weights, offset, control) {
         family_is_usable)) {
     stop(
       "fastglm returned an incomplete or non-finite negative-binomial fit; ",
-      "no base fitter fallback is available for `family = \"negbin\"`.",
+      "no base fitter fallback is available for negative-binomial models.",
       call. = FALSE
     )
   }

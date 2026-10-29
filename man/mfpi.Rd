@@ -253,8 +253,10 @@ These minimum counts do not guarantee that the models can be fitted.}
 \item{family}{The regression family or model. Default: \code{"gaussian"}.
 Supported GLM families are \code{"gaussian"}, \code{"binomial"}, \code{"poisson"},
 \code{"Gamma"}, and \code{"inverse.gaussian"}, supplied as a name, function,
-or family object. Use \code{"negbin"} for negative-binomial regression
-(requires \code{fastglm}), or \code{"multinomial"} or \code{\link[=multinomial_family]{multinomial_family()}}
+or family object. Use \code{\link[=negbin_family]{negbin_family()}} for negative-binomial
+regression with a \code{"log"}, \code{"sqrt"}, or \code{"identity"} link (requires
+\code{fastglm}); \code{"negbin"} is shorthand for \code{negbin_family(link = "log")}.
+Use \code{"multinomial"} or \code{\link[=multinomial_family]{multinomial_family()}}
 for outcomes with at least three classes, supplied as class labels
 or a matrix of class counts.
 Use \code{"ordinal"} or \code{\link[=ordinal_family]{ordinal_family()}} for ordered outcomes with at

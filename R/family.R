@@ -479,6 +479,173 @@ ordinal_family <- function(link = c("logistic", "probit", "loglog",
 }
 
 
+#' Negative-Binomial Family
+#'
+#' Use \code{negbin_family()} with [mfp2()] or [mfpi()] for overdispersed
+#' count outcomes. The regression coefficients and the negative-binomial
+#' dispersion parameter \eqn{\theta} are estimated jointly by maximum
+#' likelihood with [fastglm::fastglm_nb()], using the variance function
+#' \eqn{\mu + \mu^2 / \theta}.
+#'
+#' \code{family = "negbin"} is shorthand for
+#' \code{negbin_family(link = "log")} and gives the same model.
+#'
+#' @param link Link function relating the expected count \eqn{\mu} to the
+#'   linear predictor \eqn{\eta}. One of \code{"log"} (the default,
+#'   \eqn{\log\mu = \eta}), \code{"sqrt"} (\eqn{\sqrt{\mu} = \eta}), or
+#'   \code{"identity"} (\eqn{\mu = \eta}). These are the links supported by
+#'   [fastglm::fastglm_nb()].
+#'
+#' @details
+#' The response must contain finite, nonnegative integer counts.
+#'
+#' Coefficients, fitted functions, contrasts, and \code{type = "link"}
+#' predictions are on the scale of the chosen link: the log mean, the
+#' square root of the mean, or the mean itself. \code{type = "response"}
+#' predictions are expected counts. Response-scale standard errors use the
+#' delta method with the derivative of the chosen inverse link. An offset
+#' is added to the linear predictor on the same link scale; for example,
+#' \code{log(exposure)} is the usual exposure offset only for the log link.
+#'
+#' The log link gives a positive mean for every linear predictor. The square-root
+#' and identity links do not: the square-root link requires a positive linear
+#' predictor, and the identity link requires a positive mean, for every
+#' observation. A fit that does not meet these requirements, or does not
+#' converge, is not used. During the FP power search such a candidate is
+#' skipped and reported in a warning, as for other candidates that cannot be
+#' fitted. If the null, linear, or final model cannot be fitted, model fitting
+#' stops with an error. The link is never changed, and fitted values are never
+#' adjusted, to make a fit succeed. Positive covariates, such as those with
+#' a positive \code{shift}, help keep these links valid.
+#'
+#' Negative-binomial models require the suggested \pkg{fastglm} package
+#' (version 0.1.1 or later). Generalized estimating equations via
+#' [gee_family()] do not support negative-binomial responses.
+#'
+#' @return A family specification to supply as the \code{family} argument
+#'   of [mfp2()] or [mfpi()].
+#'
+#' @examples
+#' negbin_family()
+#' negbin_family(link = "sqrt")
+#'
+#' if (requireNamespace("fastglm", quietly = TRUE) &&
+#'     "fastglm_nb" %in% getNamespaceExports("fastglm")) {
+#'   set.seed(45)
+#'   n <- 200
+#'   count_data <- data.frame(x = stats::runif(n, 1, 4))
+#'   count_data$y <- stats::rnbinom(
+#'     n,
+#'     mu = with(count_data, (0.8 + 0.6 * x)^2),
+#'     size = 3
+#'   )
+#'
+#'   fit_sqrt <- mfp2(
+#'     y ~ fp(x, df = 1),
+#'     data = count_data,
+#'     family = negbin_family(link = "sqrt"),
+#'     verbose = FALSE
+#'   )
+#'   predict(fit_sqrt, newdata = count_data[1:3, ], type = "response")
+#' }
+#'
+#' @seealso [mfp2()], [mfpi()], [fastglm::fastglm_nb()]
+#' @export
+negbin_family <- function(link = c("log", "sqrt", "identity")) {
+  link <- mfp2_validate_negbin_link(link, default_allowed = TRUE)
+
+  structure(
+    list(family = "negbin", link = link),
+    class = c("mfp2_negbin_family", "mfp2_family")
+  )
+}
+
+
+#' Validate a Negative-Binomial Link Specification
+#'
+#' @param link Candidate link specification.
+#' @param default_allowed Whether the unmodified constructor default
+#'   `c("log", "sqrt", "identity")` may be supplied and resolved to `"log"`.
+#'
+#' @return The validated link as a character scalar.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_validate_negbin_link <- function(link, default_allowed = FALSE) {
+  supported <- mfp2_negbin_links()
+  if (isTRUE(default_allowed) && identical(link, supported)) {
+    return("log")
+  }
+
+  supported_text <- paste0('"', supported, '"', collapse = ", ")
+  if (is.function(link) || inherits(link, "link-glm")) {
+    stop(
+      "! `link` for `negbin_family()` must be given by name, not as a function or link object.",
+      "\ni Supported links are: ", supported_text, ".",
+      call. = FALSE
+    )
+  }
+  if (!is.character(link) || length(link) != 1L || is.na(link) ||
+      !nzchar(link)) {
+    stop(
+      "! `link` for `negbin_family()` must be a single character string.",
+      "\ni Supported links are: ", supported_text, ".",
+      call. = FALSE
+    )
+  }
+  if (!link %in% supported) {
+    stop(
+      sprintf(
+        "! Unsupported link for `negbin_family()`: '%s'.",
+        link
+      ),
+      "\ni Supported links are: ", supported_text,
+      ". These are the links available in `fastglm::fastglm_nb()`.",
+      call. = FALSE
+    )
+  }
+  link
+}
+
+
+#' Links Supported for Negative-Binomial Models
+#'
+#' @return Character vector of supported negative-binomial links.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_negbin_links <- function() {
+  c("log", "sqrt", "identity")
+}
+
+
+#' Resolve the Link of a Negative-Binomial Family Specification
+#'
+#' Accepts the normalized [negbin_family()] object and, for direct internal
+#' helper calls, the legacy character label `"negbin"`, which denotes the log
+#' link.
+#'
+#' @param family Negative-binomial family specification.
+#'
+#' @return The link as a character scalar.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_negbin_link <- function(family) {
+  if (inherits(family, "mfp2_negbin_family")) {
+    return(mfp2_validate_negbin_link(family$link))
+  }
+  if (is.character(family) && length(family) == 1L &&
+      identical(as.vector(family), "negbin")) {
+    return("log")
+  }
+  stop(
+    "Internal error: expected a negative-binomial family specification.",
+    call. = FALSE
+  )
+}
+
+
 #' Does This Family Fit an Ordinary Intercept?
 #'
 #' Predicate used by the MFP/MFPI engine to decide whether the fitted-model
@@ -1529,6 +1696,9 @@ prepare_family_for_fit <- function(family, family_string, y, weights,
         family_string = family_string
       )
     )
+    if (identical(family_string, "negbin")) {
+      attr(family, "mfp2_fit_flags")$negbin_link <- mfp2_negbin_link(family)
+    }
   }
   list(family = family, strata = strata)
 }
@@ -1562,8 +1732,15 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
     family_string <- family$family
     if (!is.character(family_string) || length(family_string) != 1L ||
         !family_string %in% c("survreg", "finegray", "multinomial", "ordinal",
-                              "gee")) {
+                              "gee", "negbin")) {
       stop("! Invalid mfp2 family specification.", call. = FALSE)
+    }
+    if (identical(family_string, "negbin")) {
+      if (!inherits(family, "mfp2_negbin_family")) {
+        stop("! Invalid mfp2 family specification.", call. = FALSE)
+      }
+      # Re-validate in case the specification was modified after construction.
+      mfp2_validate_negbin_link(family$link)
     }
     return(list(family = family, family_string = family_string))
   }
@@ -1616,8 +1793,11 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
       )
     }
 
-    family_obj <- if (family %in% c("cox", "negbin")) {
+    family_obj <- if (identical(family, "cox")) {
       family
+    } else if (identical(family, "negbin")) {
+      # Backward-compatible shorthand for negbin_family(link = "log").
+      negbin_family(link = "log")
     } else if (identical(family, "multinomial")) {
       multinomial_family()
     } else if (identical(family, "survreg")) {
@@ -1771,8 +1951,8 @@ get_family_string_formula <- function(family, family_arg = deparse(substitute(fa
 #'
 #' @param family Character family name, family function, family object, or an
 #'   mfp2 survival-family specification.
-#' @return A resolved GLM family object, character Cox/negbin label, or an mfp2
-#'   survival-family specification.
+#' @return A resolved GLM family object, the character Cox label, or an mfp2
+#'   family specification (including negative-binomial specifications).
 #' @keywords internal
 #' @noRd
 resolve_fit_model_family <- function(family) {

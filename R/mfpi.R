@@ -159,8 +159,10 @@
 #' @param family The regression family or model. Default: `"gaussian"`.
 #' Supported GLM families are `"gaussian"`, `"binomial"`, `"poisson"`,
 #' `"Gamma"`, and `"inverse.gaussian"`, supplied as a name, function,
-#' or family object. Use `"negbin"` for negative-binomial regression
-#' (requires `fastglm`), or `"multinomial"` or [multinomial_family()]
+#' or family object. Use [negbin_family()] for negative-binomial
+#' regression with a `"log"`, `"sqrt"`, or `"identity"` link (requires
+#' `fastglm`); `"negbin"` is shorthand for `negbin_family(link = "log")`.
+#' Use `"multinomial"` or [multinomial_family()]
 #' for outcomes with at least three classes, supplied as class labels
 #' or a matrix of class counts.
 #' Use `"ordinal"` or [ordinal_family()] for ordered outcomes with at

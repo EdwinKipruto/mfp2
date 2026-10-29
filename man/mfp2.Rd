@@ -138,13 +138,17 @@ subset is applied. See the Subsetting section.}
 \item{family}{Model family; default \code{"gaussian"}. Supported GLM families
 are \code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, \code{"Gamma"}, and
 \code{"inverse.gaussian"}, supplied as a name, function, or family object.
-Quasi families are not supported. Use \code{"negbin"} for negative-binomial
-models; \code{"multinomial"} or \code{\link[=multinomial_family]{multinomial_family()}} for multinomial models;
+Quasi families are not supported. Use \code{\link[=negbin_family]{negbin_family()}} for
+negative-binomial models, choosing a \code{"log"} (default), \code{"sqrt"}, or
+\code{"identity"} link; \code{"negbin"} is shorthand for
+\code{negbin_family(link = "log")}. Use \code{"multinomial"} or
+\code{\link[=multinomial_family]{multinomial_family()}} for multinomial models;
 \code{"ordinal"} or \code{\link[=ordinal_family]{ordinal_family()}} for cumulative-link ordinal models;
 \code{"cox"} for Cox models; \code{\link[=survreg_family]{survreg_family()}} for parametric survival
 models; \code{\link[=finegray_family]{finegray_family()}} for Fine--Gray models; or \code{\link[=gee_family]{gee_family()}}
 for generalized estimating equations. GEE supports Gaussian,
-binomial, Poisson, and Gamma response families.}
+binomial, Poisson, and Gamma response families, but not
+negative-binomial responses.}
 
 \item{criterion}{Model-selection criterion: \code{"pvalue"}, \code{"aic"}, or
 \code{"bic"}. If \code{NULL} (default), \code{"aic"} is used for GEE models
@@ -496,9 +500,11 @@ as \code{keep} and \code{powers} must match predictors in the model.
 Set \code{family} to choose the model. Standard choices are \code{"gaussian"} for
 numeric outcomes, \code{"binomial"} for binary outcomes, \code{"poisson"} for counts,
 and \code{"Gamma"} or \code{"inverse.gaussian"} for positive numeric outcomes.
-Use \code{"negbin"} for negative-binomial count regression. The first five
-also accept a GLM family function or object, so you can choose a link
-supported by \code{\link[stats:glm]{stats::glm()}}. Quasi families are not supported.
+Use \code{\link[=negbin_family]{negbin_family()}} for negative-binomial count regression with a
+\code{"log"}, \code{"sqrt"}, or \code{"identity"} link; \code{"negbin"} is shorthand for
+\code{negbin_family(link = "log")}. The first five also accept a GLM family
+function or object, so you can choose a link supported by \code{\link[stats:glm]{stats::glm()}}.
+Quasi families are not supported.
 
 Binomial responses may be values from 0 to 1, a two-level factor, or a
 two-column matrix of success and failure counts. Poisson and negative-
@@ -1003,7 +1009,9 @@ fit_inverse_gaussian <- mfp2(
   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
 )
 
-# Negative binomial uses the optional fastglm backend.
+# Negative binomial uses the optional fastglm backend. `"negbin"` is
+# shorthand for negbin_family(link = "log"); see ?negbin_family for the
+# square-root and identity links.
 if (requireNamespace("fastglm", quietly = TRUE)) {
   fit_negbin <- mfp2(
     y_negbin ~ x1 + x2, data = family_data,

@@ -70,6 +70,8 @@
 #'   log-PSA gives contributions to mean log-PSA.
 #' - Binomial with a logit link: log-odds.
 #' - Poisson and negative-binomial with a log link: log mean.
+#' - Negative-binomial with a square-root link: square root of the mean;
+#'   with an identity link: the mean.
 #' - Other GLM and GEE models: the scale defined by the fitted link function.
 #' - Cox: log relative hazard.
 #' - Fine--Gray: log relative subdistribution hazard.
@@ -731,7 +733,12 @@ mfp2_plot_partial_ylabel <- function(model) {
   if (identical(family, "cox")) return("Contribution to log hazard")
   if (identical(family, "finegray")) return("Contribution to log subhazard")
   if (identical(family, "multinomial")) return("Contribution to log odds")
-  if (identical(family, "negbin")) return("Contribution to log mean")
+  if (identical(family, "negbin") &&
+      !(is.list(model$family) && is.character(model$family$link))) {
+    # Negative-binomial fits store their link in the fastglm family; a fit
+    # without that metadata can only have used the original log link.
+    return("Contribution to log mean")
+  }
 
   if (identical(family, "survreg")) {
     distribution <- model$dist

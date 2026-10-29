@@ -125,6 +125,8 @@ in the same units as the response used for fitting. For example, fitting
 log-PSA gives contributions to mean log-PSA.
 \item Binomial with a logit link: log-odds.
 \item Poisson and negative-binomial with a log link: log mean.
+\item Negative-binomial with a square-root link: square root of the mean;
+with an identity link: the mean.
 \item Other GLM and GEE models: the scale defined by the fitted link function.
 \item Cox: log relative hazard.
 \item Fine--Gray: log relative subdistribution hazard.

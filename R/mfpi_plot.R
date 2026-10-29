@@ -1120,7 +1120,8 @@ plot.mfpi <- function(x,
 #'
 #' Extracts the fitted GLM link for use in plot-axis labels. Cox and `survreg`
 #' models use dedicated values because they do not store a GLM
-#' family object, and negative-binomial models use their supported log link.
+#' family object; negative-binomial models report the link stored in their
+#' fitted `fastglm` family (`"log"`, `"sqrt"`, or `"identity"`).
 #'
 #' @param model Object of class \code{"mfpi"}.
 #'
@@ -1136,6 +1137,13 @@ mfpi_plot_link_name <- function(model) {
   }
   if (identical(family_string, "survreg")) return("survreg")
   if (identical(family_string, "negbin")) {
+    family_obj <- model[["family", exact = TRUE]]
+    link <- if (is.list(family_obj)) family_obj[["link", exact = TRUE]] else NULL
+    if (is.character(link) && length(link) == 1L && !is.na(link) &&
+        link %in% mfp2_negbin_links()) {
+      return(link)
+    }
+    # Fits without stored family metadata used the original log link.
     return("log")
   }
 
@@ -1221,7 +1229,7 @@ mfpi_plot_difference_ylabel <- function(model, group, reference) {
     "Log hazard ratio"
   } else if (identical(family_string, "survreg")) {
     "Location-scale difference"
-  } else if (identical(family_string, "gaussian") &&
+  } else if (family_string %in% c("gaussian", "negbin") &&
              identical(link, "identity")) {
     "Mean difference"
   } else if (identical(family_string, "binomial") &&

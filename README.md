@@ -14,8 +14,9 @@ multinomial and ordinal outcomes; Cox, parametric survival, and Fine–Gray
 competing-risks models; and clustered marginal models fitted by generalized
 estimating equations (GEE). Multinomial fitting uses `nnet`; one FP
 transformation is selected per predictor and shared across logits, with
-logit-specific coefficients. Negative-binomial models require the suggested `fastglm` package.
-Ordinal models require the suggested `rms` package (version 7.0-0 or later). GEE models use `geepack` and
+logit-specific coefficients. Negative-binomial models, specified with
+`negbin_family()` and a log, square-root, or identity link, require the
+suggested `fastglm` package. Ordinal models require the suggested `rms` package (version 7.0-0 or later). GEE models use `geepack` and
 require a cluster identifier supplied through `id` (with optional `waves`).
 
 In addition to standard MFP modelling, `mfp2` provides:
@@ -130,25 +131,32 @@ fit_matrix
 
 ### Supported model families
 
-Choose `family` according to the response. These specifications work with
-`mfp2()`; the formula examples below show their required inputs.
+Choose `family` according to the response. The table shows each family
+with its default settings; to use another option, change the value of the
+argument shown, for example `binomial(link = "probit")`,
+`negbin_family(link = "sqrt")`, or `survreg_family(dist = "lognormal")`.
 
-| Response or model | `family` argument | Requirement |
-| --- | --- | --- |
-| Continuous Gaussian | `"gaussian"` | Numeric response |
-| Binary or grouped binomial | `"binomial"` | Binary response or successes/failures |
-| Counts | `"poisson"` | Nonnegative integer response |
-| Positive continuous | `stats::Gamma(link = "log")` | Positive response |
-| Positive continuous | `stats::inverse.gaussian(link = "log")` | Positive response |
-| Overdispersed counts | `"negbin"` | Requires `fastglm` |
-| Unordered classes | `multinomial_family()` | At least three classes; `nnet` |
-| Ordered categories | `ordinal_family()` | At least three ordered categories; requires `rms` (>= 7.0-0) |
-| Right-censored survival | `"cox"` | `survival::Surv(time, status)` |
-| Parametric survival | `survreg_family(dist = "weibull")` | `survival::Surv()` response |
-| Competing risks | `finegray_family(etype = "cause1")` | Multi-state `survival::Surv()` response |
-| Clustered marginal mean | `gee_family(gaussian())` | Contiguous clusters through `id` |
+| Response or model | Family (default settings) | Other supported options | Requirement |
+| --- | --- | --- | --- |
+| Continuous Gaussian | `gaussian(link = "identity")` | `link`: `"log"`, `"inverse"` | Numeric response |
+| Binary or grouped binomial | `binomial(link = "logit")` | `link`: `"probit"`, `"cauchit"`, `"log"`, `"cloglog"` | Binary response or successes/failures |
+| Counts | `poisson(link = "log")` | `link`: `"identity"`, `"sqrt"` | Nonnegative integer response |
+| Positive continuous | `Gamma(link = "inverse")` | `link`: `"identity"`, `"log"` | Positive response |
+| Positive continuous | `inverse.gaussian(link = "1/mu^2")` | `link`: `"inverse"`, `"identity"`, `"log"` | Positive response |
+| Overdispersed counts | `negbin_family(link = "log")` | `link`: `"sqrt"`, `"identity"` | Nonnegative integer counts; requires `fastglm` |
+| Unordered classes | `multinomial_family()` | None (baseline-category logit) | At least three classes; uses `nnet` |
+| Ordered categories | `ordinal_family(link = "logistic")` | `link`: `"probit"`, `"loglog"`, `"cloglog"`, `"cauchit"` | At least three ordered categories; requires `rms` (>= 7.0-0) |
+| Right-censored survival | `"cox"`¹ | Not applicable | `survival::Surv(time, status)` |
+| Parametric survival | `survreg_family(dist = "weibull")` | `dist`: `"exponential"`, `"lognormal"`, `"loglogistic"`, `"gaussian"`, `"logistic"`, `"extreme"`, `"rayleigh"`, `"t"` | `survival::Surv()` response |
+| Competing risks | `finegray_family(etype = "cause1")`² | Not applicable | Multi-state `survival::Surv()` response |
+| Clustered marginal mean | `gee_family(gaussian(link = "identity"))` | Response: `binomial()`, `poisson()`, `Gamma()`; links limited³ | Cluster identifier through `id` |
 
-GEE also accepts binomial, Poisson, and Gamma marginal response families.
+¹ Cox models are specified by name; there is no family function.
+² `etype` has no default. It names the event of interest, here `"cause1"`.
+³ The `geepack` backend accepts only the identity, logit, probit, cloglog,
+log, and inverse links. Negative-binomial responses are not supported with
+`gee_family()`.
+
 Quasi families are not supported by the likelihood-based GLM selection.
 
 ### Fit binomial, Poisson, Gamma, and inverse-Gaussian models
@@ -190,15 +198,40 @@ fit_inverse_gaussian <- mfp2(
 
 ### Fit a negative-binomial model
 
-`family = "negbin"` requires the suggested `fastglm` package.
+Negative-binomial models require the suggested `fastglm` package. Use
+`negbin_family()` to choose the link: `"log"` (the default), `"sqrt"`, or
+`"identity"`. `family = "negbin"` is shorthand for
+`negbin_family(link = "log")` and gives the same model.
+
+Coefficients, fitted functions, and `type = "link"` predictions are on the
+chosen link scale; `type = "response"` predictions are expected counts.
+The square-root link requires a positive linear predictor and the identity
+link a positive mean for every observation. FP candidates that violate
+this are skipped with a warning; the link is never changed and fitted
+values are never adjusted to make a fit succeed.
 
 ```r
 if (requireNamespace("fastglm", quietly = TRUE)) {
   family_data$overdispersed_count <- rnbinom(n_family, mu = mu, size = 2)
+
+  # Log link: these two specifications are equivalent.
   fit_negbin <- mfp2(
-    overdispersed_count ~ fp(x, df = 2) + z,
+    overdispersed_count ~ fp(x, df = 2) + fp(z, df = 1),
     data = family_data, family = "negbin", verbose = FALSE
   )
+  fit_negbin_log <- mfp2(
+    overdispersed_count ~ fp(x, df = 2) + fp(z, df = 1),
+    data = family_data, family = negbin_family(link = "log"),
+    verbose = FALSE
+  )
+
+  # Square-root link
+  fit_negbin_sqrt <- mfp2(
+    overdispersed_count ~ fp(x, df = 2) + fp(z, df = 1),
+    data = family_data, family = negbin_family(link = "sqrt"),
+    verbose = FALSE
+  )
+  predict(fit_negbin_sqrt, family_data[1:3, ], type = "response")
 }
 ```
 
@@ -313,8 +346,8 @@ fit_finegray <- mfp2(
 
 ### Fit a GEE MFP model for clustered data
 
-Supply a cluster identifier through `id` (clusters must occupy contiguous
-rows). `gee_family()` defaults to an exchangeable working correlation and the
+Supply a cluster identifier through `id`. Rows from the same cluster need
+not be adjacent: `mfp2()` groups them by `id` before fitting. `gee_family()` defaults to an exchangeable working correlation and the
 robust sandwich covariance; `std.err` also accepts `"jack"`, `"j1s"`, and
 `"fij"`. The retained model is a native `geepack::geeglm` object.
 

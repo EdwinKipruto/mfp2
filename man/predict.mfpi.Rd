@@ -186,6 +186,8 @@ Fitted functions and differences are returned on the linear-predictor scale:
 \item Binomial models with a logit link: log-odds scale.
 \item Poisson and negative-binomial models with a log link: log of the
 expected count.
+\item Negative-binomial models with a square-root link: square root of the
+expected count; with an identity link: the expected count.
 \item Gamma models with an inverse link: reciprocal of the expected outcome.
 \item Inverse-Gaussian models with an inverse-squared link: reciprocal of
 the squared expected outcome.

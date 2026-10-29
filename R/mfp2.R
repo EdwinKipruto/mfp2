@@ -77,9 +77,11 @@
 #' Set `family` to choose the model. Standard choices are `"gaussian"` for
 #' numeric outcomes, `"binomial"` for binary outcomes, `"poisson"` for counts,
 #' and `"Gamma"` or `"inverse.gaussian"` for positive numeric outcomes.
-#' Use `"negbin"` for negative-binomial count regression. The first five
-#' also accept a GLM family function or object, so you can choose a link
-#' supported by [stats::glm()]. Quasi families are not supported.
+#' Use [negbin_family()] for negative-binomial count regression with a
+#' `"log"`, `"sqrt"`, or `"identity"` link; `"negbin"` is shorthand for
+#' `negbin_family(link = "log")`. The first five also accept a GLM family
+#' function or object, so you can choose a link supported by [stats::glm()].
+#' Quasi families are not supported.
 #'
 #' Binomial responses may be values from 0 to 1, a two-level factor, or a
 #' two-column matrix of success and failure counts. Poisson and negative-
@@ -431,13 +433,17 @@
 #' @param family Model family; default `"gaussian"`. Supported GLM families
 #' are `"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`, and
 #' `"inverse.gaussian"`, supplied as a name, function, or family object.
-#' Quasi families are not supported. Use `"negbin"` for negative-binomial
-#' models; `"multinomial"` or [multinomial_family()] for multinomial models;
+#' Quasi families are not supported. Use [negbin_family()] for
+#' negative-binomial models, choosing a `"log"` (default), `"sqrt"`, or
+#' `"identity"` link; `"negbin"` is shorthand for
+#' `negbin_family(link = "log")`. Use `"multinomial"` or
+#' [multinomial_family()] for multinomial models;
 #' `"ordinal"` or [ordinal_family()] for cumulative-link ordinal models;
 #' `"cox"` for Cox models; [survreg_family()] for parametric survival
 #' models; [finegray_family()] for Fine--Gray models; or [gee_family()]
 #' for generalized estimating equations. GEE supports Gaussian,
-#' binomial, Poisson, and Gamma response families.
+#' binomial, Poisson, and Gamma response families, but not
+#' negative-binomial responses.
 #' @param fitter Backend for GLM candidate fits during the FP search.
 #' `"base"` (default) uses [stats::glm.fit()]; `"fastglm"` uses the
 #' optional `fastglm` package. If `fastglm` is unavailable, ordinary GLMs
@@ -766,7 +772,9 @@
 #'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
 #' )
 #'
-#' # Negative binomial uses the optional fastglm backend.
+#' # Negative binomial uses the optional fastglm backend. `"negbin"` is
+#' # shorthand for negbin_family(link = "log"); see ?negbin_family for the
+#' # square-root and identity links.
 #' if (requireNamespace("fastglm", quietly = TRUE)) {
 #'   fit_negbin <- mfp2(
 #'     y_negbin ~ x1 + x2, data = family_data,

@@ -603,6 +603,7 @@ mfpi.default <- function(
   # (mirroring mfp2.default()), then delegates to fit_mfpi() to select the
   # adjustment model and test each interaction_vars interaction in turn.
   cl <- match.call()
+  cl[[1L]] <- quote(mfpi)
 
   dots <- match.call(expand.dots = FALSE)$...
   mfpi_check_unused_dots(
@@ -2005,6 +2006,7 @@ mfpi.formula <- function(formula,
   # frame, expands fp()/fp2() term attributes into per-variable option lists,
   # then calls mfpi.default() to perform validation, preprocessing, and fitting.
   call <- match.call()
+  call[[1L]] <- quote(mfpi)
 
   # Capture these promises before validation can force them. They are resolved
   # exactly once in the formula data mask below, matching the standard lookup

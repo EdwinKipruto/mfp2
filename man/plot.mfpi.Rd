@@ -10,6 +10,7 @@
   plot_type = c("both", "fitted", "difference"),
   auto_print = TRUE,
   show_title = TRUE,
+  show_grid = TRUE,
   show_rug = FALSE,
   show_ci_fitted = FALSE,
   show_ci_diff = TRUE,
@@ -51,6 +52,9 @@ without displaying them.}
 
 \item{show_title}{A logical value indicating whether to display titles
 and subtitles. Default: \code{TRUE}.}
+
+\item{show_grid}{A logical value indicating whether to display panel grid
+lines. Default: \code{TRUE}. Use \code{FALSE} to remove them.}
 
 \item{show_rug}{A logical value indicating whether to show observed
 continuous predictor values as rug marks along the horizontal axis.

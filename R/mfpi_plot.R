@@ -20,6 +20,8 @@
 #'   without displaying them.
 #' @param show_title A logical value indicating whether to display titles
 #'   and subtitles. Default: `TRUE`.
+#' @param show_grid A logical value indicating whether to display panel grid
+#'   lines. Default: `TRUE`. Use `FALSE` to remove them.
 #' @param show_rug A logical value indicating whether to show observed
 #'   continuous predictor values as rug marks along the horizontal axis.
 #'   Default: `FALSE`.
@@ -177,6 +179,7 @@ plot.mfpi <- function(x,
                       plot_type      = c("both", "fitted", "difference"),
                       auto_print     = TRUE,
                       show_title     = TRUE,
+                      show_grid      = TRUE,
                       show_rug       = FALSE,
                       show_ci_fitted = FALSE,
                       show_ci_diff   = TRUE,
@@ -222,6 +225,7 @@ plot.mfpi <- function(x,
 
   check_logical_scalar(auto_print, "auto_print")
   check_logical_scalar(show_title, "show_title")
+  check_logical_scalar(show_grid, "show_grid")
   check_logical_scalar(show_rug, "show_rug")
   check_logical_scalar(show_ci_fitted, "show_ci_fitted")
   check_logical_scalar(show_ci_diff, "show_ci_diff")
@@ -299,6 +303,14 @@ plot.mfpi <- function(x,
       "Install it with install.packages(\"patchwork\").",
       call. = FALSE
     )
+  }
+
+  # Theme layer controlling panel grid lines. Adding NULL to a ggplot leaves
+  # the theme_bw() grid unchanged.
+  grid_theme <- if (show_grid) {
+    NULL
+  } else {
+    ggplot2::theme(panel.grid = ggplot2::element_blank())
   }
 
   # ---------------------------------------------------------------------------
@@ -551,7 +563,7 @@ plot.mfpi <- function(x,
           } else NULL
         ) +
         ggplot2::theme_bw() +
-        ggplot2::theme(panel.grid = ggplot2::element_blank())
+        grid_theme
 
       if (legend_position == "inside") {
         p <- p + ggplot2::theme(
@@ -606,7 +618,7 @@ plot.mfpi <- function(x,
         }
       ) +
       ggplot2::theme_bw() +
-      ggplot2::theme(panel.grid = ggplot2::element_blank())
+      grid_theme
 
     if (legend_position == "inside") {
       p <- p +
@@ -763,7 +775,7 @@ plot.mfpi <- function(x,
             } else NULL
           ) +
           ggplot2::theme_bw() +
-          ggplot2::theme(panel.grid = ggplot2::element_blank())
+          grid_theme
       )
     }
 
@@ -852,7 +864,7 @@ plot.mfpi <- function(x,
         }
       ) +
       ggplot2::theme_bw() +
-      ggplot2::theme(panel.grid = ggplot2::element_blank())
+      grid_theme
 
     if (isTRUE(show_rug)) {
       p <- p +

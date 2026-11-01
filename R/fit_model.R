@@ -591,6 +591,43 @@ mfp2_muffle_glm_nonconvergence_warning <- function(expr) {
   )
 }
 
+#' Skip GLM Candidates That Fail Numerically
+#'
+#' Evaluates a candidate GLM fit. Known numerical failures of the GLM
+#' backends (for example "inner loop 1; cannot correct step size" when an
+#' extreme FP2 transformation is combined with a non-canonical link) are
+#' converted to an `mfp2_candidate_failure`, so that the FP power search skips
+#' that candidate and reports it in its usual warning. Other errors are
+#' re-signalled unchanged. Used for candidate fits only; final fits stay strict.
+#'
+#' @param expr Unevaluated expression that fits a candidate GLM.
+#'
+#' @return The value of `expr`.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_glm_candidate_guard <- function(expr) {
+  numerical_failures <- c(
+    "cannot correct step size",
+    "no valid set of coefficients has been found",
+    "NA/NaN/Inf in"
+  )
+  tryCatch(
+    expr,
+    error = function(e) {
+      msg <- trimws(conditionMessage(e))
+      if (!inherits(e, "mfp2_candidate_failure") &&
+          any(vapply(numerical_failures, grepl, logical(1L), x = msg, fixed = TRUE))) {
+        mfp2_stop_fit(
+          paste0("The candidate GLM could not be fitted: ", msg, "."),
+          fast = TRUE
+        )
+      }
+      stop(e)
+    }
+  )
+}
+
 #' Fit a generalized linear model
 #'
 #' Fits a candidate model directly from a predictor matrix, or fits the
@@ -725,16 +762,20 @@ fit_glm <- function(x,
       fit_glm_fastglm_nb(xx, y, weights, offset, control,
                          link = negbin_link, fast = TRUE)
     } else if (identical(fitter, "fastglm")) {
-      fit_glm_fastglm(xx, y, family, weights, offset, control)
+      mfp2_glm_candidate_guard(
+        fit_glm_fastglm(xx, y, family, weights, offset, control)
+      )
     } else {
-      mfp2_muffle_glm_nonconvergence_warning(
-        stats::glm.fit(
-          x = xx,
-          y = y,
-          family = family,
-          weights = weights,
-          offset = offset,
-          control = control
+      mfp2_glm_candidate_guard(
+        mfp2_muffle_glm_nonconvergence_warning(
+          stats::glm.fit(
+            x = xx,
+            y = y,
+            family = family,
+            weights = weights,
+            offset = offset,
+            control = control
+          )
         )
       )
     }
@@ -2472,22 +2513,42 @@ mfp2_with_survreg_convergence_guard <- function(expr, fast = TRUE) {
 #' @noRd
 mfp2_with_cox_convergence_guard <- function(expr, fast = TRUE, model = "Cox") {
   stage <- if (isTRUE(fast)) "candidate" else "final"
+  # Numerical failures of a single candidate (for example, an extreme FP2
+  # transformation) are skipped by the power search like non-convergence.
+  # Other errors, and any error in a final fit, are re-signalled unchanged.
+  numerical_failures <- c(
+    "exp overflow",
+    "NA/NaN/Inf in foreign function call"
+  )
 
-  withCallingHandlers(
-    expr,
-    warning = function(w) {
-      msg <- conditionMessage(w)
-      if (grepl("Ran out of iterations and did not converge",
-                msg, fixed = TRUE)) {
+  tryCatch(
+    withCallingHandlers(
+      expr,
+      warning = function(w) {
+        msg <- conditionMessage(w)
+        if (grepl("Ran out of iterations and did not converge",
+                  msg, fixed = TRUE)) {
+          mfp2_stop_fit(
+            paste0(
+              "The ", stage, " ", model,
+              " model did not converge within the configured iteration limit. ",
+              "Adjust `control$iter.max` or inspect the data."
+            ),
+            fast = fast
+          )
+        }
+      }
+    ),
+    error = function(e) {
+      msg <- trimws(conditionMessage(e))
+      if (isTRUE(fast) && !inherits(e, "mfp2_candidate_failure") &&
+          any(vapply(numerical_failures, grepl, logical(1L), x = msg, fixed = TRUE))) {
         mfp2_stop_fit(
-          paste0(
-            "The ", stage, " ", model,
-            " model did not converge within the configured iteration limit. ",
-            "Adjust `control$iter.max` or inspect the data."
-          ),
-          fast = fast
+          paste0("The candidate ", model, " model could not be fitted: ", msg, "."),
+          fast = TRUE
         )
       }
+      stop(e)
     }
   )
 }
@@ -2877,10 +2938,15 @@ fit_finegray <- function(x,
       rhs <- paste(rhs, "+", paste0("strata(", strata_col, ")"))
     }
 
-    cluster_col <- mfp2_internal_name("cluster", used_names, preferred = "..mfp2_subject")
-    data[[cluster_col]] <- prepared$subject_id
-    internal_names$cluster <- cluster_col
-    rhs <- paste(rhs, "+", paste0("cluster(", cluster_col, ")"))
+    # The cluster term only supplies the robust variance of coefficients.
+    # survival::coxph() cannot fit a formula whose only term is cluster(), so
+    # it is omitted for the null model, which has no coefficients.
+    if (has_predictors) {
+      cluster_col <- mfp2_internal_name("cluster", used_names, preferred = "..mfp2_subject")
+      data[[cluster_col]] <- prepared$subject_id
+      internal_names$cluster <- cluster_col
+      rhs <- paste(rhs, "+", paste0("cluster(", cluster_col, ")"))
+    }
     formula <- stats::as.formula(paste(response_col, "~", rhs))
 
     fit <- mfp2_with_cox_convergence_guard(
@@ -2891,7 +2957,8 @@ fit_finegray <- function(x,
         control = control,
         method = method,
         nocenter = nocenter,
-        robust = TRUE,
+        # coxph() requires a cluster term when robust = TRUE.
+        robust = has_predictors,
         x = TRUE,
         y = TRUE
       ),
@@ -2921,7 +2988,9 @@ fit_finegray <- function(x,
     if (!is.null(prepared$strata_original)) {
       training_prediction_data[[internal_names$strata]] <- prepared$strata_original
     }
-    training_prediction_data[[internal_names$cluster]] <- prepared$subject_id_original
+    if (!is.null(internal_names$cluster)) {
+      training_prediction_data[[internal_names$cluster]] <- prepared$subject_id_original
+    }
     fit$mfp2_finegray_training_newdata <- training_prediction_data
   }
 

@@ -359,7 +359,6 @@ data("prostate")
 fit_gaussian <- mfp2(
   lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
   data = prostate,
-  family = "gaussian",
   keep = c("age", "cavol"),
   verbose = FALSE
 )
@@ -368,18 +367,11 @@ fit_gaussian <- mfp2(
 plots <- plot(fit_gaussian, terms = c("age", "cavol"))
 plots[["age"]]
 
-# The response is lpsa, so the vertical scale remains log-PSA.
 # Show only the fitted contribution and its confidence band.
-curves <- plot(
-  fit_gaussian,
-  terms = "age",
-  partial_only = TRUE,
-  terms_seq = "equidistant"
-)
+curves <- plot(fit_gaussian, terms = "age", partial_only = TRUE)
 curves[["age"]]
 
-# Compare each plotted age with age 50.
-# Supply the reference before any shift or transformation.
+# Compare each plotted age with age 50, on the original age scale.
 contrasts <- plot(
   fit_gaussian,
   terms = "age",
@@ -388,333 +380,43 @@ contrasts <- plot(
 )
 contrasts[["age"]]
 
-# Modify an individual plot.
-curves[["age"]] + ggplot2::labs(
-  x = "Age (years)",
-  y = "Age contribution to log-PSA"
-)
+# Each element is a ggplot2 object and can be modified.
+curves[["age"]] + ggplot2::labs(x = "Age (years)")
 
-# To evaluate specific new ages, use predict() and plot its output.
-age_predictions <- predict(
-  fit_gaussian,
-  newdata = data.frame(age = c(40, 50, 60)),
-  type = "contrasts",
-  terms = "age",
-  terms_seq = "data",
-  ref = list(age = 50)
-)[["age"]]
-
-ggplot2::ggplot(
-  age_predictions,
-  ggplot2::aes(x = variable, y = value)
-) +
-  ggplot2::geom_point() +
-  ggplot2::geom_errorbar(
-    ggplot2::aes(ymin = lower, ymax = upper),
-    width = 1
-  ) +
-  ggplot2::labs(y = "Difference from age 50")
-
-\dontrun{
-## Gaussian models: categorical predictors
+## Categorical predictors: use the factor name
 fit_factor <- mfp2(
   Sepal.Length ~ Species,
   data = iris,
-  family = "gaussian",
   keep = "Species",
   verbose = FALSE
 )
+plot(fit_factor, terms = "Species", partial_only = TRUE)[["Species"]]
 
-# Use the factor name, not individual dummy-column names.
-# Each species has a fitted point and vertical confidence interval.
-factor_plots <- plot(
-  fit_factor,
-  terms = "Species",
-  partial_only = TRUE
-)
-factor_plots[["Species"]]
-
-factor_contrasts <- plot(
-  fit_factor,
-  terms = "Species",
-  type = "contrasts",
-  ref = list(Species = "setosa")
-)
-factor_contrasts[["Species"]]
-
-## Gaussian models: a predictor containing zeros
+## A predictor with a spike at zero
 set.seed(1)
-d_spike <- data.frame(
-  exposure = c(rep(0, 35), runif(85, 0.1, 8))
-)
-d_spike$y <- with(
-  d_spike,
-  2 * (exposure > 0) + log1p(exposure) + rnorm(120)
-)
-
+d_spike <- data.frame(exposure = c(rep(0, 35), runif(85, 0.1, 8)))
+d_spike$y <- 2 * (d_spike$exposure > 0) + log1p(d_spike$exposure) +
+  rnorm(120)
 fit_spike <- mfp2(
   y ~ fp(exposure, spike = TRUE),
   data = d_spike,
-  family = "gaussian",
   keep = "exposure",
   verbose = FALSE
 )
+# Zero is shown separately from the curve for positive values.
+plot(fit_spike, terms = "exposure", partial_only = TRUE)[["exposure"]]
 
-# The display follows the selected spike representation.
-# If a continuous component is retained, zero is shown separately
-# from the positive-value curve.
-spike_plots <- plot(
-  fit_spike,
-  terms = "exposure",
-  partial_only = TRUE,
-  color_line_spike = "blue"
-)
-spike_plots[["exposure"]]
-
-spike_contrasts <- plot(
-  fit_spike,
-  terms = "exposure",
-  type = "contrasts",
-  ref = list(exposure = 0)
-)
-spike_contrasts[["exposure"]]
-
-## Binomial models: log-odds contributions
-set.seed(2)
-d_binary <- data.frame(age = runif(150, 30, 75))
-d_binary$event <- rbinom(
-  150,
-  size = 1,
-  prob = plogis(0.06 * (d_binary$age - 50))
-)
-
-fit_binomial <- mfp2(
-  event ~ fp(age, df = 1, select = 1),
-  data = d_binary,
-  family = "binomial",
-  verbose = FALSE
-)
-
-# The curve is on the log-odds scale, not the probability scale.
-binomial_plots <- plot(fit_binomial, partial_only = TRUE)
-binomial_plots[["age"]]
-
-## Poisson models: term plots with a formula offset
-set.seed(3)
-d_count <- data.frame(
-  age = runif(100, 30, 75),
-  exposure = runif(100, 0.5, 3)
-)
-d_count$count <- rpois(
-  100,
-  lambda = with(d_count, exposure * exp(0.03 * (age - 50)))
-)
-
-fit_poisson <- mfp2(
-  count ~ fp(age, select = 1) + offset(log(exposure)),
-  data = d_count,
-  family = "poisson",
-  verbose = FALSE
-)
-
-# The curve includes the intercept and age contribution on the log scale.
-# It does not include the exposure offset or show expected counts.
-poisson_plots <- plot(fit_poisson, partial_only = TRUE)
-poisson_plots[["age"]]
-
-## Negative-binomial models: overdispersed counts
-if (requireNamespace("fastglm", quietly = TRUE)) {
-  d_count$overdispersed <- rnbinom(
-    nrow(d_count),
-    mu = with(d_count, exposure * exp(0.03 * (age - 50))),
-    size = 2
-  )
-
-  fit_negbin <- mfp2(
-    overdispersed ~ fp(age, df = 1, select = 1) +
-      offset(log(exposure)),
-    data = d_count,
-    family = "negbin",
-    verbose = FALSE
-  )
-
-  # Contrasts are differences on the log-mean scale.
-  negbin_plots <- plot(
-    fit_negbin,
-    type = "contrasts",
-    ref = list(age = 50)
-  )
-  print(negbin_plots[["age"]])
-}
-
-## GEE models: component-plus-residual plots for grouped observations
-# Illustrate 25 groups with four observations each.
-d_count$id <- rep(seq_len(25), each = 4)
-fit_gee <- mfp2(
-  count ~ fp(age, df = 1, select = 1) + offset(log(exposure)),
-  data = d_count,
-  family = gee_family(poisson(), corstr = "independence"),
-  id = id,
-  verbose = FALSE
-)
-
-# Confidence intervals use the covariance selected for the GEE fit.
-# Points add marginal deviance residuals to the age contribution.
-gee_plots <- plot(fit_gee, terms = "age")
-gee_plots[["age"]]
-
-## Multinomial models: category-specific panels
-set.seed(5)
-d_multi <- data.frame(age = runif(200, 30, 75), wide = rbinom(200, 1, 0.5))
-eta_b <- with(d_multi, -0.5 + 0.04 * (age - 50) + 0.6 * wide)
-eta_c <- with(d_multi, -0.3 + 0.07 * (age - 50) - 0.4 * wide)
-p_multi <- cbind(1, exp(eta_b), exp(eta_c))
-p_multi <- p_multi / rowSums(p_multi)
-d_multi$type <- factor(
-  apply(p_multi, 1, function(p) sample(c("A", "B", "C"), 1, prob = p))
-)
-
-fit_multinomial <- mfp2(
-  type ~ fp(age, df = 1, select = 1) + wide,
-  data = d_multi,
-  family = multinomial_family(reference = "A"),
-  keep = "wide",
-  verbose = FALSE
-)
-
-# Each panel compares a non-reference category with category A.
-multinomial_plots <- plot(
-  fit_multinomial,
-  terms = "age",
-  partial_only = TRUE
-)
-multinomial_plots[["age"]]
-
-# For a numeric binary predictor, use observed values explicitly.
-# Compare wide = 1 with wide = 0 within each category comparison.
-binary_contrasts <- plot(
-  fit_multinomial,
-  terms = "wide",
-  type = "contrasts",
-  terms_seq = "data",
-  ref = list(wide = 0)
-)
-binary_contrasts[["wide"]]
-
-## Ordinal models: cutoff panels and shared contrasts
-if (requireNamespace("rms", quietly = TRUE) &&
-    utils::packageVersion("rms") >= "7.0-0") {
-  set.seed(4)
-  d_ordinal <- data.frame(age = runif(150, 30, 75))
-  d_ordinal$severity <- cut(
-    0.04 * (d_ordinal$age - 50) + rlogis(150),
-    breaks = c(-Inf, -0.5, 0.5, Inf),
-    labels = c("low", "medium", "high"),
-    ordered_result = TRUE
-  )
-
-  fit_ordinal <- mfp2(
-    severity ~ fp(age, df = 1, select = 1),
-    data = d_ordinal,
-    family = ordinal_family(),
-    verbose = FALSE
-  )
-
-  # Panels compare medium/high with low, and high with low/medium.
-  # Each panel includes its own cutoff intercept.
-  ordinal_plots <- plot(fit_ordinal, partial_only = TRUE)
-  print(ordinal_plots[["age"]])
-
-  # Contrasts omit cutoff intercepts and show one shared age effect.
-  ordinal_contrasts <- plot(
-    fit_ordinal,
-    terms = "age",
-    type = "contrasts",
-    ref = list(age = 50)
-  )
-  print(ordinal_contrasts[["age"]])
-}
-
-## Cox models: contributions to log relative hazard
+## Cox models: contributions to the log relative hazard
 data("gbsg")
 fit_cox <- mfp2(
-  survival::Surv(rectime, censrec) ~
-    fp(age, df = 1, select = 1) +
-    fp(nodes, df = 1, select = 1) + strata(grade),
+  survival::Surv(rectime, censrec) ~ fp(age) + fp(nodes),
   data = gbsg,
   family = "cox",
   verbose = FALSE
 )
+# Points add martingale residuals to the fitted contribution.
+plot(fit_cox, terms = "nodes")[["nodes"]]
 
-# Points add martingale residuals to the fitted age contribution.
-# The strata term is not plotted as a predictor effect.
-cox_plots <- plot(fit_cox, terms = "age")
-cox_plots[["age"]]
-
-# Differences from age 50 are on the log relative-hazard scale.
-# These are not survival probabilities.
-cox_contrasts <- plot(
-  fit_cox,
-  terms = "age",
-  type = "contrasts",
-  ref = list(age = 50)
-)
-cox_contrasts[["age"]]
-
-## Parametric survival models: fitted location contributions
-fit_survreg <- mfp2(
-  survival::Surv(rectime, censrec) ~
-    fp(age, df = 1, select = 1) +
-    fp(nodes, df = 1, select = 1),
-  data = gbsg,
-  family = survreg_family(dist = "weibull"),
-  verbose = FALSE
-)
-
-# For Weibull models, this contribution is on the log-time scale.
-# It is not a survival probability or a predicted time quantile.
-survreg_plots <- plot(
-  fit_survreg,
-  terms = "age",
-  partial_only = TRUE
-)
-survreg_plots[["age"]]
-
-## Fine--Gray models: log subdistribution-hazard contributions
-set.seed(5)
-d_fg <- data.frame(age = runif(180, 30, 75))
-relapse_time <- rexp(
-  180,
-  rate = exp(0.04 * (d_fg$age - 50)) / 1000
-)
-death_time <- rexp(180, rate = 1 / 1800)
-censor_time <- runif(180, 300, 1800)
-d_fg$time <- pmin(relapse_time, death_time, censor_time)
-d_fg$event <- factor(
-  ifelse(
-    d_fg$time == relapse_time, "relapse",
-    ifelse(d_fg$time == death_time, "death", "censored")
-  ),
-  levels = c("censored", "relapse", "death")
-)
-
-fit_finegray <- mfp2(
-  survival::Surv(time, event) ~ fp(age, df = 1, select = 1),
-  data = d_fg,
-  family = finegray_family(etype = "relapse"),
-  verbose = FALSE
-)
-
-# This shows the age contribution to log subdistribution hazard.
-# Cumulative-incidence probabilities require predict(type = "response",
-# times = ...), rather than plot().
-finegray_plots <- plot(
-  fit_finegray,
-  terms = "age",
-  partial_only = TRUE
-)
-finegray_plots[["age"]]
-}
 
 }
 \seealso{

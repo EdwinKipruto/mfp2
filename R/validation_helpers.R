@@ -35,7 +35,7 @@ validate_logical_vector <- function(arg, name, allowed_lengths,
 
   if (!is.logical(arg)) {
     stop(
-      sprintf("! `%s` must be logical.", name),
+      sprintf("! `%s` must be logical.\n", name),
       sprintf("i Current type is: %s.", typeof(arg)),
       hint_line,
       call. = FALSE
@@ -159,7 +159,7 @@ validate_model_weights <- function(weights, nobs) {
 
   if (!is.numeric(weights)) {
     stop(
-      "! `weights` must be numeric.",
+      "! `weights` must be numeric.\n",
       sprintf("i Current type is: %s.", typeof(weights)),
       call. = FALSE
     )
@@ -502,7 +502,7 @@ validate_probability_vector <- function(arg, name, nvars, hint = NULL) {
 
   if (!is.numeric(arg)) {
     stop(
-      sprintf("! `%s` must be numeric.", name),
+      sprintf("! `%s` must be numeric.\n", name),
       sprintf("i Current type is: %s.", typeof(arg)),
       hint_line,
       call. = FALSE
@@ -619,7 +619,7 @@ validate_numeric_vector <- function(arg,
 
   if (!is.numeric(arg)) {
     stop(
-      sprintf("! `%s` must be numeric.", name),
+      sprintf("! `%s` must be numeric.\n", name),
       sprintf("i Current type is: %s.", typeof(arg)),
       hint_line,
       call. = FALSE
@@ -1237,7 +1237,7 @@ validate_variable_names <- function(arg, name, vnames, allow_null = TRUE) {
 
   if (!is.character(arg)) {
     stop(
-      sprintf("! `%s` must be a character vector of column names in `x`.", name),
+      sprintf("! `%s` must be a character vector of column names in `x`.\n", name),
       sprintf("i Current type is: %s.", typeof(arg)),
       call. = FALSE
     )
@@ -1262,7 +1262,7 @@ validate_variable_names <- function(arg, name, vnames, allow_null = TRUE) {
   if (length(unknown) > 0L) {
     stop(
       sprintf(
-        "! Unknown variable name(s) in `%s`: %s.",
+        "! Unknown variable name(s) in `%s`: %s.\n",
         name,
         paste(unknown, collapse = ", ")
       ),

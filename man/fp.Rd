@@ -83,10 +83,12 @@ The options take effect when the term is used in an \code{\link[=mfp2]{mfp2()}} 
 \code{\link[=mfpi]{mfpi()}} formula.
 }
 \description{
-Use \code{fp()} or \code{fp2()} inside an \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} formula to mark a
-continuous predictor for fractional-polynomial (FP) selection. They
-specify the same model term and record options for fitting; neither
-transforms the values when the formula is created.
+Use \code{fp()} or \code{fp2()} inside an \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} formula to set
+fractional-polynomial (FP) options for one continuous predictor. In
+\code{\link[=mfp2]{mfp2()}}, continuous terms without \code{fp()} are also considered for FP
+selection, using its top-level settings. \code{fp()} and \code{fp2()} specify the
+same model term and record options for fitting; neither transforms the
+values when the formula is created.
 }
 \details{
 \code{fp2()} was introduced to avoid a name conflict with \code{mfp::fp()}.
@@ -106,9 +108,11 @@ Candidate powers default to \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}. A power
 of zero represents a logarithm. \code{powers} changes the candidates searched;
 it does not specify the powers of the final fitted function.
 
-Options set inside \code{fp()} apply to this term. In particular, \code{alpha} and
-\code{select} default to \code{0.05} here even if different values are supplied to
-the surrounding \code{mfp2()} call. Under p-value selection, \code{select = 1}
+Options set inside \code{fp()} apply to this term. \code{df}, \code{alpha}, \code{select},
+and \code{center} have their own defaults in \code{fp()} and ignore the values
+supplied to the surrounding \code{mfp2()} call; set them inside \code{fp()} to
+change them. \code{shift}, \code{scale}, and \code{powers} default to \code{NULL} and use the
+top-level values unless set here. Under p-value selection, \code{select = 1}
 forces inclusion and \code{alpha = 1} prevents simplification of the permitted
 functional form.
 }

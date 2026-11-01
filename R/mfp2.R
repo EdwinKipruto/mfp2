@@ -11,7 +11,7 @@
 #' columns. Supported regression models include Gaussian, binomial, Poisson, Gamma,
 #' inverse Gaussian, negative binomial, multinomial, and ordinal models.
 #' For time-to-event outcomes, it supports Cox, parametric survival,
-#' and Fine-Gray competing-risks models. It also supports generalized
+#' and Fine--Gray competing-risks models. It also supports generalized
 #' estimating equations (GEE) for clustered data.
 #'
 #' @section Fractional-polynomial model selection:
@@ -53,7 +53,8 @@
 #' With `"aic"` or `"bic"`, candidate models are compared using the chosen
 #' information criterion.
 #'
-#' See `mfp` vignette for methodological details.
+#' See `vignette("MFP_Introduction", package = "mfp2")` for methodological
+#' details.
 #'
 #' @section Formula and matrix interfaces:
 #' For most users, the formula interface is the simpler choice:
@@ -406,7 +407,8 @@
 #' @param scale Divisor used when preparing predictors for FP selection.
 #' `NULL` chooses scales automatically; `1` turns off automatic scaling.
 #' In `mfp2.default()`, use a named value such as `c(age = 10)` to set
-#' one column's scale. In formulas, set it inside `fp()` or `fp2()`.
+#' one column's scale. In formulas, a single unnamed value applies to every
+#' term that does not set its own; use `fp()` or `fp2()` for one term.
 #' Binary and ACD predictors always use scale `1`. Predictors with exact-zero
 #' handling (`zero`, `catzero`, or `spike`) use an automatic scale of `1`; an
 #' explicitly supplied scale is still used. See **Shifting, scaling, and
@@ -414,13 +416,16 @@
 #' @param shift Value added to predictors before FP transformation.
 #' `NULL` chooses shifts automatically; `0` turns off automatic shifting.
 #' In `mfp2.default()`, use a named value such as `c(age = 20)` to set
-#' one column's shift. In formulas, set it inside `fp()` or `fp2()`.
+#' one column's shift. In formulas, a single unnamed value applies to every
+#' term that does not set its own; use `fp()` or `fp2()` for one term.
 #' Binary and linear predictors, and those using exact-zero handling,
 #' always have shift `0`. See **Shifting, scaling, and centering**.
 #' @param df Maximum FP complexity: `1` allows linear only, `2` allows up
 #' to FP1, and `4` allows up to FP2. The default is `4`. Selection may
 #' choose a simpler form or omit the predictor. In `mfp2.default()`, use
-#' a named value such as `c(age = 2)` for one column; in formulas, use
+#' a named value such as `c(age = 2)` for one column. In `mfp2.formula()`,
+#' the top-level value applies only to terms outside `fp()` or `fp2()`;
+#' those terms default to `df = 4` unless set explicitly, for example
 #' `fp(age, df = 2)`. Predictors with few distinct values may be limited
 #' to a simpler form. See **Fractional-polynomial model selection**.
 #' @param center If `TRUE` (default), center predictors after any FP or ACD
@@ -428,8 +433,9 @@
 #' their mean and binary terms use their lower observed value in the data.
 #' Centering does not change fitted values. In `mfp2.default()`,
 #' use one logical value for all predictors or a named vector for selected
-#' columns; unspecified columns use `TRUE`. In `mfp2.formula()`, use
-#' `fp()` or `fp2()` to set this for an individual predictor.
+#' columns; unspecified columns use `TRUE`. In `mfp2.formula()`, the
+#' top-level value applies only to terms outside `fp()` or `fp2()`; set
+#' `center` inside the term to change it for an `fp()` term.
 #' @param family Model family; default `"gaussian"`. Supported GLM families
 #' are `"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`, and
 #' `"inverse.gaussian"`, supplied as a name, function, or family object.
@@ -499,12 +505,12 @@
 #' power; duplicate powers are removed. Use the predictor's column name
 #' as the list name. To allow only a linear effect, set `df = 1`. Powers
 #' supplied inside `fp()` or `fp2()` take precedence over this list.
-#' @param ties Method for handling tied event times in Cox and Fine-Gray models.
+#' @param ties Method for handling tied event times in Cox and Fine--Gray models.
 #' Supported values are `"efron"` (default) and `"breslow"`. `"exact"` is not
 #' supported. The argument has no effect for other families. See
 #' [survival::coxph()] for details.
 #' @param strata Optional stratification for Cox, parametric survival, and
-#' Fine-Gray models. In `mfp2.default()`, supply one stratum label per
+#' Fine--Gray models. In `mfp2.default()`, supply one stratum label per
 #' observation as a vector or factor. To stratify by several variables,
 #' supply a matrix or data frame with one variable per column. In
 #' `mfp2.formula()`, put `strata(...)` in the formula. The separate
@@ -544,7 +550,7 @@
 #' the package uses its default settings for the selected model family.
 #' The available settings depend on the model family: see
 #' [stats::glm.control()] for ordinary GLMs, [survival::coxph.control()] for
-#' Cox and Fine-Gray models, [survival::survreg.control()] for parametric
+#' Cox and Fine--Gray models, [survival::survreg.control()] for parametric
 #' survival models, and [geepack::geese.control()] for GEE models.
 #' Multinomial models accept `maxit`, `reltol`, `abstol`, `trace`, and
 #' `MaxNWts`; ordinal models accept `maxit`, `eps`, `tol`, and `trace`.
@@ -568,8 +574,8 @@
 #' ineligible. Ineligible requests are ignored. Applies to `mfp2.default()`
 #' only; in formulas, use `fp(x, spike = TRUE)`.
 #' @param min_saz_prop Minimum proportion of observations required in each
-#' group (`x = 0` and `x > 0`) for spike-at-zero selection. Must be between
-#' 0 and 0.5; default `0.10`. Predictors that do not meet this threshold
+#' group (`x = 0` and `x > 0`) for spike-at-zero selection. Must be strictly
+#' between 0 and 0.5; default `0.10`. Predictors that do not meet this threshold
 #' are not assessed. In large samples, a lower threshold may still leave
 #' enough observations in each group.
 #' @param force_max_fp_vars Names of predictors whose most complex permitted
@@ -582,7 +588,8 @@
 #' @param verbose Logical. If `TRUE`, print progress messages during model
 #' fitting. Default `TRUE`.
 #' @param \dots Used to pass arguments from `mfp2()` to its fitting method.
-#'   Additional arguments supplied to the fitting method are not used.
+#'   Additional arguments supplied to the fitting method are not
+#'   used; a warning names them.
 #' @examples
 #'
 #' # Gaussian model: formula interface (recommended for most users)
@@ -1869,6 +1876,10 @@ mfp2.default <- function(x,
   # Step 1: Capture the call and rename public-facing arguments -----------------
   cl <- match.call()
 
+  # Arguments that match no formal argument are not used. Warn so that a
+  # misspelled argument name (for example `selct = 1`) is not silently ignored.
+  mfp2_warn_unused_dots(list(...), "mfp2()")
+
 
   # Display the public generic name rather than the S3 method name.
   cl[[1L]] <- quote(mfp2)
@@ -1993,7 +2004,7 @@ mfp2.default <- function(x,
 
   if (!is.numeric(x)) {
     stop(
-      "! `x` must be a numeric matrix.",
+      "! `x` must be a numeric matrix.\n",
       sprintf("i Current storage mode is: %s.", typeof(x)),
       call. = FALSE
     )
@@ -2057,6 +2068,10 @@ mfp2.default <- function(x,
         call. = FALSE
       )
     }
+
+    if (length(subset) == 0L) {
+      stop("! `subset` selects no observations.", call. = FALSE)
+    }
   }
 
   # Step 5: Validate `weights` and `offset` --------------------------------------
@@ -2074,7 +2089,7 @@ mfp2.default <- function(x,
   if (!is.null(offset)) {
     if (!is.numeric(offset)) {
       stop(
-        "! `offset` must be numeric.",
+        "! `offset` must be numeric.\n",
         sprintf("i Current type is: %s.", typeof(offset)),
         call. = FALSE
       )
@@ -2083,7 +2098,7 @@ mfp2.default <- function(x,
     offset_rows <- if (is.matrix(offset)) nrow(offset) else length(offset)
     if (offset_rows != nobs) {
       stop(
-        "! The number of observations in x and offset must match.",
+        "! The number of observations in x and offset must match.\n",
         sprintf(
           "i The number of rows in x is %d, but the offset has %d observation rows.",
           nobs, offset_rows
@@ -2257,7 +2272,7 @@ mfp2.default <- function(x,
 
   if (any(df != as.integer(df))) {
     stop(
-      "! `df` must contain integer values.",
+      "! `df` must contain integer values.\n",
       "i Valid values are 1 for linear terms, or even positive integers 2, 4, 6, ... for fractional polynomials.",
       call. = FALSE
     )
@@ -2265,7 +2280,7 @@ mfp2.default <- function(x,
 
   if (any(df <= 0)) {
     stop(
-      "! `df` must contain only positive values.",
+      "! `df` must contain only positive values.\n",
       "i Valid values are 1 for linear terms, or even positive integers 2, 4, 6, ... for fractional polynomials.",
       call. = FALSE
     )
@@ -2273,7 +2288,7 @@ mfp2.default <- function(x,
 
   if (any(df != 1 & df %% 2 != 0)) {
     stop(
-      "! Any `df` value greater than 1 must be even.",
+      "! Any `df` value greater than 1 must be even.\n",
       "i Valid values are 1 for linear terms, or even positive integers 2, 4, 6, ... for fractional polynomials.",
       call. = FALSE
     )
@@ -2321,7 +2336,7 @@ mfp2.default <- function(x,
 
     if (strata_len != nobs) {
       stop(
-        "! The length of stratification factor(s) and the number of observations in x must match.",
+        "! The length of stratification factor(s) and the number of observations in x must match.\n",
         sprintf(
           "i The length of strata is %d, but the number of observations in x is %d.",
           strata_len, nobs
@@ -3081,6 +3096,7 @@ mfp2.formula <- function(formula,
       call. = FALSE
     )
   }
+  mfp2_warn_unused_dots(dots, "mfp2()", formula_interface = TRUE)
 
   # Resolve the family argument to its canonical string form (e.g. "gaussian",
   # "cox") used for family-specific branching throughout this function.
@@ -3125,6 +3141,20 @@ mfp2.formula <- function(formula,
   formula_internal <- normalize_formula_special_namespaces(formula_user)
 
   # Step 3: Validate scalar formula-interface defaults ---------------------------
+  # A named value such as shift = c(age = 5) would otherwise be accepted as a
+  # scalar and silently applied to every predictor, so reject names here.
+  for (setting_name in c("df", "alpha", "select", "shift", "scale", "center")) {
+    if (!is.null(names(get(setting_name, inherits = FALSE)))) {
+      stop(
+        sprintf(
+          "! In the formula interface, `%s` must be a single unnamed value that applies to all terms.\ni Use fp(..., %s = value) to set it for an individual variable.",
+          setting_name, setting_name
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
   # In the formula interface, df, alpha, select, shift, scale, and center are
   # global scalar defaults applied to every predictor unless overridden inside
   # fp(). validate_formula_scalar()/validate_formula_probability() (defined in
@@ -3356,6 +3386,10 @@ mfp2.formula <- function(formula,
         "! `subset` must be either a logical vector or a numeric/integer vector of row indices.",
         call. = FALSE
       )
+    }
+    n_selected <- if (is.logical(subset)) sum(subset) else length(subset)
+    if (n_selected == 0L) {
+      stop("! `subset` selects no observations.", call. = FALSE)
     }
   }
 
@@ -4207,7 +4241,7 @@ coef.mfp2 <- function(object, ...) {
 #' interval with the conventional rounded multiplier 1.96, whereas `confint()`
 #' uses the exact normal quantile and honours `level`), and they apply uniformly
 #' to every scalar-coefficient family. They are used in preference to the default
-#' profile-likelihood intervals of [stats::confint.glm()] because those refit
+#' profile-likelihood intervals of [stats::confint()] for `glm` fits because those refit
 #' the model on `mfp2`'s internally transformed design and fail; for GEE
 #' (`gee_family()`) the covariance is the robust sandwich estimator, which is
 #' the correct basis for GEE inference (and `geepack` supplies no `confint`
@@ -4285,7 +4319,28 @@ confint.mfp2 <- function(object, parm, level = 0.95, ...) {
   dimnames(ci) <- list(nm, pct)
 
   if (!missing(parm)) {
-    sel <- if (is.character(parm)) parm else nm[parm]
+    if (is.character(parm)) {
+      unknown <- setdiff(parm, nm)
+      if (length(unknown) > 0L) {
+        stop(
+          "! Unknown parameter name(s) in `parm`: ", paste(unknown, collapse = ", "),
+          ".\ni Available names are: ", paste(nm, collapse = ", "), ".",
+          call. = FALSE
+        )
+      }
+      sel <- parm
+    } else if (is.numeric(parm) && all(is.finite(parm)) &&
+               all(parm == round(parm)) && all(abs(parm) >= 1) &&
+               all(abs(parm) <= length(nm)) &&
+               (all(parm > 0) || all(parm < 0))) {
+      sel <- nm[parm]
+    } else {
+      stop(
+        "! `parm` must be coefficient names or valid coefficient positions (1 to ",
+        length(nm), ").",
+        call. = FALSE
+      )
+    }
     ci <- ci[sel, , drop = FALSE]
   }
   ci
@@ -4457,10 +4512,12 @@ mfp2_multinomial_residuals <- function(object, type = "deviance") {
 
 #' Specify a Fractional-Polynomial Term
 #'
-#' Use `fp()` or `fp2()` inside an [mfp2()] or [mfpi()] formula to mark a
-#' continuous predictor for fractional-polynomial (FP) selection. They
-#' specify the same model term and record options for fitting; neither
-#' transforms the values when the formula is created.
+#' Use `fp()` or `fp2()` inside an [mfp2()] or [mfpi()] formula to set
+#' fractional-polynomial (FP) options for one continuous predictor. In
+#' [mfp2()], continuous terms without `fp()` are also considered for FP
+#' selection, using its top-level settings. `fp()` and `fp2()` specify the
+#' same model term and record options for fitting; neither transforms the
+#' values when the formula is created.
 #'
 #' `fp2()` was introduced to avoid a name conflict with `mfp::fp()`.
 #' That conflict is now resolved: formulas passed to `mfp2()` or `mfpi()`
@@ -4480,9 +4537,11 @@ mfp2_multinomial_residuals <- function(object, type = "deviance") {
 #' of zero represents a logarithm. `powers` changes the candidates searched;
 #' it does not specify the powers of the final fitted function.
 #'
-#' Options set inside `fp()` apply to this term. In particular, `alpha` and
-#' `select` default to `0.05` here even if different values are supplied to
-#' the surrounding `mfp2()` call. Under p-value selection, `select = 1`
+#' Options set inside `fp()` apply to this term. `df`, `alpha`, `select`,
+#' and `center` have their own defaults in `fp()` and ignore the values
+#' supplied to the surrounding `mfp2()` call; set them inside `fp()` to
+#' change them. `shift`, `scale`, and `powers` default to `NULL` and use the
+#' top-level values unless set here. Under p-value selection, `select = 1`
 #' forces inclusion and `alpha = 1` prevents simplification of the permitted
 #' functional form.
 #'
@@ -4657,9 +4716,12 @@ fp2 <- function(...) {
 #' Extract Names of Selected Variables from an `mfp2` Model
 #'
 #' Returns the names of predictors retained in the final model after MFP
-#' selection. A variable is considered selected when at least one of its
-#' fractional-polynomial powers is not `NA`. Excluded variables have all
-#' powers set to `NA`.
+#' selection, as recorded in the `selected` column of `object$fp_terms`.
+#' Usually a selected variable has at least one fractional-polynomial power
+#' that is not `NA`. The exception is a spike-at-zero term for which only
+#' the binary indicator for `x = 0` is retained: it is selected although
+#' all of its powers are `NA`. Factors are reported by their variable name,
+#' not by their contrast columns.
 #'
 #' @param object A fitted [mfp2()] object.
 #'
@@ -4679,8 +4741,53 @@ fp2 <- function(...) {
 #'
 #' @export
 get_selected_variable_names <- function(object) {
+  if (!inherits(object, "mfp2")) {
+    stop("! `object` must be a fitted `mfp2` model.", call. = FALSE)
+  }
   nms <- rownames(object$fp_terms)
   nms[object$fp_terms[, "selected"]]
+}
+
+#' Warn About Arguments That `mfp2()` Does Not Use
+#'
+#' Arguments passed through `...` that match no formal argument are ignored
+#' by `mfp2()`. This helper warns, naming them, so that misspelled argument
+#' names are noticed. In the formula interface, matrix-interface arguments
+#' that are set with `fp()` receive a specific hint.
+#'
+#' @param dots List of arguments captured from `...`.
+#' @param context Character scalar naming the function for the message.
+#' @param formula_interface Whether the call used the formula interface.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_warn_unused_dots <- function(dots, context, formula_interface = FALSE) {
+  if (length(dots) == 0L) {
+    return(invisible(NULL))
+  }
+
+  msg <- paste0(
+    "Unused argument(s) ignored by `", context, "`: ",
+    paste(mfpi_dot_labels(dots), collapse = ", "), "."
+  )
+
+  matrix_only <- c(
+    "zero_vars", "catzero_vars", "spike_vars", "force_max_fp_vars",
+    "term_groups", "acdx"
+  )
+  if (isTRUE(formula_interface) && any(names(dots) %in% matrix_only)) {
+    msg <- paste0(
+      msg,
+      "\ni In formulas, set zero, catzero, spike, force_max_fp, and ACD options ",
+      "inside `fp()`, for example `fp(x, spike = TRUE)`; factors are grouped ",
+      "automatically."
+    )
+  }
+
+  warning(msg, call. = FALSE)
+  invisible(NULL)
 }
 
 #' Assign Degrees of Freedom Based on Variable Cardinality

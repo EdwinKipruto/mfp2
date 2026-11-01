@@ -18,7 +18,7 @@ fracplot(
   color_line = "red",
   color_line_spike = "red",
   color_fill = "#000000",
-  shape = 1,
+  shape = 16,
   size_points = 1,
   size_points_spike = 2,
   linetype = "solid",
@@ -107,6 +107,9 @@ for earlier versions of \code{mfp2}. Use \code{\link[=plot.mfp2]{plot.mfp2()}} o
 The function forwards its arguments to \code{\link[=plot.mfp2]{plot.mfp2()}} and returns the same
 plot objects, except that its own defaults for \code{color_line} and
 \code{color_line_spike} are \code{"red"}, whereas \code{\link[=plot.mfp2]{plot.mfp2()}} uses \code{"black"}.
+The sections referred to in the argument
+descriptions, such as \strong{Choosing terms}, are on the help page of
+\code{\link[=plot.mfp2]{plot.mfp2()}}.
 }
 \examples{
 data("prostate")

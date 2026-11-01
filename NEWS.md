@@ -26,6 +26,12 @@
 
 ## Interface changes
 
+* The following low-level helper functions are no longer exported and are now internal: `apply_shift_scale()`, `assign_df()`, `center_matrix()`, `create_dummy_variables()`, `find_scale_factor()`, `find_shift_factor()`, `fit_acd()`, `generate_powers_acd()`, `generate_powers_fp()`, `transform_matrix()`, and `transform_vector_acd()`. Shifting, scaling, centring, and ACD transformations are controlled through the `shift`, `scale`, `center`, and `acd_vars` arguments of `mfp2()`, or through `shift`, `scale`, `center`, and `acd` in `fp()` and `fp2()`. `transform_vector_fp()` remains exported.
+
+* `mfp2()` now warns when it is given arguments it does not use, such as a misspelled argument name.
+
+* In the formula interface, named values for top-level `df`, `alpha`, `select`, `shift`, `scale`, or `center` are now an error; previously a value such as `shift = c(age = 5)` was silently applied to every predictor.
+
 * Variable-specific `df`, `select`, `alpha`, `shift`, and `scale` settings in the default methods now use named vectors matched to predictor columns. Partial named vectors are supported; unnamed vectors containing more than one value are rejected.
 
 * Cox models now default to `ties = "efron"` rather than `"breslow"`, and to `nocenter = c(-1, 0, 1)` rather than `NULL`. The `"exact"` tie option is no longer accepted.

@@ -484,8 +484,8 @@ analyses. It accepts prediction data on the original covariate scale.
 \code{"linear"}, \code{"fp1"}, or \code{"fp2"}.
 \item \code{group_level_map}: the mapping between the internal group codes used
 for fitting and the original group labels.
-\item \code{winsorize_limits}: the lower and upper limits used when Winsorisation
-is requested, calculated after shifting and scaling. These limits
+\item \code{winsorize_limits}: present only when \code{winsorize = TRUE}; the lower and
+upper limits used for Winsorisation, calculated after shifting and scaling. These limits
 are reused for prediction.
 \item \code{criterion}: the criterion used for model selection: \code{"pvalue"},
 \code{"aic"}, or \code{"bic"}.

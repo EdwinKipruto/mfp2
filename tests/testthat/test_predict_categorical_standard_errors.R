@@ -72,6 +72,7 @@ test_that("ordinal link SEs include exactly the requested cutoff and slopes", {
 })
 
 test_that("ordinal probability and mean SEs agree with numerical derivatives for all links", {
+  skip_if_not_installed("numDeriv")
   testthat::local_mocked_bindings(vcov = function(object, ...) {
     # Intentionally permute both axes to check coefficient-name alignment.
     V <- object$prediction_test_covariance
@@ -145,6 +146,7 @@ test_that("intercept-only ordinal models and category scores have valid SEs", {
 })
 
 test_that("multinomial link and probability SEs use the full named covariance", {
+  skip_if_not_installed("numDeriv")
   object <- categorical_multinomial_fixture()
   testthat::local_mocked_bindings(vcov = function(object, ...) {
     V <- object$prediction_test_covariance

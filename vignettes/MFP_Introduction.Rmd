@@ -34,7 +34,7 @@ oldwidth <- getOption("width")
 options(width = 100)
 
 library(ggplot2)
-library(patchwork)
+has_patchwork <- requireNamespace("patchwork", quietly = TRUE)
 ```
 
 # MFP methodology and practical considerations
@@ -241,14 +241,14 @@ fig2 <- ggplot() +
       axis.text.x = element_blank()
     )
 
-figure <- patchwork::wrap_plots(fig1, fig2, 
+if (has_patchwork) figure <- patchwork::wrap_plots(fig1, fig2, 
                                ncol = 2, nrow = 1, 
                                widths = 8, heights = 2)
 
 ```
 
 
-```{r fig1, echo=FALSE, fig.cap="Illustration of the flexibility of the FP family. 8 FP1 functions (left panel) and a subset of FP2 functions (right panel). FPs are global functions. See section 1.3.1.4 for a proposed extension of local features", fig.height=4.5, fig.width=7, out.width="100%", fig.align="center"}
+```{r fig1, eval=has_patchwork, echo=FALSE, fig.cap="Illustration of the flexibility of the FP family. 8 FP1 functions (left panel) and a subset of FP2 functions (right panel). FPs are global functions. See section 1.3.1.4 for a proposed extension of local features", fig.height=4.5, fig.width=7, out.width="100%", fig.align="center"}
 figure
 ```
 

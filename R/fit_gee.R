@@ -83,6 +83,7 @@ mfp2_gee_cluster_order <- function(id) {
 #'   blocks return missing test values.
 #'
 #' @keywords internal
+#' @noRd
 gee_robust_wald_test <- function(coefficients, robust_vcov, indices,
                                  compute_pvalue = TRUE) {
   indices <- unique(as.integer(indices))

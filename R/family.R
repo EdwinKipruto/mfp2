@@ -6,9 +6,9 @@
 #'
 #' Supply the resulting specification as the \code{family} argument to
 #' \code{mfp2()}. \code{survreg_family()} can also be used with
-#' \code{mfpi()}; Fine-Gray models cannot.
+#' \code{mfpi()}; Fine--Gray models cannot.
 #'
-#' Both functions require a survival response. For Fine-Gray models, the
+#' Both functions require a survival response. For Fine--Gray models, the
 #' response must identify the possible event types. Supply an \code{id}
 #' to \code{mfp2()} when observations use start and stop times.
 #'
@@ -18,8 +18,10 @@
 #'   estimates it from the data; a positive value fixes it.
 #' @param parms Optional parameters for the chosen distribution, as accepted
 #'   by [survival::survreg()].
-#' @param etype Event type of interest in a Fine-Gray model. If \code{NULL},
-#'   the first event type is used.
+#' @param etype Event type of interest in a Fine--Gray model: one of the
+#'   event levels of the multi-state \code{Surv()} response, such as
+#'   \code{"cause1"}. If \code{NULL}, the first event type (the first
+#'   non-censoring level) is used. The censoring level cannot be used.
 #' @param timefix Whether to correct small differences in event times caused
 #'   by rounding. The default is \code{TRUE}.
 #'
@@ -142,6 +144,11 @@ survreg_family <- function(dist = "weibull", scale = 0, parms = NULL) {
 #'   }
 #'
 #' @references
+#' Fine JP, Gray RJ (1999). A proportional hazards model for the
+#' subdistribution of a competing risk. \emph{Journal of the American
+#' Statistical Association}, 94(446), 496--509.
+#' \doi{10.1080/01621459.1999.10474144}
+#'
 #' Zhou B, Latouche A, Rocha V, Fine JP (2011). Competing risks regression
 #' for stratified data. \emph{Biometrics}, 67(2), 661--670.
 #' \doi{10.1111/j.1541-0420.2010.01493.x}
@@ -185,15 +192,21 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' the same person. Supply the group identifier through \code{mfp2()}'s
 #' \code{id} argument. If measurement order matters, supply \code{waves}.
 #'
-#' @param family Response family: \code{gaussian}, \code{binomial},
-#'   \code{poisson}, or \code{Gamma}. The default is
+#' @param family Response family: a family object, function, or name for
+#'   \code{gaussian}, \code{binomial}, \code{poisson}, or \code{Gamma},
+#'   with any link the family supports, for example
+#'   \code{binomial(link = "probit")}. The default is
 #'   \code{stats::gaussian()}.
 #' @param corstr Assumed pattern of association between measurements in
 #'   the same group: \code{"exchangeable"} (default),
 #'   \code{"independence"}, or \code{"ar1"}.
 #' @param std.err Method for calculating standard errors:
-#'   \code{"san.se"} (robust standard errors; the default),
-#'   \code{"jack"}, \code{"j1s"}, or \code{"fij"}.
+#'   \code{"san.se"} (the default), \code{"jack"}, \code{"j1s"}, or
+#'   \code{"fij"}. \code{"san.se"} gives robust sandwich standard errors
+#'   with the finite-cluster correction \eqn{K/(K-1)}, where \eqn{K} is the
+#'   number of clusters, as in Stata's \code{xtgee}; they are therefore
+#'   slightly larger than those reported by [geepack::geeglm()]. The
+#'   jackknife estimators are used unchanged.
 #' @param reference_dispersion Optional positive value that scales the
 #'   quasi-likelihood part of GEE AIC and BIC scores. The score divides
 #'   that part by this value; the penalty for model complexity is not
@@ -207,8 +220,11 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #'
 #' @details
 #' All three selection criteria in [mfp2()] are available for GEE models.
-#' P-value selection uses approximate tests for GEE. AIC selection uses
-#' QICu; BIC selection uses a BIC-like score based on quasi-likelihood.
+#' The default is \code{criterion = "aic"}, which uses QICu. BIC selection
+#' uses a BIC-like score based on quasi-likelihood, and p-value selection
+#' uses approximate tests for GEE. Under AIC or BIC selection,
+#' \code{select = 1} does not force a predictor into the model; use the
+#' \code{keep} argument of [mfp2()] instead.
 #'
 #' @return A family specification to supply as the \code{family} argument
 #'   of [mfp2()].
@@ -1136,6 +1152,20 @@ prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL
   type <- attr(y, "type", exact = TRUE)
   if (identical(type, "mcounting") && is.null(id)) {
     stop("! Start--stop Fine--Gray data require the `id` argument.", call. = FALSE)
+  }
+
+  # Check a named event type here so that the censoring level or a misspelled
+  # level gets a clear message instead of survival::finegray()'s generic one.
+  states <- attr(y, "states", exact = TRUE)
+  if (!is.null(family$etype) && !is.numeric(family$etype) && !is.null(states) &&
+      !as.character(family$etype) %in% states) {
+    stop(
+      sprintf(
+        "! `etype = \"%s\"` is not an event type in the response.\ni Event types: %s. The censoring level cannot be used as `etype`.",
+        as.character(family$etype), paste(states, collapse = ", ")
+      ),
+      call. = FALSE
+    )
   }
 
   original_row <- seq_len(n)
@@ -2165,7 +2195,7 @@ validate_family_response <- function(y, family_string, nobs) {
   if (is.matrix(y)) {
     if (family_string != "binomial") {
       stop(
-        "! Matrix responses are only supported for `family = 'binomial'`.",
+        "! Matrix responses are only supported for `family = 'binomial'`.\n",
         "i For grouped binomial counts, use `y = cbind(successes, failures)`.",
         call. = FALSE
       )
@@ -2173,7 +2203,7 @@ validate_family_response <- function(y, family_string, nobs) {
 
     if (!is.numeric(y) || ncol(y) != 2L) {
       stop(
-        "! For `family = 'binomial'`, matrix `y` must be a numeric two-column matrix.",
+        "! For `family = 'binomial'`, matrix `y` must be a numeric two-column matrix.\n",
         "i Use `y = cbind(successes, failures)`.",
         call. = FALSE
       )

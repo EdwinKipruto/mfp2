@@ -82,7 +82,8 @@ mfp2(x, ...)
 and one column per predictor. Column names are required.}
 
 \item{\dots}{Used to pass arguments from \code{mfp2()} to its fitting method.
-Additional arguments supplied to the fitting method are not used.}
+Additional arguments supplied to the fitting method are not
+used; a warning names them.}
 
 \item{y}{Outcome for \code{mfp2.default()}. In the formula interface, put the
 outcome on the left side of the formula. Its required format depends on
@@ -101,7 +102,8 @@ When predicting for new data, supply the matching offset.}
 \item{scale}{Divisor used when preparing predictors for FP selection.
 \code{NULL} chooses scales automatically; \code{1} turns off automatic scaling.
 In \code{mfp2.default()}, use a named value such as \code{c(age = 10)} to set
-one column's scale. In formulas, set it inside \code{fp()} or \code{fp2()}.
+one column's scale. In formulas, a single unnamed value applies to every
+term that does not set its own; use \code{fp()} or \code{fp2()} for one term.
 Binary and ACD predictors always use scale \code{1}. Predictors with exact-zero
 handling (\code{zero}, \code{catzero}, or \code{spike}) use an automatic scale of \code{1}; an
 explicitly supplied scale is still used. See \strong{Shifting, scaling, and
@@ -110,14 +112,17 @@ centering}.}
 \item{shift}{Value added to predictors before FP transformation.
 \code{NULL} chooses shifts automatically; \code{0} turns off automatic shifting.
 In \code{mfp2.default()}, use a named value such as \code{c(age = 20)} to set
-one column's shift. In formulas, set it inside \code{fp()} or \code{fp2()}.
+one column's shift. In formulas, a single unnamed value applies to every
+term that does not set its own; use \code{fp()} or \code{fp2()} for one term.
 Binary and linear predictors, and those using exact-zero handling,
 always have shift \code{0}. See \strong{Shifting, scaling, and centering}.}
 
 \item{df}{Maximum FP complexity: \code{1} allows linear only, \code{2} allows up
 to FP1, and \code{4} allows up to FP2. The default is \code{4}. Selection may
 choose a simpler form or omit the predictor. In \code{mfp2.default()}, use
-a named value such as \code{c(age = 2)} for one column; in formulas, use
+a named value such as \code{c(age = 2)} for one column. In \code{mfp2.formula()},
+the top-level value applies only to terms outside \code{fp()} or \code{fp2()};
+those terms default to \code{df = 4} unless set explicitly, for example
 \code{fp(age, df = 2)}. Predictors with few distinct values may be limited
 to a simpler form. See \strong{Fractional-polynomial model selection}.}
 
@@ -126,8 +131,9 @@ transformation; \code{FALSE} leaves them uncentered. Continuous terms use
 their mean and binary terms use their lower observed value in the data.
 Centering does not change fitted values. In \code{mfp2.default()},
 use one logical value for all predictors or a named vector for selected
-columns; unspecified columns use \code{TRUE}. In \code{mfp2.formula()}, use
-\code{fp()} or \code{fp2()} to set this for an individual predictor.}
+columns; unspecified columns use \code{TRUE}. In \code{mfp2.formula()}, the
+top-level value applies only to terms outside \code{fp()} or \code{fp2()}; set
+\code{center} inside the term to change it for an \code{fp()} term.}
 
 \item{subset}{Optional observations used for model selection and fitting.
 Formula calls accept an expression evaluated in \code{data} and the formula
@@ -204,13 +210,13 @@ power; duplicate powers are removed. Use the predictor's column name
 as the list name. To allow only a linear effect, set \code{df = 1}. Powers
 supplied inside \code{fp()} or \code{fp2()} take precedence over this list.}
 
-\item{ties}{Method for handling tied event times in Cox and Fine-Gray models.
+\item{ties}{Method for handling tied event times in Cox and Fine--Gray models.
 Supported values are \code{"efron"} (default) and \code{"breslow"}. \code{"exact"} is not
 supported. The argument has no effect for other families. See
 \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
 \item{strata}{Optional stratification for Cox, parametric survival, and
-Fine-Gray models. In \code{mfp2.default()}, supply one stratum label per
+Fine--Gray models. In \code{mfp2.default()}, supply one stratum label per
 observation as a vector or factor. To stratify by several variables,
 supply a matrix or data frame with one variable per column. In
 \code{mfp2.formula()}, put \code{strata(...)} in the formula. The separate
@@ -239,7 +245,7 @@ to GEE or other model families.}
 the package uses its default settings for the selected model family.
 The available settings depend on the model family: see
 \code{\link[stats:glm.control]{stats::glm.control()}} for ordinary GLMs, \code{\link[survival:coxph.control]{survival::coxph.control()}} for
-Cox and Fine-Gray models, \code{\link[survival:survreg.control]{survival::survreg.control()}} for parametric
+Cox and Fine--Gray models, \code{\link[survival:survreg.control]{survival::survreg.control()}} for parametric
 survival models, and \code{\link[geepack:geese.control]{geepack::geese.control()}} for GEE models.
 Multinomial models accept \code{maxit}, \code{reltol}, \code{abstol}, \code{trace}, and
 \code{MaxNWts}; ordinal models accept \code{maxit}, \code{eps}, \code{tol}, and \code{trace}.}
@@ -267,8 +273,8 @@ ineligible. Ineligible requests are ignored. Applies to \code{mfp2.default()}
 only; in formulas, use \code{fp(x, spike = TRUE)}.}
 
 \item{min_saz_prop}{Minimum proportion of observations required in each
-group (\code{x = 0} and \code{x > 0}) for spike-at-zero selection. Must be between
-0 and 0.5; default \code{0.10}. Predictors that do not meet this threshold
+group (\code{x = 0} and \code{x > 0}) for spike-at-zero selection. Must be strictly
+between 0 and 0.5; default \code{0.10}. Predictors that do not meet this threshold
 are not assessed. In large samples, a lower threshold may still leave
 enough observations in each group.}
 
@@ -418,7 +424,7 @@ automatically; the matrix interface requires them to be coded as numeric
 columns. Supported regression models include Gaussian, binomial, Poisson, Gamma,
 inverse Gaussian, negative binomial, multinomial, and ordinal models.
 For time-to-event outcomes, it supports Cox, parametric survival,
-and Fine-Gray competing-risks models. It also supports generalized
+and Fine--Gray competing-risks models. It also supports generalized
 estimating equations (GEE) for clustered data.
 }
 \section{Methods (by class)}{
@@ -472,7 +478,8 @@ for predictor inclusion and \code{alpha} for functional-form comparisons.
 With \code{"aic"} or \code{"bic"}, candidate models are compared using the chosen
 information criterion.
 
-See \code{mfp} vignette for methodological details.
+See \code{vignette("MFP_Introduction", package = "mfp2")} for methodological
+details.
 }
 
 \section{Formula and matrix interfaces}{

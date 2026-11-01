@@ -66,6 +66,7 @@
 #' @return A list containing `dispersion` (positive estimated GEE scale) and
 #'   `powers` (the successful reference powers for every conceptual term).
 #' @keywords internal
+#' @noRd
 estimate_reference_dispersion <- function(x, y, family, df, powers,
                                           term_to_columns, center, acdx, zero,
                                           catzero, spike, acd_parameter,

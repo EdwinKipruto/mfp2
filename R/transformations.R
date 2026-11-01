@@ -87,25 +87,23 @@
 #' If `zero = TRUE`, exact-zero values are treated structurally: they are not
 #' shifted, and their transformed continuous components are set to zero.
 #'
-#' @param x a vector of a predictor variable.
-#' @param power a numeric vector indicating the FP power. Default is 1 (linear).
-#' Must be a vector of length 2 for acd transformation. Ignores `NA`, unless
-#' an ACD transformation is applied in which case power must be a numeric
-#' vector of length 2, and `NA` indicated which parts are used for the final
-#' FP.
+#' @param x A numeric vector of predictor values.
+#' @param power A numeric vector of FP powers. Default is 1 (linear). `NA`
+#'   values are ignored; if all powers are `NA`, `NULL` is returned.
 #' @param scale Positive numeric scaling factor applied to `x` after shifting.
 #'   Default `1` (no scaling). If `NULL`, the scale factor is estimated
 #'   automatically. Scaling does not change the selected powers.
 #' @param shift shift required for shifting x to positive values. Default is 0,
 #' meaning no shift is applied. If `NULL` then the shift is estimated
 #' automatically using the Royston and Sauerbrei formula iff any `x` <= 0.
+#' Ignored when `zero = TRUE`.
 #' @param name character used to define names for the output matrix. Default
 #' is `NULL`, meaning the output will have unnamed columns.
 #' @param zero Logical indicating whether only values with `x > 0` should be
 #' transformed, with exact-zero values retained as structural zeros. If
 #' `TRUE`, `x` must be nonnegative and must have been validated by the caller;
 #' negative values must be explicitly recoded if they should represent the zero
-#' group. If `FALSE`
+#' group. No shift is applied when `zero = TRUE`. If `FALSE`
 #' (default), all values are shifted (if needed) to ensure positivity.
 #' @param check_binary a logical indicating whether or not input `x` is checked
 #' if it is a binary variable (i.e. has only two distinct values). The default
@@ -119,14 +117,9 @@
 #' Returns a matrix of transformed variable(s). The number of columns
 #' depends on the number of powers provided, the number of rows is equal to the
 #' length of `x`. The columns are sorted by increased power.
-#' If all powers are `NA`, then this function returns `NULL`.
-#' In case an acd transformation is applied, the output is a list with two
-#' entries. The first `acd` is the matrix of transformed variables, the acd
-#' term is returned as the last column of the matrix (i.e. in case that the
-#' power for the normal data is `NA`, then it is the only column in the matrix).
-#' The second entry `acd_parameter` returns a list of estimated parameters
-#' for the ACD transformation, or simply the input `acd_parameter` if it was
-#' not `NULL`.
+#' If all powers are `NA`, then this function returns `NULL`. Binary `x`
+#' with `check_binary = TRUE` is returned untransformed as a one-column
+#' matrix.
 #'
 #' @references
 #' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.
@@ -154,6 +147,14 @@ transform_vector_fp <- function(x,
          call. = FALSE)
   }
 
+  # Cheap scalar/type checks only: this function is also used on hot paths.
+  if (!is.numeric(x) && !is.logical(x)) {
+    stop("`x` must be a numeric vector.", call. = FALSE)
+  }
+  if (!is.numeric(power) && !all(is.na(power))) {
+    stop("`power` must be a numeric vector.", call. = FALSE)
+  }
+
   if (all(is.na(power))) {
     return(NULL)
   }
@@ -164,6 +165,15 @@ transform_vector_fp <- function(x,
 
   if (is.null(scale)) {
     scale <- find_scale_factor(x)
+  }
+
+  if (!is.numeric(shift) || length(shift) != 1L || !is.finite(shift)) {
+    stop("`shift` must be `NULL` or a single finite number.", call. = FALSE)
+  }
+  if (!is.numeric(scale) || length(scale) != 1L || !is.finite(scale) ||
+      scale <= 0) {
+    stop("`scale` must be `NULL` or a single positive finite number.",
+         call. = FALSE)
   }
 
   if (zero) {
@@ -290,7 +300,7 @@ transform_vector_acd <- function(x,
                                  check_binary = TRUE) {
 
   if (length(power) != 2)
-    stop("! power must have length two.",
+    stop("! power must have length two.\n",
          sprintf("i The length of powers supplied is %d.", length(power)))
 
   if (all(is.na(power))) {
@@ -2303,81 +2313,4 @@ create_dummy_variables <- function(data,
   }
 
   data
-}
-#' Cumulative (Threshold) Contrast Coding for Ordered Factors
-#'
-#' @description
-#' Generates a contrast matrix for ordered factors in which each column
-#' represents a cumulative comparison: level k versus all lower levels.
-#' This is sometimes called cumulative or sequential dummy coding.
-#'
-#' @param n Integer or character vector. If an integer, specifies the number
-#'   of levels. If a character vector, its elements are used as factor levels.
-#'
-#' @return A numeric matrix with \code{length(n)} rows and \code{length(n)-1} columns.
-#'   Each column is a dummy variable encoding the cumulative comparison of
-#'   higher levels against lower levels. Row names correspond to factor levels.
-#'
-#' @details
-#' For an ordered factor with levels A < B < C < D, the resulting matrix
-#' produces three columns:
-#' Column 1 compares B, C, D versus A;
-#' Column 2 compares C, D versus A and B;
-#' Column 3 compares D versus A, B, and C.
-#' Each element of the matrix is 0 or 1, with 1 indicating that the observation
-#' belongs to the "higher" category for that threshold.
-#'
-#' **Column Names:** Column names are formatted as \code{varname_1}, \code{varname_2}, etc.
-#' These names are syntactically valid, unique, and correspond to thresholds in order:
-#' \code{varname_1} represents the first threshold (level 2 vs level 1),
-#' \code{varname_2} represents the second threshold (level 3 vs levels 1 and 2), etc.
-#'
-#' This contrast matrix can be assigned to an ordered factor via
-#' \code{contrasts()} before fitting a model, e.g., in \code{mfp2.formula()}.
-#' This approach preserves ordinal information while allowing threshold-type
-#' interpretation of regression coefficients.
-#'
-#' @examples
-#' # Create a data frame
-#' data <- data.frame(grade = c("A", "B", "C", "D", "A"))
-#' # Convert the column to an ordered factor
-#' data$grade <- factor(data$grade, levels = c("A", "B", "C", "D"), ordered = TRUE)
-#' # Assign the cumulative contrasts to the ordered factor
-#' contrasts(data$grade) <- contr.cumulative(levels(data$grade))
-#' @return A numeric matrix with \code{nlev} rows and \code{nlev - 1}
-#'   columns, where \code{nlev} is either \code{n} when \code{n} is numeric
-#'   or \code{length(n)} when level labels are supplied.
-#' @keywords internal
-#' @noRd
-contr.cumulative <- function(n) {
-  # Numeric input represents the number of ordered levels. Keep this contract
-  # explicit so invalid scalar values do not reach matrix dimensions or create
-  # unsafe colon sequences such as 1:0. Non-numeric input supplies the labels.
-  if (is.numeric(n)) {
-    if (length(n) != 1L || is.na(n) || !is.finite(n) ||
-        n < 2 || n != floor(n)) {
-      stop(
-        "`n` must specify at least two ordered levels.",
-        call. = FALSE
-      )
-    }
-    nlev <- as.integer(n)
-  } else {
-    nlev <- length(n)
-    if (nlev < 2L) {
-      stop(
-        "`n` must specify at least two ordered levels.",
-        call. = FALSE
-      )
-    }
-  }
-
-  mat <- matrix(0, nrow = nlev, ncol = nlev - 1L)
-  for (j in seq_len(nlev - 1L)) {
-    mat[seq.int(j + 1L, nlev), j] <- 1
-  }
-  rownames(mat) <- if (is.numeric(n)) as.character(seq_len(nlev)) else n
-  # Safe column names without special characters
-  colnames(mat) <- paste0("_", seq_len(nlev - 1L))
-  mat
 }

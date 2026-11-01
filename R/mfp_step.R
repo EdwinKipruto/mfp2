@@ -906,14 +906,19 @@ find_best_fpm_step <- function(x,
   selection_score <- if (gee_pvalue) "deviance_rs" else "logl"
   valid_candidates <- which(is.finite(metrics[, selection_score]))
   if (length(failed_candidates) > 0L) {
-    warning(
-      sprintf(
-        "i %d of %d FP%s candidate model(s) for '%s' could not be fitted and were skipped.\ni First problem: %s\ni Setting an explicit shift for '%s' may avoid this.",
-        length(failed_candidates), n_candidates, degree, xi,
-        failed_candidates[[1L]], xi
-      ),
-      call. = FALSE
-    )
+    # Classed so that fit_mfp() can drop repeats of the same message from
+    # later backfitting cycles.
+    warning(structure(
+      class = c("mfp2_skipped_candidates", "warning", "condition"),
+      list(
+        message = sprintf(
+          "i %d of %d FP%s candidate model(s) for '%s' could not be fitted and were skipped.\ni First problem: %s\ni Setting an explicit shift for '%s' may avoid this.",
+          length(failed_candidates), n_candidates, degree, xi,
+          failed_candidates[[1L]], xi
+        ),
+        call = NULL
+      )
+    ))
   }
   if (length(valid_candidates) == 0L) {
     stop(

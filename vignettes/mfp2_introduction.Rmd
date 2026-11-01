@@ -99,9 +99,8 @@ options(width = 100)
 
 library(mfp2)
 library(ggplot2)
-library(patchwork)
+has_patchwork <- requireNamespace("patchwork", quietly = TRUE)
 library(survival)
-library(formatR)
 
 has_rms <- requireNamespace("rms", quietly = TRUE) &&
   utils::packageVersion("rms") >= "7.0-0"
@@ -1307,7 +1306,7 @@ spaced sequence shows the shape more clearly.
 
 The following example compares the two options using the `art` data:
 
-```{r plot-evaluation-values, eval=TRUE, fig.cap="Art data. The same fitted function evaluated at equally spaced values (left) and observed values (right). Residual points remain at the observed values in both panels.", fig.width=8, fig.height=5, out.width="100%", fig.align="center"}
+```{r plot-evaluation-values, eval=has_patchwork, fig.cap="Art data. The same fitted function evaluated at equally spaced values (left) and observed values (right). Residual points remain at the observed values in both panels.", fig.width=8, fig.height=5, out.width="100%", fig.align="center"}
 data("art")
 
 fit2 <- mfp2(
@@ -1488,7 +1487,7 @@ The following plots show the selected functions with pointwise
 95% confidence intervals and component-plus-residual points.
 The vertical axis is on the log-odds scale, not the probability scale.
 
-```{r logistic-functions, eval=TRUE, fig.cap="Pima data. Selected predictor contributions on the log-odds scale, with pointwise 95% confidence intervals and component-plus-residual points.", fig.width=7, fig.height=6, out.width="100%", fig.align="center"}
+```{r logistic-functions, eval=has_patchwork, fig.cap="Pima data. Selected predictor contributions on the log-odds scale, with pointwise 95% confidence intervals and component-plus-residual points.", fig.width=7, fig.height=6, out.width="100%", fig.align="center"}
 plots <- plot(fit)
 patchwork::wrap_plots(plots, ncol = 2)
 ```

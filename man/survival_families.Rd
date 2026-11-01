@@ -23,8 +23,10 @@ estimates it from the data; a positive value fixes it.}
 \item{parms}{Optional parameters for the chosen distribution, as accepted
 by \code{\link[survival:survreg]{survival::survreg()}}.}
 
-\item{etype}{Event type of interest in a Fine-Gray model. If \code{NULL},
-the first event type is used.}
+\item{etype}{Event type of interest in a Fine--Gray model: one of the
+event levels of the multi-state \code{Surv()} response, such as
+\code{"cause1"}. If \code{NULL}, the first event type (the first
+non-censoring level) is used. The censoring level cannot be used.}
 
 \item{timefix}{Whether to correct small differences in event times caused
 by rounding. The default is \code{TRUE}.}
@@ -53,9 +55,9 @@ when other event types may occur first.
 \details{
 Supply the resulting specification as the \code{family} argument to
 \code{mfp2()}. \code{survreg_family()} can also be used with
-\code{mfpi()}; Fine-Gray models cannot.
+\code{mfpi()}; Fine--Gray models cannot.
 
-Both functions require a survival response. For Fine-Gray models, the
+Both functions require a survival response. For Fine--Gray models, the
 response must identify the possible event types. Supply an \code{id}
 to \code{mfp2()} when observations use start and stop times.
 }
@@ -108,6 +110,11 @@ fit_finegray <- mfp2(
 }
 }
 \references{
+Fine JP, Gray RJ (1999). A proportional hazards model for the
+subdistribution of a competing risk. \emph{Journal of the American
+Statistical Association}, 94(446), 496--509.
+\doi{10.1080/01621459.1999.10474144}
+
 Zhou B, Latouche A, Rocha V, Fine JP (2011). Competing risks regression
 for stratified data. \emph{Biometrics}, 67(2), 661--670.
 \doi{10.1111/j.1541-0420.2010.01493.x}

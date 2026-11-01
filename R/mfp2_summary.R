@@ -116,8 +116,14 @@
 #' \code{formulas} (or \code{NULL}), \code{acd_definitions} (or
 #' \code{NULL}), \code{ordinal_intercepts} (a threshold-inference data frame
 #' for ordinal models, otherwise \code{NULL}), \code{fit},
-#' \code{raw_summary}, and \code{notes}. A dedicated \code{print} method
-#' renders these. When \code{raw = TRUE}, the underlying summary object.
+#' \code{raw_summary}, and \code{notes}. For multinomial models,
+#' \code{linear_terms}, \code{nonlinear_terms}, \code{basis},
+#' \code{formulas}, \code{acd_definitions}, \code{ordinal_intercepts}, and
+#' \code{fit} are replaced by \code{coefficients} (the outcome-specific
+#' coefficient table), \code{model_fit_values}, \code{multinomial},
+#' \code{class_levels}, \code{reference_class}, \code{n_logits}, and
+#' \code{digits}. A dedicated \code{print} method renders these. When
+#' \code{raw = TRUE}, the underlying summary object.
 #'
 #' @examples
 #' data("prostate")

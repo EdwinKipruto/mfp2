@@ -1,38 +1,38 @@
+## Submission
+
+This is an update of mfp2 from version 1.0.1 to 1.1.0. It adds new model
+families, interaction analysis with `mfpi()`, spike-at-zero modelling, and a
+`plot()` method. See NEWS.md for details.
+
+## Maintainer email change
+
+The maintainer's email address has changed from
+edwin.kipruto@uniklinik-freiburg.de to edwin.kipruto@email.uni-freiburg.de.
+I no longer have access to the previous address <REASON, e.g. the account was
+closed when my position changed>, so I cannot send confirmation from it.
+Co-author Willi Sauerbrei (wilhelm.sauerbrei@uniklinik-freiburg.de) can
+confirm the change if needed.
+
+## Removed exports
+
+Eleven low-level helper functions are no longer exported (listed in NEWS.md).
+They are still available internally. mfp2 has no reverse dependencies on CRAN,
+so no other packages are affected.
+
+## Test environments
+
+* local: R 4.x.x, <OS>
+* win-builder: R-devel and R-release
+* <add others, e.g. R-hub or GitHub Actions: macOS, Ubuntu>
+
 ## R CMD check results
 
-0 errors | 0 warnings | 0 notes
+0 errors | 0 warnings | 1 note
 
-## Release summary
-
-This updates mfp2 from version 1.0.1 to version 1.1.0.
-
-The main changes are:
-
-* Added `mfpi()` for interaction analysis with a categorical grouping variable, with prediction and plotting methods for group-specific functions and differences.
-* Added spike-at-zero modelling and options for modelling positive predictor values with or without a separate zero indicator.
-* Expanded model support to include multinomial regression, generalized estimating equations, parametric survival regression, and Fine–Gray models.
-* Expanded support for GLM families and alternative link functions.
-* Added `plot.mfp2()`; `fracplot()` remains available for backward compatibility.
-* Corrected prediction, confidence-interval, centring, subsetting, and factor-handling behaviour, and improved computational performance.
-
-Full details are provided in `NEWS.md`.
-
-## Interface changes
-
-Variable-specific `df`, `select`, `alpha`, `shift`, and `scale` settings in the default methods now use named vectors matched to predictor columns. Partial named vectors are supported; unnamed vectors containing more than one value are rejected.
-
-ACD settings now use `acd_vars` in the default interface and `acd = TRUE` within formula terms. The former `acdx` spelling remains available as a deprecated alias.
-
-Formula-based survival models use `strata(...)` in the formula. The direct `strata` argument to `mfp2.formula()` remains available as a deprecated compatibility option.
+* checking CRAN incoming feasibility ... NOTE
+  New maintainer: Edwin Kipruto <edwin.kipruto@email.uni-freiburg.de>
+  Old maintainer(s): Edwin Kipruto <edwin.kipruto@uniklinik-freiburg.de>
 
 ## Reverse dependencies
 
-All three identified reverse dependencies were checked using `revdepcheck`, comparing the released CRAN version of mfp2 with the local development version:
-
-* ctlr 0.1.0
-* midoc 1.0.0
-* test2norm 0.3.0.1
-
-No new errors, warnings, or notes were detected.
-
-3 packages checked | 3 passed | 0 broken
+There are no reverse dependencies on CRAN.

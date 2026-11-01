@@ -1258,44 +1258,6 @@ mfpi_plot_difference_ylabel <- function(model, group, reference) {
 }
 
 
-#' Return the Compact Plot Scale Label for an MFPI Model
-#'
-#' Backward-compatible internal helper returning a compact scale label. New
-#' plot axes use \code{mfpi_plot_fitted_ylabel()} and
-#' \code{mfpi_plot_difference_ylabel()} so that the plotted quantity, rather
-#' than only its scale, is identified.
-#'
-#' @param model Object of class \code{"mfpi"}.
-#'
-#' @return Character scalar.
-#'
-#' @keywords internal
-#' @noRd
-mfpi_plot_scale_label <- function(model) {
-  family_string <- tolower(mfpi_family_string(model))
-  link <- mfpi_plot_link_name(model)
-
-  if (identical(family_string, "cox")) {
-    return("log relative hazard")
-  }
-  if (identical(family_string, "survreg")) return("survreg location scale")
-
-  switch(
-    link,
-    identity = "outcome scale",
-    logit    = "log odds",
-    log      = "log mean",
-    probit   = "probit scale",
-    cloglog  = "complementary log-log scale",
-    cauchit  = "cauchit scale",
-    inverse  = "inverse-mean scale",
-    `1/mu^2` = "inverse-squared-mean scale",
-    sqrt     = "square-root mean scale",
-    if (identical(link, "unknown")) "linear predictor" else paste0(link, " scale")
-  )
-}
-
-
 #' Build Subtitle Metadata for MFPI Plots
 #'
 #' Creates a named lookup table containing the interaction form for each

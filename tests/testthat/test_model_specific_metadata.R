@@ -262,6 +262,7 @@ test_that("mfp2 summaries expose and print fitted survreg metadata", {
 
 test_that("mfp2 summaries expose and print negative-binomial theta", {
   skip_if_not_installed("fastglm")
+  skip_if_not_installed("MASS")
   fits <- get_negbin_reference_fits()
   s <- summary(fits$mfp2)
 

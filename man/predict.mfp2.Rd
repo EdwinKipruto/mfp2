@@ -733,7 +733,6 @@ predict(
   ref = list(age = 50, cavol = 1)
 )
 
-\dontrun{
 ## Gaussian models: a predictor with a spike at zero
 set.seed(1)
 d_spike <- data.frame(
@@ -835,7 +834,7 @@ d_multi$off_B <- 0.05 * d_multi$Sepal.Width
 d_multi$off_C <- -0.05 * d_multi$Sepal.Width
 
 fit_multinomial <- mfp2(
-  Species ~ fp(Sepal.Length) +
+  Species ~ fp(Sepal.Length, df = 1, select = 1) +
     offset(cbind(
       setosa = off_A,
       versicolor = off_B,
@@ -843,8 +842,6 @@ fit_multinomial <- mfp2(
     )),
   data = d_multi,
   family = multinomial_family(reference = "setosa"),
-  df = 1,
-  select = 1,
   verbose = FALSE
 )
 
@@ -1011,7 +1008,6 @@ predict(
   type = "response",
   times = c(365, 730)
 )
-}
 }
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[=get_selected_variable_names]{get_selected_variable_names()}}, \code{\link[stats:predict.glm]{stats::predict.glm()}},

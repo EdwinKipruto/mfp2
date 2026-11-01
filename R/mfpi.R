@@ -353,8 +353,8 @@
 #'   `"linear"`, `"fp1"`, or `"fp2"`.
 #' - `group_level_map`: the mapping between the internal group codes used
 #'   for fitting and the original group labels.
-#' - `winsorize_limits`: the lower and upper limits used when Winsorisation
-#'   is requested, calculated after shifting and scaling. These limits
+#' - `winsorize_limits`: present only when `winsorize = TRUE`; the lower and
+#'   upper limits used for Winsorisation, calculated after shifting and scaling. These limits
 #'   are reused for prediction.
 #' - `criterion`: the criterion used for model selection: `"pvalue"`,
 #'   `"aic"`, or `"bic"`.
@@ -2083,6 +2083,20 @@ mfpi.formula <- function(formula,
   # defaults only - per-variable settings belong in fp()/fp2() terms ---------
   # The formula interface only supports scalar defaults; per-variable settings
   # must be supplied via fp()/fp2() terms in the formula.
+  # A named value such as shift = c(x = 5) would otherwise be accepted as a
+  # scalar and silently applied to every predictor, so reject names here.
+  for (setting_name in c("df", "alpha", "select", "shift", "scale", "center")) {
+    if (!is.null(names(get(setting_name, inherits = FALSE)))) {
+      stop(
+        sprintf(
+          "! In the formula interface, `%s` must be a single unnamed value that applies to all terms.\ni Use fp(..., %s = value) to set it for an individual variable.",
+          setting_name, setting_name
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
   if (length(df) != 1L) {
     stop(
       "! `df` must be a single numeric value.\n",

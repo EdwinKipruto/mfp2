@@ -15,9 +15,12 @@ Character vector of selected predictor names, ordered according to the
 }
 \description{
 Returns the names of predictors retained in the final model after MFP
-selection. A variable is considered selected when at least one of its
-fractional-polynomial powers is not \code{NA}. Excluded variables have all
-powers set to \code{NA}.
+selection, as recorded in the \code{selected} column of \code{object$fp_terms}.
+Usually a selected variable has at least one fractional-polynomial power
+that is not \code{NA}. The exception is a spike-at-zero term for which only
+the binary indicator for \code{x = 0} is retained: it is selected although
+all of its powers are \code{NA}. Factors are reported by their variable name,
+not by their contrast columns.
 }
 \examples{
 # Gaussian model

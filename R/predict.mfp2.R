@@ -698,7 +698,6 @@
 #'   ref = list(age = 50, cavol = 1)
 #' )
 #'
-#' \dontrun{
 #' ## Gaussian models: a predictor with a spike at zero
 #' set.seed(1)
 #' d_spike <- data.frame(
@@ -800,7 +799,7 @@
 #' d_multi$off_C <- -0.05 * d_multi$Sepal.Width
 #'
 #' fit_multinomial <- mfp2(
-#'   Species ~ fp(Sepal.Length) +
+#'   Species ~ fp(Sepal.Length, df = 1, select = 1) +
 #'     offset(cbind(
 #'       setosa = off_A,
 #'       versicolor = off_B,
@@ -808,8 +807,6 @@
 #'     )),
 #'   data = d_multi,
 #'   family = multinomial_family(reference = "setosa"),
-#'   df = 1,
-#'   select = 1,
 #'   verbose = FALSE
 #' )
 #'
@@ -976,7 +973,6 @@
 #'   type = "response",
 #'   times = c(365, 730)
 #' )
-#' }
 #' @seealso
 #' [mfp2()], [get_selected_variable_names()], [stats::predict.glm()],
 #' [survival::predict.coxph()], [geepack::geeglm()]
@@ -3744,6 +3740,26 @@ reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
   active_xlevels <- object$formula_xlevels[
     intersect(names(object$formula_xlevels), active_frame_variables)
   ]
+
+  # Name variables of the selected terms that newdata lacks, instead of
+  # letting model.frame() fail with "object 'z' not found". As in
+  # predict.lm(), variables found in the formula environment (for example a
+  # constant used inside an expression) are still accepted.
+  formula_env <- environment(active_formula_terms)
+  if (is.null(formula_env)) formula_env <- parent.frame()
+  missing_vars <- setdiff(all.vars(active_formula_terms), names(newdata_df))
+  missing_vars <- missing_vars[
+    !vapply(missing_vars, exists, logical(1L), envir = formula_env)
+  ]
+  if (length(missing_vars) > 0L) {
+    stop(
+      "! Missing required variable(s) in `newdata`: ",
+      paste(missing_vars, collapse = ", "), ".",
+      "\ni Supply every variable used by the selected terms; see ",
+      "`get_selected_variable_names()`.",
+      call. = FALSE
+    )
+  }
 
   # Validate only the inputs to the active formula. Checking the resulting
   # model matrix alone would miss inputs masked by an expression, e.g. 1 / Inf.

@@ -15,13 +15,10 @@ transform_vector_fp(
 )
 }
 \arguments{
-\item{x}{a vector of a predictor variable.}
+\item{x}{A numeric vector of predictor values.}
 
-\item{power}{a numeric vector indicating the FP power. Default is 1 (linear).
-Must be a vector of length 2 for acd transformation. Ignores \code{NA}, unless
-an ACD transformation is applied in which case power must be a numeric
-vector of length 2, and \code{NA} indicated which parts are used for the final
-FP.}
+\item{power}{A numeric vector of FP powers. Default is 1 (linear). \code{NA}
+values are ignored; if all powers are \code{NA}, \code{NULL} is returned.}
 
 \item{scale}{Positive numeric scaling factor applied to \code{x} after shifting.
 Default \code{1} (no scaling). If \code{NULL}, the scale factor is estimated
@@ -29,7 +26,8 @@ automatically. Scaling does not change the selected powers.}
 
 \item{shift}{shift required for shifting x to positive values. Default is 0,
 meaning no shift is applied. If \code{NULL} then the shift is estimated
-automatically using the Royston and Sauerbrei formula iff any \code{x} <= 0.}
+automatically using the Royston and Sauerbrei formula iff any \code{x} <= 0.
+Ignored when \code{zero = TRUE}.}
 
 \item{name}{character used to define names for the output matrix. Default
 is \code{NULL}, meaning the output will have unnamed columns.}
@@ -38,7 +36,7 @@ is \code{NULL}, meaning the output will have unnamed columns.}
 transformed, with exact-zero values retained as structural zeros. If
 \code{TRUE}, \code{x} must be nonnegative and must have been validated by the caller;
 negative values must be explicitly recoded if they should represent the zero
-group. If \code{FALSE}
+group. No shift is applied when \code{zero = TRUE}. If \code{FALSE}
 (default), all values are shifted (if needed) to ensure positivity.}
 
 \item{check_binary}{a logical indicating whether or not input \code{x} is checked
@@ -50,14 +48,9 @@ transform data for predictions. See Details.}
 Returns a matrix of transformed variable(s). The number of columns
 depends on the number of powers provided, the number of rows is equal to the
 length of \code{x}. The columns are sorted by increased power.
-If all powers are \code{NA}, then this function returns \code{NULL}.
-In case an acd transformation is applied, the output is a list with two
-entries. The first \code{acd} is the matrix of transformed variables, the acd
-term is returned as the last column of the matrix (i.e. in case that the
-power for the normal data is \code{NA}, then it is the only column in the matrix).
-The second entry \code{acd_parameter} returns a list of estimated parameters
-for the ACD transformation, or simply the input \code{acd_parameter} if it was
-not \code{NULL}.
+If all powers are \code{NA}, then this function returns \code{NULL}. Binary \code{x}
+with \code{check_binary = TRUE} is returned untransformed as a one-column
+matrix.
 }
 \description{
 Constructs fractional-polynomial design columns from specified powers,

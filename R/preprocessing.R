@@ -42,7 +42,7 @@ find_scale_factor <- function(x) {
   n_unique <- length(unique(x))
 
   if (n_unique == 1)
-    stop("! Input data must not be constant.",
+    stop("! Input data must not be constant.\n",
          "i All values of x are identical, hence log(max(x)-min(x)) = log(0) is not defined.")
 
   if (n_unique == 2)

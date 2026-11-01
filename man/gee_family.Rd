@@ -13,8 +13,10 @@ gee_family(
 )
 }
 \arguments{
-\item{family}{Response family: \code{gaussian}, \code{binomial},
-\code{poisson}, or \code{Gamma}. The default is
+\item{family}{Response family: a family object, function, or name for
+\code{gaussian}, \code{binomial}, \code{poisson}, or \code{Gamma},
+with any link the family supports, for example
+\code{binomial(link = "probit")}. The default is
 \code{stats::gaussian()}.}
 
 \item{corstr}{Assumed pattern of association between measurements in
@@ -22,8 +24,12 @@ the same group: \code{"exchangeable"} (default),
 \code{"independence"}, or \code{"ar1"}.}
 
 \item{std.err}{Method for calculating standard errors:
-\code{"san.se"} (robust standard errors; the default),
-\code{"jack"}, \code{"j1s"}, or \code{"fij"}.}
+\code{"san.se"} (the default), \code{"jack"}, \code{"j1s"}, or
+\code{"fij"}. \code{"san.se"} gives robust sandwich standard errors
+with the finite-cluster correction \eqn{K/(K-1)}, where \eqn{K} is the
+number of clusters, as in Stata's \code{xtgee}; they are therefore
+slightly larger than those reported by \code{\link[geepack:geeglm]{geepack::geeglm()}}. The
+jackknife estimators are used unchanged.}
 
 \item{reference_dispersion}{Optional positive value that scales the
 quasi-likelihood part of GEE AIC and BIC scores. The score divides
@@ -49,8 +55,11 @@ the same person. Supply the group identifier through \code{mfp2()}'s
 }
 \details{
 All three selection criteria in \code{\link[=mfp2]{mfp2()}} are available for GEE models.
-P-value selection uses approximate tests for GEE. AIC selection uses
-QICu; BIC selection uses a BIC-like score based on quasi-likelihood.
+The default is \code{criterion = "aic"}, which uses QICu. BIC selection
+uses a BIC-like score based on quasi-likelihood, and p-value selection
+uses approximate tests for GEE. Under AIC or BIC selection,
+\code{select = 1} does not force a predictor into the model; use the
+\code{keep} argument of \code{\link[=mfp2]{mfp2()}} instead.
 }
 \examples{
 set.seed(1)

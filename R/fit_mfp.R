@@ -710,6 +710,17 @@ fit_mfp <- function(x,
     NULL
   }
 
+  # The same candidates usually fail in every cycle. Show each distinct
+  # skipped-candidate warning once per fit rather than once per cycle.
+  seen_skip_warnings <- character(0L)
+  muffle_repeated_skip_warning <- function(w) {
+    msg <- conditionMessage(w)
+    if (msg %in% seen_skip_warnings) {
+      invokeRestart("muffleWarning")
+    }
+    seen_skip_warnings <<- c(seen_skip_warnings, msg)
+  }
+
   while (!converged && j <= cycles) {
     if (verbose) {
       message(sprintf(
@@ -718,7 +729,7 @@ fit_mfp <- function(x,
       ))
     }
 
-    fit_best_cycle <- find_best_fp_cycle(
+    fit_best_cycle <- withCallingHandlers(find_best_fp_cycle(
       x               = x,
       term_to_columns = term_to_columns,
       y               = y,
@@ -754,7 +765,7 @@ fit_mfp <- function(x,
       has_offset      = has_offset,
       n_obs           = n_obs,
       verbose         = verbose
-    )
+    ), mfp2_skipped_candidates = muffle_repeated_skip_warning)
 
     powers_updated         <- fit_best_cycle$powers_current
     searched_fp_updated    <- fit_best_cycle$searched_fp_current

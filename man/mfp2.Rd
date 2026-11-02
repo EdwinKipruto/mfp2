@@ -419,13 +419,14 @@ supports approximate cumulative distribution (ACD) transformations for
 sigmoid-shaped relationships and spike-at-zero modelling for predictors
 with many exact zeros. Models can be specified with a formula and data frame
 or with a numeric predictor matrix and an outcome. Both interfaces use the
-same selection procedure. The formula interface handles categorical predictors
-automatically; the matrix interface requires them to be coded as numeric
-columns. Supported regression models include Gaussian, binomial, Poisson, Gamma,
-inverse Gaussian, negative binomial, multinomial, and ordinal models.
-For time-to-event outcomes, it supports Cox, parametric survival,
-and Fine--Gray competing-risks models. It also supports generalized
-estimating equations (GEE) for clustered data.
+same selection procedure. The formula interface is the preferred choice for
+most users because it handles categorical predictors automatically; the
+matrix interface requires them to be coded as numeric columns. Supported
+regression models include Gaussian, binomial, Poisson, Gamma, inverse
+Gaussian, negative binomial, multinomial, and ordinal models. For
+time-to-event outcomes, it supports Cox, parametric survival, and Fine--Gray
+competing-risks models. It also supports generalized estimating equations
+(GEE) for clustered data.
 }
 \section{Methods (by class)}{
 \itemize{

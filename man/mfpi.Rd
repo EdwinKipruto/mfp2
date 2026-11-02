@@ -557,7 +557,8 @@ pred$differences
 
 \donttest{
 # Plot the fitted cavol functions and differences between groups.
-if (requireNamespace("patchwork", quietly = TRUE)) {
+if (requireNamespace("patchwork", quietly = TRUE) &&
+    requireNamespace("ggplot2", quietly = TRUE)) {
   plot(fit, terms = "cavol")
 }
 }

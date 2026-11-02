@@ -772,25 +772,27 @@
 #'   type = "response"
 #' )
 #'
-#' ## GEE models: predictions and standard errors
-#' # Illustrate groups of four observations.
-#' d_count$id <- rep(seq_len(20), each = 4)
-#' fit_gee <- mfp2(
-#'   count ~ fp(age) + offset(log(exposure)),
-#'   data = d_count,
-#'   family = gee_family(poisson(), corstr = "independence"),
-#'   id = id,
-#'   keep = "age",
-#'   verbose = FALSE
-#' )
+#' ## GEE models: predictions and standard errors (require geepack)
+#' if (requireNamespace("geepack", quietly = TRUE)) {
+#'   # Illustrate groups of four observations.
+#'   d_count$id <- rep(seq_len(20), each = 4)
+#'   fit_gee <- mfp2(
+#'     count ~ fp(age) + offset(log(exposure)),
+#'     data = d_count,
+#'     family = gee_family(poisson(), corstr = "independence"),
+#'     id = id,
+#'     keep = "age",
+#'     verbose = FALSE
+#'   )
 #'
-#' # New group identifiers are not needed for these mean predictions.
-#' predict(
-#'   fit_gee,
-#'   newdata = nd_count,
-#'   type = "response",
-#'   se.fit = TRUE
-#' )
+#'   # New group identifiers are not needed for these mean predictions.
+#'   print(predict(
+#'     fit_gee,
+#'     newdata = nd_count,
+#'     type = "response",
+#'     se.fit = TRUE
+#'   ))
+#' }
 #'
 #' ## Multinomial models: category probabilities and matrix offsets
 #' d_multi <- iris
@@ -995,6 +997,8 @@ predict.mfp2 <- function(object,
                          cox_reference = NULL,
                          ordinal_cutoff = NULL,
                          ...) {
+  # GEE fits delegate to geepack's methods; check it before any other work.
+  mfp2_require_geepack_for_fit(object)
 
   # Record whether the caller supplied a non-NULL Cox covariate reference.
   # NULL follows predict.mfpi() semantics and means "use the method default".

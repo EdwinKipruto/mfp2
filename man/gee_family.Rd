@@ -66,14 +66,17 @@ set.seed(1)
 d <- data.frame(id = rep(1:40, each = 3), x = runif(120, 1, 5))
 d$y <- log(d$x) + rnorm(40, sd = 0.5)[d$id] + rnorm(120, sd = 0.3)
 
-fit_gee <- mfp2(
-  y ~ fp(x, df = 2),
-  data = d,
-  family = gee_family(gaussian(), corstr = "exchangeable"),
-  id = d$id,
-  verbose = FALSE
-)
-coef(fit_gee)
+# GEE models require geepack.
+if (requireNamespace("geepack", quietly = TRUE)) {
+  fit_gee <- mfp2(
+    y ~ fp(x, df = 2),
+    data = d,
+    family = gee_family(gaussian(), corstr = "exchangeable"),
+    id = d$id,
+    verbose = FALSE
+  )
+  coef(fit_gee)
+}
 
 }
 \references{

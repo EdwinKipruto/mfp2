@@ -50,7 +50,10 @@ with components \code{call}, \code{family}, \code{criterion},
 \code{formulas} (or \code{NULL}), \code{acd_definitions} (or
 \code{NULL}), \code{ordinal_intercepts} (a threshold-inference data frame
 for ordinal models, otherwise \code{NULL}), \code{fit},
-\code{raw_summary}, and \code{notes}. For multinomial models,
+\code{raw_summary}, and \code{notes}. For compatibility with earlier
+versions, it also contains \code{coefficients}, \code{cov.scaled} and
+\code{cov.unscaled} when the underlying summary provides them (for example
+for GLM-type models); these are not printed. For multinomial models,
 \code{linear_terms}, \code{nonlinear_terms}, \code{basis},
 \code{formulas}, \code{acd_definitions}, \code{ordinal_intercepts}, and
 \code{fit} are replaced by \code{coefficients} (the outcome-specific

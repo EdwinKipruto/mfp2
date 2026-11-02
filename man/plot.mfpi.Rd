@@ -201,25 +201,29 @@ fit <- mfpi(
   verbose = FALSE
 )
 
-# Plot an interaction even if it was not selected.
-plot(fit, terms = "cavol", plot_type = "difference")
+# Plotting requires ggplot2.
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  # Plot an interaction even if it was not selected.
+  plot(fit, terms = "cavol", plot_type = "difference")
 
-# Plot group-specific functions with confidence bands.
-plot(
-  fit, terms = "cavol", plot_type = "fitted",
-  show_ci_fitted = TRUE
-)
+  # Plot group-specific functions with confidence bands.
+  plot(
+    fit, terms = "cavol", plot_type = "fitted",
+    show_ci_fitted = TRUE
+  )
 
-# Return plots without displaying them.
-plots <- plot(
-  fit, terms = "cavol", plot_type = "difference",
-  auto_print = FALSE
-)
-print(plots$cavol[[1]])
+  # Return plots without displaying them.
+  plots <- plot(
+    fit, terms = "cavol", plot_type = "difference",
+    auto_print = FALSE
+  )
+  print(plots$cavol[[1]])
+}
 
 \donttest{
-# Side-by-side plots require patchwork.
-if (requireNamespace("patchwork", quietly = TRUE)) {
+# Side-by-side plots require patchwork and ggplot2.
+if (requireNamespace("patchwork", quietly = TRUE) &&
+    requireNamespace("ggplot2", quietly = TRUE)) {
   plot(fit, terms = "cavol", plot_type = "both")
 }
 }

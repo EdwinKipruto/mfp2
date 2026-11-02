@@ -104,7 +104,8 @@ oldwidth <- getOption("width")
 options(width = 100)
 
 library(mfp2)
-library(ggplot2)
+has_ggplot2 <- requireNamespace("ggplot2", quietly = TRUE)
+has_geepack <- requireNamespace("geepack", quietly = TRUE)
 has_patchwork <- requireNamespace("patchwork", quietly = TRUE)
 library(survival)
 ```
@@ -420,7 +421,7 @@ component-plus-residual points. Because each Gaussian model has only
 one predictor and an identity link, the fitted curve includes the
 intercept and the points correspond to the observed outcomes.
 
-```{r plot-acd, eval=has_patchwork, fig.cap="ACD model compared with a standard MFP model.", fig.width=8, fig.height=4}
+```{r plot-acd, eval=has_patchwork && has_ggplot2, fig.cap="ACD model compared with a standard MFP model.", fig.width=8, fig.height=4}
 p1 <- plot(fit_acd_matrix, terms = "x")[[1]] +
   ggplot2::ylab("Partial predictor + residuals") +
   ggplot2::ggtitle("ACD model")

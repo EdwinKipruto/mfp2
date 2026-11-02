@@ -54,15 +54,15 @@
 #' recoded if they should represent the zero group.
 #'
 #' @section Getting started:
-#' See `vignette("mfp2_introduction", package = "mfp2")` for an introduction
+#' See `vignette("mfp2", package = "mfp2")` for an introduction
 #' to model fitting, interpretation, prediction, and plotting.
 #'
 #' Further guidance is available in:
 #'
-#' - `vignette("MFP_Introduction", package = "mfp2")` for MFP methodology;
-#' - `vignette("mfp2_ACD", package = "mfp2")` for ACD transformations;
-#' - `vignette("mfp2_spike", package = "mfp2")` for spike-at-zero;
-#' - `vignette("mfpi", package = "mfp2")` for interaction analysis.
+#' - `vignette("mfp-methodology", package = "mfp2")` for MFP methodology;
+#' - `vignette("acd-transformations", package = "mfp2")` for ACD transformations;
+#' - `vignette("spike-at-zero", package = "mfp2")` for spike-at-zero;
+#' - `vignette("interactions", package = "mfp2")` for interaction analysis.
 #'
 #' @seealso
 #' [mfp2()], [fp()], [mfpi()], [multinomial_family()], [ordinal_family()],

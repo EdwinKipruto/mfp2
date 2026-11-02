@@ -51,6 +51,7 @@ test_that("forced-linear mfp2 ordinal reproduces native rms::orm", {
 })
 
 test_that("ordinal term uncertainty and residual plots use every cutoff", {
+  skip_if_not_installed("ggplot2")
   skip_on_cran(); skip_if_no_rms()
   dm <- make_ordinal_data(n = 350, seed = 97)
   dm$y <- ordered(pmin(as.integer(dm$y), 3L))

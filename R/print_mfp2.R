@@ -1239,6 +1239,8 @@ mfp2_print_fit <- function(x, digits, notes, ctx) {
 #' @export
 print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
                        intercepts = NULL, ...) {
+  # GEE fits delegate to geepack's methods; check it is available.
+  mfp2_require_geepack_for_fit(x)
   dots <- list(...)
   digits <- dots$digits
   if (is.null(intercepts)) {

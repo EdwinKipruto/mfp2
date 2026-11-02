@@ -116,7 +116,10 @@
 #' \code{formulas} (or \code{NULL}), \code{acd_definitions} (or
 #' \code{NULL}), \code{ordinal_intercepts} (a threshold-inference data frame
 #' for ordinal models, otherwise \code{NULL}), \code{fit},
-#' \code{raw_summary}, and \code{notes}. For multinomial models,
+#' \code{raw_summary}, and \code{notes}. For compatibility with earlier
+#' versions, it also contains \code{coefficients}, \code{cov.scaled} and
+#' \code{cov.unscaled} when the underlying summary provides them (for example
+#' for GLM-type models); these are not printed. For multinomial models,
 #' \code{linear_terms}, \code{nonlinear_terms}, \code{basis},
 #' \code{formulas}, \code{acd_definitions}, \code{ordinal_intercepts}, and
 #' \code{fit} are replaced by \code{coefficients} (the outcome-specific
@@ -158,6 +161,7 @@ summary.mfp2 <- function(object,
   if (!inherits(object, "mfp2")) {
     stop("The object is not an mfp2 object.", call. = FALSE)
   }
+  mfp2_require_geepack_for_fit(object)
 
   validate_logical_vector(notes, "notes", allowed_lengths = 1L)
 
@@ -309,6 +313,13 @@ summary.mfp2 <- function(object,
     notes              = notes,
     digits             = digits
   )
+
+  # Backward compatibility with mfp2 1.0.x, where summary() dispatched to the
+  # underlying summary method (for example summary.glm()). Code written for
+  # that version reads components such as `summary(fit)$coefficients` or
+  # `summary(fit)$cov.scaled`, so copy them from the raw summary when present.
+  # They are not printed.
+  out <- c(out, mfp2_summary_compat_components(raw_summary))
   class(out) <- "summary.mfp2"
   out
 }
@@ -3974,4 +3985,27 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
 #' @noRd
 mfp2_summary_format_p <- function(p, digits = 3L) {
   format_print_pvalue(p, digits)
+}
+
+#' Components Kept for Compatibility With mfp2 1.0.x
+#'
+#' In mfp2 1.0.x, `summary()` on a fitted model returned the underlying
+#' summary object (for example from [stats::summary.glm()]). This helper copies
+#' the commonly used components of that object so that existing code reading
+#' them from a `summary.mfp2` object keeps working.
+#'
+#' @param raw_summary Raw summary produced by `mfp2_summary_raw()`, or `NULL`.
+#'
+#' @return A named list with those of `coefficients`, `cov.scaled` and
+#'   `cov.unscaled` that are present in `raw_summary`; an empty list otherwise.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_summary_compat_components <- function(raw_summary) {
+  if (!is.list(raw_summary)) {
+    return(list())
+  }
+  keep <- c("coefficients", "cov.scaled", "cov.unscaled")
+  keep <- keep[keep %in% names(raw_summary)]
+  unclass(raw_summary)[keep]
 }

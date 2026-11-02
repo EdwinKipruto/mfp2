@@ -69,15 +69,15 @@ recoded if they should represent the zero group.
 
 \section{Getting started}{
 
-See \code{vignette("mfp2_introduction", package = "mfp2")} for an introduction
+See \code{vignette("mfp2", package = "mfp2")} for an introduction
 to model fitting, interpretation, prediction, and plotting.
 
 Further guidance is available in:
 \itemize{
-\item \code{vignette("MFP_Introduction", package = "mfp2")} for MFP methodology;
-\item \code{vignette("mfp2_ACD", package = "mfp2")} for ACD transformations;
-\item \code{vignette("mfp2_spike", package = "mfp2")} for spike-at-zero;
-\item \code{vignette("mfpi", package = "mfp2")} for interaction analysis.
+\item \code{vignette("mfp-methodology", package = "mfp2")} for MFP methodology;
+\item \code{vignette("acd-transformations", package = "mfp2")} for ACD transformations;
+\item \code{vignette("spike-at-zero", package = "mfp2")} for spike-at-zero;
+\item \code{vignette("interactions", package = "mfp2")} for interaction analysis.
 }
 }
 
@@ -86,11 +86,11 @@ Further guidance is available in:
 \code{\link[=survreg_family]{survreg_family()}}, \code{\link[=finegray_family]{finegray_family()}}, \code{\link[=predict.mfp2]{predict.mfp2()}}, \code{\link[=plot.mfp2]{plot.mfp2()}}
 }
 \author{
-\strong{Maintainer}: Edwin Kipruto \email{edwin.kipruto@email.uni-freiburg.de}
+\strong{Maintainer}: Edwin Kipruto \email{kiprutoedwin2626@gmail.com}
 
 Authors:
 \itemize{
-  \item Edwin Kipruto \email{edwin.kipruto@email.uni-freiburg.de}
+  \item Edwin Kipruto \email{kiprutoedwin2626@gmail.com}
   \item Michael Kammer \email{michael.kammer@meduniwien.ac.at}
   \item Patrick Royston \email{j.royston@ucl.ac.uk}
   \item Willi Sauerbrei \email{wilhelm.sauerbrei@uniklinik-freiburg.de}

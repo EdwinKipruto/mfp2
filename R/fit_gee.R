@@ -497,6 +497,7 @@ gee_quasi_likelihood <- function(y, mu, family_string, weights = NULL) {
 #' @keywords internal
 #' @noRd
 normalize_gee_control <- function(control = NULL) {
+  mfp2_require_geepack()
   if (is.null(control)) {
     return(geepack::geese.control())
   }
@@ -553,13 +554,8 @@ prepare_gee_family <- function(family, y, id, waves = NULL, weights = NULL,
     stop("Internal error: `family` is not a GEE family object.", call. = FALSE)
   }
 
-  if (!requireNamespace("geepack", quietly = TRUE)) {
-    stop(
-      "`gee_family()` requires the 'geepack' package. ",
-      "Install it with install.packages(\"geepack\").",
-      call. = FALSE
-    )
-  }
+  # Second safety net; gee_family() already checks for geepack.
+  mfp2_require_geepack()
 
   response_family <- family$response_family
   inner_string <- response_family$family

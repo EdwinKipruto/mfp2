@@ -289,6 +289,7 @@ test_that("GEE quasi-likelihood is stable at response boundaries", {
 })
 
 test_that("GEE visiting order uses full-model robust block tests", {
+  skip_if_not_installed("geepack")
   x <- cbind(x1 = 1:5, x2 = 6:10)
   beta <- c("(Intercept)" = 0, x1 = 1, x2 = 3)
   covariance <- diag(3)
@@ -318,6 +319,7 @@ test_that("GEE visiting order uses full-model robust block tests", {
 })
 
 test_that("fixed-degree GEE p-value selection uses the Stata selection deviance", {
+  skip_if_not_installed("geepack")
   metric <- function(logl, deviance) {
     c(
       logl = logl, df = 3, deviance_rs = deviance,
@@ -369,6 +371,7 @@ test_that("fixed-degree GEE p-value selection uses the Stata selection deviance"
 })
 
 test_that("Stata GEE RA2 passes power one through the FP1 search", {
+  skip_if_not_installed("geepack")
   seen <- new.env(parent = emptyenv())
   metric <- function(df, deviance) {
     c(
@@ -435,6 +438,7 @@ test_that("Stata GEE RA2 passes power one through the FP1 search", {
 })
 
 test_that("Stata-compatible GEE selection uses its selection deviance", {
+  skip_if_not_installed("geepack")
   metric <- function(logl, df, deviance) {
     c(
       logl = logl, df = df, deviance_rs = deviance,

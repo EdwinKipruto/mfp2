@@ -363,25 +363,28 @@ fit_gaussian <- mfp2(
   verbose = FALSE
 )
 
-# Term contributions with component-plus-residual points.
-plots <- plot(fit_gaussian, terms = c("age", "cavol"))
-plots[["age"]]
+# Plotting requires ggplot2.
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  # Term contributions with component-plus-residual points.
+  plots <- plot(fit_gaussian, terms = c("age", "cavol"))
+  print(plots[["age"]])
 
-# Show only the fitted contribution and its confidence band.
-curves <- plot(fit_gaussian, terms = "age", partial_only = TRUE)
-curves[["age"]]
+  # Show only the fitted contribution and its confidence band.
+  curves <- plot(fit_gaussian, terms = "age", partial_only = TRUE)
+  print(curves[["age"]])
 
-# Compare each plotted age with age 50, on the original age scale.
-contrasts <- plot(
-  fit_gaussian,
-  terms = "age",
-  type = "contrasts",
-  ref = list(age = 50)
-)
-contrasts[["age"]]
+  # Compare each plotted age with age 50, on the original age scale.
+  contrasts <- plot(
+    fit_gaussian,
+    terms = "age",
+    type = "contrasts",
+    ref = list(age = 50)
+  )
+  print(contrasts[["age"]])
 
-# Each element is a ggplot2 object and can be modified.
-curves[["age"]] + ggplot2::labs(x = "Age (years)")
+  # Each element is a ggplot2 object and can be modified.
+  print(curves[["age"]] + ggplot2::labs(x = "Age (years)"))
+}
 
 ## Categorical predictors: use the factor name
 fit_factor <- mfp2(
@@ -390,7 +393,9 @@ fit_factor <- mfp2(
   keep = "Species",
   verbose = FALSE
 )
-plot(fit_factor, terms = "Species", partial_only = TRUE)[["Species"]]
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plot(fit_factor, terms = "Species", partial_only = TRUE)[["Species"]]
+}
 
 ## A predictor with a spike at zero
 set.seed(1)
@@ -404,7 +409,9 @@ fit_spike <- mfp2(
   verbose = FALSE
 )
 # Zero is shown separately from the curve for positive values.
-plot(fit_spike, terms = "exposure", partial_only = TRUE)[["exposure"]]
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plot(fit_spike, terms = "exposure", partial_only = TRUE)[["exposure"]]
+}
 
 ## Cox models: contributions to the log relative hazard
 data("gbsg")
@@ -415,7 +422,9 @@ fit_cox <- mfp2(
   verbose = FALSE
 )
 # Points add martingale residuals to the fitted contribution.
-plot(fit_cox, terms = "nodes")[["nodes"]]
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plot(fit_cox, terms = "nodes")[["nodes"]]
+}
 
 
 }

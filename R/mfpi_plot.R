@@ -144,33 +144,34 @@
 #'   verbose = FALSE
 #' )
 #'
-#' # Plot an interaction even if it was not selected.
-#' plot(fit, terms = "cavol", plot_type = "difference")
+#' # Plotting requires ggplot2.
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   # Plot an interaction even if it was not selected.
+#'   plot(fit, terms = "cavol", plot_type = "difference")
 #'
-#' # Plot group-specific functions with confidence bands.
-#' plot(
-#'   fit, terms = "cavol", plot_type = "fitted",
-#'   show_ci_fitted = TRUE
-#' )
+#'   # Plot group-specific functions with confidence bands.
+#'   plot(
+#'     fit, terms = "cavol", plot_type = "fitted",
+#'     show_ci_fitted = TRUE
+#'   )
 #'
-#' # Return plots without displaying them.
-#' plots <- plot(
-#'   fit, terms = "cavol", plot_type = "difference",
-#'   auto_print = FALSE
-#' )
-#' print(plots$cavol[[1]])
+#'   # Return plots without displaying them.
+#'   plots <- plot(
+#'     fit, terms = "cavol", plot_type = "difference",
+#'     auto_print = FALSE
+#'   )
+#'   print(plots$cavol[[1]])
+#' }
 #'
 #' \donttest{
-#' # Side-by-side plots require patchwork.
-#' if (requireNamespace("patchwork", quietly = TRUE)) {
+#' # Side-by-side plots require patchwork and ggplot2.
+#' if (requireNamespace("patchwork", quietly = TRUE) &&
+#'     requireNamespace("ggplot2", quietly = TRUE)) {
 #'   plot(fit, terms = "cavol", plot_type = "both")
 #' }
 #' }
 #'
 #' @seealso [mfpi()], [predict.mfpi()], [summary.mfpi()]
-#'
-#' @import ggplot2
-#' @importFrom ggplot2 .data
 #'
 #' @method plot mfpi
 #' @export
@@ -199,6 +200,11 @@ plot.mfpi <- function(x,
                       ribbon_alpha   = 0.2,
                       rug_alpha      = 0.4,
                       ...) {
+  # Fail clearly, before any other work, if ggplot2 is unavailable.
+  mfp2_require_ggplot2()
+  # ggplot2 is in Suggests, so its `.data` pronoun cannot be imported.
+  .data <- ggplot2::.data
+
   # ---------------------------------------------------------------------------
   # Basic argument validation
   # ---------------------------------------------------------------------------
@@ -208,11 +214,6 @@ plot.mfpi <- function(x,
 
   if (!inherits(model, "mfpi")) {
     stop("! `x` must be an object of class \"mfpi\".", call. = FALSE)
-  }
-
-  if (!requireNamespace("ggplot2", quietly = TRUE)) {
-    stop("Package `ggplot2` is required for plotting. Please install it.",
-         call. = FALSE)
   }
 
   check_logical_scalar <- function(value, name) {

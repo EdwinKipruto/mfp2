@@ -53,7 +53,7 @@
 #' With `"aic"` or `"bic"`, candidate models are compared using the chosen
 #' information criterion.
 #'
-#' See `vignette("MFP_Introduction", package = "mfp2")` for methodological
+#' See `vignette("mfp-methodology", package = "mfp2")` for methodological
 #' details.
 #'
 #' @section Formula and matrix interfaces:
@@ -237,7 +237,7 @@
 #' centering. During prediction and plotting, positive values use the fitted
 #' transformation, and exact zeros again receive zero before centering.
 #'
-#' See `vignette("mfp2_ACD", package = "mfp2")` for the ACD
+#' See `vignette("acd-transformations", package = "mfp2")` for the ACD
 #' function-selection procedure.
 #'
 #' @section Zero, catzero, and spike-at-zero modelling:
@@ -605,8 +605,10 @@
 #' summary(fit_formula)
 #' get_selected_variable_names(fit_formula)
 #'
-#' plots <- plot(fit_formula)
-#' plots[[1]]
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   plots <- plot(fit_formula)
+#'   print(plots[[1]])
+#' }
 #'
 #' predict(fit_formula, newdata = prostate[1:5, ])
 #'
@@ -634,7 +636,9 @@
 #'   data = prostate,
 #'   verbose = FALSE
 #' )
-#' plot(fit_acd_formula, terms = "cavol")[[1]]
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   plot(fit_acd_formula, terms = "cavol")[[1]]
+#' }
 #'
 #' # Spike-at-zero modelling
 #' set.seed(1)
@@ -659,7 +663,9 @@
 #'   data = d_spike,
 #'   verbose = FALSE
 #' )
-#' plot(fit_spike_formula, terms = "exposure")[[1]]
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   plot(fit_spike_formula, terms = "exposure")[[1]]
+#' }
 #'
 #' # Matrix interface
 #' x_spike <- as.matrix(d_spike[, c("exposure", "age")])
@@ -4272,6 +4278,9 @@ coef.mfp2 <- function(object, ...) {
 #'
 #' @export
 confint.mfp2 <- function(object, parm, level = 0.95, ...) {
+  # GEE intervals use geepack's vcov() method; check it is available.
+  mfp2_require_geepack_for_fit(object)
+
   # Multinomial and ordinal models carry non-vector coefficient structures
   # (per-logit matrices, threshold intercepts); keep their own interval method.
   if (object$family_string %in% c("multinomial", "ordinal")) {
@@ -4391,6 +4400,7 @@ confint.mfp2 <- function(object, parm, level = 0.95, ...) {
 #' @export
 residuals.mfp2 <- function(object, ...) {
   if (identical(object$family_string, "gee")) {
+    mfp2_require_geepack()
     dots <- list(...)
     type <- if (!is.null(dots[["type"]])) {
       match.arg(

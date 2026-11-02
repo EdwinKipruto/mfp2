@@ -478,7 +478,7 @@ for predictor inclusion and \code{alpha} for functional-form comparisons.
 With \code{"aic"} or \code{"bic"}, candidate models are compared using the chosen
 information criterion.
 
-See \code{vignette("MFP_Introduction", package = "mfp2")} for methodological
+See \code{vignette("mfp-methodology", package = "mfp2")} for methodological
 details.
 }
 
@@ -674,7 +674,7 @@ required. Exact zeros receive a transformed value of zero before
 centering. During prediction and plotting, positive values use the fitted
 transformation, and exact zeros again receive zero before centering.
 
-See \code{vignette("mfp2_ACD", package = "mfp2")} for the ACD
+See \code{vignette("acd-transformations", package = "mfp2")} for the ACD
 function-selection procedure.
 }
 
@@ -842,8 +842,10 @@ fit_formula
 summary(fit_formula)
 get_selected_variable_names(fit_formula)
 
-plots <- plot(fit_formula)
-plots[[1]]
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plots <- plot(fit_formula)
+  print(plots[[1]])
+}
 
 predict(fit_formula, newdata = prostate[1:5, ])
 
@@ -871,7 +873,9 @@ fit_acd_formula <- mfp2(
   data = prostate,
   verbose = FALSE
 )
-plot(fit_acd_formula, terms = "cavol")[[1]]
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plot(fit_acd_formula, terms = "cavol")[[1]]
+}
 
 # Spike-at-zero modelling
 set.seed(1)
@@ -896,7 +900,9 @@ fit_spike_formula <- mfp2(
   data = d_spike,
   verbose = FALSE
 )
-plot(fit_spike_formula, terms = "exposure")[[1]]
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plot(fit_spike_formula, terms = "exposure")[[1]]
+}
 
 # Matrix interface
 x_spike <- as.matrix(d_spike[, c("exposure", "age")])

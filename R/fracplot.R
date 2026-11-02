@@ -294,25 +294,28 @@
 #'   verbose = FALSE
 #' )
 #'
-#' # Term contributions with component-plus-residual points.
-#' plots <- plot(fit_gaussian, terms = c("age", "cavol"))
-#' plots[["age"]]
+#' # Plotting requires ggplot2.
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   # Term contributions with component-plus-residual points.
+#'   plots <- plot(fit_gaussian, terms = c("age", "cavol"))
+#'   print(plots[["age"]])
 #'
-#' # Show only the fitted contribution and its confidence band.
-#' curves <- plot(fit_gaussian, terms = "age", partial_only = TRUE)
-#' curves[["age"]]
+#'   # Show only the fitted contribution and its confidence band.
+#'   curves <- plot(fit_gaussian, terms = "age", partial_only = TRUE)
+#'   print(curves[["age"]])
 #'
-#' # Compare each plotted age with age 50, on the original age scale.
-#' contrasts <- plot(
-#'   fit_gaussian,
-#'   terms = "age",
-#'   type = "contrasts",
-#'   ref = list(age = 50)
-#' )
-#' contrasts[["age"]]
+#'   # Compare each plotted age with age 50, on the original age scale.
+#'   contrasts <- plot(
+#'     fit_gaussian,
+#'     terms = "age",
+#'     type = "contrasts",
+#'     ref = list(age = 50)
+#'   )
+#'   print(contrasts[["age"]])
 #'
-#' # Each element is a ggplot2 object and can be modified.
-#' curves[["age"]] + ggplot2::labs(x = "Age (years)")
+#'   # Each element is a ggplot2 object and can be modified.
+#'   print(curves[["age"]] + ggplot2::labs(x = "Age (years)"))
+#' }
 #'
 #' ## Categorical predictors: use the factor name
 #' fit_factor <- mfp2(
@@ -321,7 +324,9 @@
 #'   keep = "Species",
 #'   verbose = FALSE
 #' )
-#' plot(fit_factor, terms = "Species", partial_only = TRUE)[["Species"]]
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   plot(fit_factor, terms = "Species", partial_only = TRUE)[["Species"]]
+#' }
 #'
 #' ## A predictor with a spike at zero
 #' set.seed(1)
@@ -335,7 +340,9 @@
 #'   verbose = FALSE
 #' )
 #' # Zero is shown separately from the curve for positive values.
-#' plot(fit_spike, terms = "exposure", partial_only = TRUE)[["exposure"]]
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   plot(fit_spike, terms = "exposure", partial_only = TRUE)[["exposure"]]
+#' }
 #'
 #' ## Cox models: contributions to the log relative hazard
 #' data("gbsg")
@@ -346,11 +353,12 @@
 #'   verbose = FALSE
 #' )
 #' # Points add martingale residuals to the fitted contribution.
-#' plot(fit_cox, terms = "nodes")[["nodes"]]
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   plot(fit_cox, terms = "nodes")[["nodes"]]
+#' }
 #'
 #'
 #' @seealso [predict.mfp2()], [mfp2()]
-#' @importFrom ggplot2 .data
 #' @method plot mfp2
 #' @export
 plot.mfp2 <- function(x,
@@ -373,6 +381,8 @@ plot.mfp2 <- function(x,
                       linewidth = 1,
                       alpha_fill = 0.1,
                       ...) {
+  # Fail clearly, before any other work, if ggplot2 is unavailable.
+  mfp2_require_ggplot2()
   terms_seq_missing <- missing(terms_seq)
 
   # `...` exists only for the plot() generic. Do not let a supplied argument
@@ -875,11 +885,9 @@ plot_mfp2_impl <- function(model,
 
 
   # Fail clearly if ggplot2 is unavailable at runtime.
-  if (!requireNamespace("ggplot2", quietly = TRUE)) {
-    stop("Package \"ggplot2\" needed for this function to work. Please install it.",
-         call. = FALSE
-    )
-  }
+  mfp2_require_ggplot2()
+  # ggplot2 is in Suggests, so its `.data` pronoun cannot be imported.
+  .data <- ggplot2::.data
   # Validate the fitted object before prediction.
   if (!inherits(model, "mfp2"))
     stop("The model entered is not an mfp2 object.", call. = FALSE)
@@ -1271,6 +1279,10 @@ mfp2_plot_multinomial_impl <- function(model,
                                        linewidth,
                                        alpha_fill,
                                        ordinal = FALSE) {
+  # Fail clearly if ggplot2 is unavailable at runtime.
+  mfp2_require_ggplot2()
+  # ggplot2 is in Suggests, so its `.data` pronoun cannot be imported.
+  .data <- ggplot2::.data
   cutoff_ids <- if (ordinal) seq_along(model$mfp2_ordinal_intercepts) else NULL
   predict_facets <- function(sequence) {
     if (!ordinal) {
@@ -1556,13 +1568,18 @@ mfp2_plot_multinomial_impl <- function(model,
 #'   verbose = FALSE
 #' )
 #'
-#' # Recommended interface
-#' plots <- plot(fit, terms = "cavol")
-#' plots
+#' # Plotting requires ggplot2.
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   # Recommended interface
+#'   plots <- plot(fit, terms = "cavol")
+#'   print(plots)
+#' }
 #'
 #' \donttest{
-#' # Deprecated compatibility interface
-#' old_plots <- fracplot(fit, terms = "cavol")
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   # Deprecated compatibility interface
+#'   old_plots <- fracplot(fit, terms = "cavol")
+#' }
 #' }
 #'
 #' @export
@@ -1585,6 +1602,8 @@ fracplot <- function(model,
                      linetype = "solid",
                      linewidth = 1,
                      alpha_fill = 0.1) {
+  # Fail clearly, before any other work, if ggplot2 is unavailable.
+  mfp2_require_ggplot2()
   terms_seq_missing <- missing(terms_seq)
 
   .Deprecated(

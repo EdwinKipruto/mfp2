@@ -160,6 +160,7 @@ test_that("a modified negbin_family() object with an invalid link is rejected", 
 })
 
 test_that("GEE does not accept negative-binomial families", {
+  skip_if_not_installed("geepack")
   expect_error(gee_family(negbin_family()), "must be one of")
   expect_error(gee_family(negbin_family("sqrt")), "must be one of")
 })
@@ -423,6 +424,7 @@ test_that("the chosen link is used for every backend fit during FP selection", {
 })
 
 test_that("a nonlinear square-root-link fit predicts and plots on the right scales", {
+  skip_if_not_installed("ggplot2")
   skip_if_no_fastglm_nb()
 
   dat <- make_nb_nonlinear_data()
@@ -470,6 +472,7 @@ test_that("a nonlinear square-root-link fit predicts and plots on the right scal
 # ---------------------------------------------------------------------------
 
 test_that("mfpi() propagates the link to functions and between-group contrasts", {
+  skip_if_not_installed("ggplot2")
   skip_if_no_fastglm_nb()
 
   set.seed(7311L)

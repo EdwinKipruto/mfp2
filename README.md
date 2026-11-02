@@ -466,19 +466,19 @@ The package vignettes provide detailed guidance:
 
 ```r
 # Practical introduction to fitting, prediction, and plotting
-vignette("mfp2_introduction", package = "mfp2")
+vignette("mfp2", package = "mfp2")
 
 # MFP methodology and practical considerations
-vignette("MFP_Introduction", package = "mfp2")
+vignette("mfp-methodology", package = "mfp2")
 
 # Approximate cumulative distribution transformations
-vignette("mfp2_ACD", package = "mfp2")
+vignette("acd-transformations", package = "mfp2")
 
 # Spike-at-zero modelling
-vignette("mfp2_spike", package = "mfp2")
+vignette("spike-at-zero", package = "mfp2")
 
 # MFPI interaction analysis
-vignette("mfpi", package = "mfp2")
+vignette("interactions", package = "mfp2")
 ```
 
 Function-level help is available through:

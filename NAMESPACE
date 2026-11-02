@@ -38,11 +38,9 @@ export(negbin_family)
 export(ordinal_family)
 export(survreg_family)
 export(transform_vector_fp)
-import(ggplot2)
 import(stats)
 import(survival)
 importFrom(Rcpp,evalCpp)
-importFrom(ggplot2,.data)
 importFrom(stats,
   family,
   setNames

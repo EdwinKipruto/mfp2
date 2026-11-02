@@ -243,14 +243,17 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' d <- data.frame(id = rep(1:40, each = 3), x = runif(120, 1, 5))
 #' d$y <- log(d$x) + rnorm(40, sd = 0.5)[d$id] + rnorm(120, sd = 0.3)
 #'
-#' fit_gee <- mfp2(
-#'   y ~ fp(x, df = 2),
-#'   data = d,
-#'   family = gee_family(gaussian(), corstr = "exchangeable"),
-#'   id = d$id,
-#'   verbose = FALSE
-#' )
-#' coef(fit_gee)
+#' # GEE models require geepack.
+#' if (requireNamespace("geepack", quietly = TRUE)) {
+#'   fit_gee <- mfp2(
+#'     y ~ fp(x, df = 2),
+#'     data = d,
+#'     family = gee_family(gaussian(), corstr = "exchangeable"),
+#'     id = d$id,
+#'     verbose = FALSE
+#'   )
+#'   coef(fit_gee)
+#' }
 #'
 #' @export
 gee_family <- function(family = stats::gaussian(),
@@ -258,6 +261,9 @@ gee_family <- function(family = stats::gaussian(),
                        std.err = c("san.se", "jack", "j1s", "fij"),
                        reference_dispersion = NULL,
                        qbic_penalty = c("clusters", "observations")) {
+  # geepack is in Suggests: fail here rather than in the middle of fitting.
+  mfp2_require_geepack()
+
   # Temporary geepack compatibility boundary: geeglm() currently fails to
   # remove an explicitly supplied scale.value from its model.frame() call. The
   # scalar is then compared with observation-length variables and raises

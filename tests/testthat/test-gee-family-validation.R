@@ -1,6 +1,7 @@
 # gee_family() constructor and GEE input validation
 
 test_that("gee_family() accepts supported families, links, corstr, std.err", {
+  skip_if_not_installed("geepack")
   f <- gee_family()
   expect_s3_class(f, "mfp2_gee_family")
   expect_s3_class(f, "mfp2_family")
@@ -21,6 +22,7 @@ test_that("gee_family() accepts supported families, links, corstr, std.err", {
 })
 
 test_that("gee_family() rejects invalid settings", {
+  skip_if_not_installed("geepack")
   expect_error(gee_family("inverse.gaussian"), "must be one of")
   expect_error(gee_family("negbin"), "must be one of")
   expect_error(gee_family(corstr = "unstructured"))
@@ -28,6 +30,7 @@ test_that("gee_family() rejects invalid settings", {
 })
 
 test_that("mfp2() requires id for GEE and rejects it elsewhere", {
+  skip_if_not_installed("geepack")
   set.seed(1)
   n <- 40
   d <- data.frame(y = rnorm(n), x1 = rnorm(n), id = rep(1:10, each = 4))
@@ -142,6 +145,7 @@ test_that("GEE grouping keeps grouped-binomial counts aligned", {
 })
 
 test_that("GEE rejects duplicate waves within a cluster", {
+  skip_if_not_installed("geepack")
   set.seed(1)
   n <- 40
   d <- data.frame(y = rnorm(n), x1 = rnorm(n), id = rep(1:10, each = 4))
@@ -187,6 +191,7 @@ test_that("GEE preparation rejects unsafe cluster and numeric inputs", {
 })
 
 test_that("GEE preserves numeric visit gaps supplied as factor levels", {
+  skip_if_not_installed("geepack")
   y <- c(1, 2, 3, 4)
   id <- rep(1:2, each = 2)
   waves <- factor(rep(c("1", "3"), 2), levels = c("1", "3"))
@@ -228,6 +233,7 @@ test_that("GEE scale defaults remain available to internal fit preparation", {
 })
 
 test_that("mfpi() rejects GEE families (GEE is mfp2-only)", {
+  skip_if_not_installed("geepack")
   set.seed(1)
   n <- 120
   d <- data.frame(y = rnorm(n), x = runif(n, 1, 5),

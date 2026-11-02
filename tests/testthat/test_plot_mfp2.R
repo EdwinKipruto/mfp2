@@ -10,6 +10,7 @@
 # Test purpose: Checks that plot() can be called on a Gaussian mfp2 fit without
 # error.
 test_that("plot() runs without error for Gaussian model", {
+  skip_if_not_installed("ggplot2")
   fit <- mfp2(
     x_prostate,
     y_prostate,
@@ -26,6 +27,7 @@ test_that("plot() runs without error for Gaussian model", {
 # Test purpose: Checks that plot() returns a list and does not emit warnings for
 # a Gaussian mfp2 model.
 test_that("plot() runs without warning for Gaussian models", {
+  skip_if_not_installed("ggplot2")
   fit <- mfp2(
     x_prostate,
     y_prostate,
@@ -44,6 +46,7 @@ test_that("plot() runs without warning for Gaussian models", {
 # Test purpose: Checks that the deprecated fracplot() wrapper still delegates to
 # the plotting implementation and returns a list.
 test_that("fracplot() is deprecated but still works for Gaussian models", {
+  skip_if_not_installed("ggplot2")
   fit <- mfp2(
     x_prostate,
     y_prostate,

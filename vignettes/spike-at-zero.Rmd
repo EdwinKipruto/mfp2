@@ -25,6 +25,8 @@ knitr::opts_chunk$set(
   out.width = "100%"
 )
 options(width = 80)
+has_ggplot2 <- requireNamespace("ggplot2", quietly = TRUE)
+has_geepack <- requireNamespace("geepack", quietly = TRUE)
 ```
 
 # Introduction
@@ -117,7 +119,7 @@ value.
 partial residuals. A `binary only` effect shows as two points with
 confidence intervals. The intervals do not account for model selection.
 
-```{r univariable-saz-plot, fig.cap="Binary-only SAZ model for pgg45 (paper, Figure 1)."}
+```{r univariable-saz-plot, eval=has_ggplot2, fig.cap="Binary-only SAZ model for pgg45 (paper, Figure 1)."}
 p1 <- plot(fit_pgg45, terms = "pgg45", partial_only = TRUE)
 p1[["pgg45"]]
 ```
@@ -230,7 +232,7 @@ newdat <- data.frame(pgg45 = c(0, 4, 25, 100))
 predict(fit_pgg45_aic, newdata = newdat, type = "link")
 ```
 
-```{r aic-saz-plot, fig.height=5, fig.cap="Continuous-only SAZ model for pgg45 selected by AIC (paper, Figure 2)."}
+```{r aic-saz-plot, eval=has_ggplot2, fig.height=5, fig.cap="Continuous-only SAZ model for pgg45 selected by AIC (paper, Figure 2)."}
 p2 <- plot(fit_pgg45_aic, terms = "pgg45", partial_only = TRUE,
            show_grid = TRUE)
 p2[["pgg45"]]

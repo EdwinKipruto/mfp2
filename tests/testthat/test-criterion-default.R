@@ -12,6 +12,7 @@ test_that("resolve_mfp_criterion() uses family-dependent defaults", {
 })
 
 test_that("mfp2() defaults to AIC for GEE and p-value otherwise", {
+  skip_if_not_installed("geepack")
   set.seed(101)
   n_id <- 40; m <- 4
   d <- data.frame(id = rep(seq_len(n_id), each = m), x1 = runif(n_id * m, 1, 5))

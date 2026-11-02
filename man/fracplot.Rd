@@ -120,13 +120,18 @@ fit <- mfp2(
   verbose = FALSE
 )
 
-# Recommended interface
-plots <- plot(fit, terms = "cavol")
-plots
+# Plotting requires ggplot2.
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  # Recommended interface
+  plots <- plot(fit, terms = "cavol")
+  print(plots)
+}
 
 \donttest{
-# Deprecated compatibility interface
-old_plots <- fracplot(fit, terms = "cavol")
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  # Deprecated compatibility interface
+  old_plots <- fracplot(fit, terms = "cavol")
+}
 }
 
 }

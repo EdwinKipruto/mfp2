@@ -25,6 +25,8 @@ knitr::opts_chunk$set(
   out.width = "100%"
 )
 options(width = 80)
+has_ggplot2 <- requireNamespace("ggplot2", quietly = TRUE)
+has_geepack <- requireNamespace("geepack", quietly = TRUE)
 has_patchwork <- requireNamespace("patchwork", quietly = TRUE)
 ```
 
@@ -136,7 +138,7 @@ How to read the output (paper, Section 4.2):
 `plot()` returns a list with one element per variable. Each element
 contains one plot per comparison with the reference group.
 
-```{r unadjusted-plot, eval=has_patchwork, fig.cap="Unadjusted analysis: fitted age functions by group (left) and the Treatment-minus-Placebo log hazard ratio with 95% CI (right); paper, Figure 2."}
+```{r unadjusted-plot, eval=has_patchwork && has_ggplot2, fig.cap="Unadjusted analysis: fitted age functions by group (left) and the Treatment-minus-Placebo log hazard ratio with 95% CI (right); paper, Figure 2."}
 p_unadj <- plot(fit_unadjusted, terms = "age", plot_type = "both",
                 show_title = FALSE)
 ```
@@ -195,7 +197,7 @@ interaction is weaker after adjustment but is still selected
 (p = 0.027; paper, Section 4.3). The plot is similar to the unadjusted
 one:
 
-```{r adjusted-plot, eval=has_patchwork, fig.cap="Adjusted analysis: fitted age functions by group (left) and the Treatment-minus-Placebo log hazard ratio with 95% CI (right); paper, Figure 3."}
+```{r adjusted-plot, eval=has_patchwork && has_ggplot2, fig.cap="Adjusted analysis: fitted age functions by group (left) and the Treatment-minus-Placebo log hazard ratio with 95% CI (right); paper, Figure 3."}
 p_adj <- plot(fit_adjusted, terms = "age", plot_type = "both",
               show_title = FALSE)
 ```

@@ -1,0 +1,42 @@
+bibentry(bibtype = "Manual",
+  title   = "{mfp2}: Multivariable Fractional Polynomial Models with Extensions",
+  author  = c(person(given = "Edwin", family = "Kipruto"),
+              person(given = "Michael", family = "Kammer"),
+              person(given = "Patrick", family = "Royston"),
+              person(given = "Willi", family = "Sauerbrei")),
+  year    = sub("-.*", "", meta$Date),
+  note    = paste("R package version", meta$Version),
+  url     = "https://CRAN.R-project.org/package=mfp2",
+  header  = "To cite the mfp2 package in publications, use:"
+)
+
+bibentry(bibtype = "Book",
+  title     = "Multivariable Model-Building: A Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for Modelling Continuous Variables",
+  author    = c(person(given = "Patrick", family = "Royston"),
+                person(given = "Willi", family = "Sauerbrei")),
+  publisher = "John Wiley & Sons",
+  address   = "Chichester",
+  year      = "2008",
+  isbn      = "978-0-470-02842-1",
+  doi       = "10.1002/9780470770771",
+  header    = "For the MFP methodology, please also cite:"
+)
+
+bibentry(bibtype = "Unpublished",
+  title   = "Multivariable Fractional Polynomial Interaction Models in {R}",
+  author  = c(person(given = "Edwin", family = "Kipruto"),
+              person(given = "Patrick", family = "Royston"),
+              person(given = "Willi", family = "Sauerbrei")),
+  year    = "2026",
+  note    = "Submitted to Journal of Statistical Software",
+  header  = "If mfpi() is used, please also cite:"
+)
+
+bibentry(bibtype = "Unpublished",
+  title   = "Modelling Spike-at-Zero Covariates with Fractional Polynomials in {R}",
+  author  = c(person(given = "Edwin", family = "Kipruto"),
+              person(given = "Willi", family = "Sauerbrei")),
+  year    = "2026",
+  note    = "Submitted to Journal of Statistical Software",
+  header  = "If spike-at-zero modelling is used, please also cite:"
+)

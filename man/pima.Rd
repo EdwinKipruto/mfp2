@@ -3,9 +3,9 @@
 \docType{data}
 \name{pima}
 \alias{pima}
-\title{Pima Indians dataset used in the Royston and Sauerbrei (2008) book.}
+\title{Pima Indians dataset used in Royston and Sauerbrei (2008) book.}
 \format{
-A dataset with 768 observations and 9 variables.
+A dataset with 768 observations and 10 variables.
 \describe{
 \item{id}{Patient identifier.}
 \item{pregnant}{Number of times pregnant.}
@@ -27,5 +27,9 @@ The dataset arises from an investigation of potential predictors of
 the onset of diabetes in a cohort of 768 female Pima Indians of whom 268
 developed diabetes. Missing values were imputed using the ice procedure
 for Stata.
+}
+\examples{
+data(pima)
+str(pima)
 }
 \keyword{data}

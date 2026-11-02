@@ -1,74 +1,204 @@
-#' Function to estimate approximate cumulative distribution (ACD)
-#' 
-#' Fits ACD transformation as outlined in Royston (2014). The ACD transformation 
-#' smoothly maps the observed distribution of a continuous covariate x onto one scale,
-#' namely, that of an approximate uniform distribution on the interval (0, 1). 
-#' 
-#' @details 
-#' Briefly, the estimation works as follows. First, the input data are shifted
-#' to positive values and scaled as requested. Then 
-#' \deqn{z = \Phi^{-1}(\frac{rank(x) - 0.5}{n}) }
-#' is computed, where \eqn{n} is the number of elements in `x`, 
-#' with ties in the ranks handled as averages. To approximate \eqn{z}, 
-#' an FP1 model (least squares) is used, i.e. 
-#' \eqn{E(z) = \beta_0 + \beta_1 (x)^p}, where \eqn{p} is chosen such that it 
-#' provides the best fitting model among all possible FP1 models. 
-#' The ACD transformation is then given as
-#' \deqn{acd(x) = \Phi(\hat{z}),}
-#' where the fitted values of the estimated model are used. 
-#' If the relationship between a response Y and acd(x) is linear,
-#' say, \eqn{E(Y) = \beta_0 + \beta_1 acd(x)}, the relationship between Y 
-#' and x is nonlinear and is typically sigmoid in shape.  
-#' The parameters \eqn{\beta_0} and \eqn{\beta_0 + \beta_1} in such a model are 
-#' interpreted as the expected values of Y at the minimum and maximum of x,
-#' that is, at acd(x) = 0 and 1, respectively. 
-#' The parameter \eqn{\beta_1} represents the range of predictions of \eqn{E(Y)} 
-#' across the whole observed distribution of x (Royston 2014).
-#' 
-#' @param x a numeric vector.
-#' @param powers a vector of allowed FP powers. The default value is `NULL`,
-#' meaning that the set \eqn{S = (-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.
-#' @param shift a numeric that is used to shift the values of `x` to positive
-#' values. The default value is 0, meaning no shifting is conducted. 
-#' If `NULL`, then the program will estimate an appropriate shift automatically
-#' (see \code{find_shift_factor()}).
-#' @param scale a numeric used to scale `x`. The default value is 1, meaning 
-#' no scaling is conducted. If `NULL`, then the program will estimate 
-#' an appropriate scaling factor automatically (see \code{find_scale_factor()}).
-#' @param zero Logical indicating whether only positive values of the variable 
-#' should be transformed, with nonpositive values (zero or negative) set to zero. 
-#' If \code{TRUE}, transformation is applied only to positive values; nonpositive 
-#' values are replaced with zero before transformation. If \code{FALSE} (default),
-#' all values are shifted (if needed) to ensure positivity before transformation.
-#' @examples
+#' Helper to reset acd transformation for variables with few values
 #'
-#'set.seed(42)
-#' x = apply_shift_scale(rnorm(100))
-#' y = rnorm(100)
-#' fit_acd(x, y)
-#' 
-#' @return 
-#' A list is returned with components
-#' 
-#' * `acd`: the acd transformed input data.
-#' * `beta0`: intercept of estimated model.
-#' * `beta1`: coefficient of estimated model.
-#' * `power`: estimated power.
-#' * `shift`: shift value used for computations.
-#' * `scale`: scaling factor used for computations. 
-#' 
-#' @references 
-#' Royston, P. and Sauerbrei, W. (2016). \emph{mfpa: Extension of mfp using the
-#' ACD covariate transformation for enhanced parametric multivariable modeling. 
-#' The Stata Journal, 16(1), pp.72-87.}
-#' 
-#' Royston, P. (2014). \emph{A smooth covariate rank transformation for use in 
-#' regression models with a sigmoid dose–response function. The Stata Journal,
-#'  14(2), 329-341}. 
-#' 
-#' @export
-fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
-  
+#' To be used in \code{fit_mfp()}.
+#' This function resets the `acdx` parameter (logical vector) of variables with
+#' less than 5 distinct values to `FALSE`.
+#'
+#' @param x a design matrix of dimension nobs x nvars where nvars is the number
+#' of predictors excluding an intercept.
+#' @param acdx a named logical vector of length nvars indicating which continuous
+#' variables should undergo the approximate cumulative distribution (ACD)
+#' transformation. May be ordered differently than the columns of `x`.
+#'
+#' @return
+#' Logical vector of same length as `acdx`.
+#' @keywords internal
+#' @noRd
+reset_acd <- function(x, acdx) {
+
+  if (!is.logical(acdx) || is.null(names(acdx))) {
+    stop("`acdx` must be a named logical vector.", call. = FALSE)
+  }
+
+  if (anyNA(acdx)) {
+    stop("`acdx` must not contain missing values.", call. = FALSE)
+  }
+
+  # exit early if all acdx values are FALSE
+  if (!any(acdx)) {
+    return(acdx)
+  }
+
+  names_acd <- names(acdx)[acdx]
+
+  # number of unique values of each column in acdx
+  n_unique <- vapply(
+    names_acd,
+    function(name) length(unique(x[, name])),
+    integer(1)
+  )
+
+  ind_reset <- which(n_unique < 5)
+
+  if (length(ind_reset) > 0L) {
+    vars_reset <- names_acd[ind_reset]
+    acdx[vars_reset] <- FALSE
+
+    warning(
+      "i For any variable with fewer than 5 unique values no acd transformation can be performed.\n",
+      sprintf(
+        "i The requested acd transform has been reset to FALSE for the following variables: %s.",
+        paste0(vars_reset, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  acdx
+}
+
+
+#' Fit an Approximate Cumulative Distribution Transformation
+#'
+#' Estimates the approximate cumulative distribution (ACD) transformation
+#' described by Royston (2014). The transformation maps the observed
+#' distribution of a continuous covariate approximately onto the interval
+#' `(0, 1)`.
+#'
+#' @details
+#' The observed values are first shifted and scaled according to `shift` and
+#' `scale`. The function then calculates the normal-score rank transformation
+#'
+#' \deqn{
+#' z_i = \Phi^{-1}\left\{\frac{\operatorname{rank}(x_i)-0.5}{n}\right\},
+#' }
+#'
+#' where tied observations receive average ranks.
+#'
+#' An FP1 model is fitted for each candidate power:
+#'
+#' \deqn{
+#' E(z_i) = \beta_0 + \beta_1 x_i^p.
+#' }
+#'
+#' The power giving the best fit is selected, and the resulting ACD
+#' transformation is:
+#'
+#' \deqn{
+#' \operatorname{ACD}(x_i) =
+#' \Phi\left(\hat{\beta}_0 + \hat{\beta}_1 x_i^p\right).
+#' }
+#'
+#' The transformed values lie between zero and one and can be used to represent
+#' a smooth sigmoid-shaped covariate effect in a regression model.
+#'
+#' Most users do not need to call `fit_acd()` directly because ACD modelling
+#' can be requested through [mfp2()]. This function is useful for inspecting,
+#' reproducing, or applying an ACD transformation in a custom workflow.
+#'
+#' If `shift = NULL`, an appropriate shift is estimated automatically using
+#' \code{find_shift_factor()}. If `scale = NULL`, an appropriate scale is estimated
+#' automatically using \code{find_scale_factor()}.
+#'
+#' When `zero = TRUE`, `x` must be nonnegative. Ranks, normal scores, automatic
+#' scaling, and the auxiliary FP1 fit are all computed on `x > 0` only;
+#' exact-zero values are excluded from fitting and assigned a transformed value
+#' of exactly zero. No shift is applied, and at least two distinct positive
+#' values are required. This internal helper also validates the nonnegative
+#' input contract directly.
+#'
+#' @param x Numeric vector containing the covariate values. Missing values are
+#'   not allowed.
+#'
+#' @param powers Optional numeric vector containing the candidate FP1 powers.
+#'   If `NULL`, the standard set
+#'   `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` is used. Power zero represents
+#'   the logarithmic transformation.
+#'
+#' @param shift Numeric scalar used to shift `x` before transformation.
+#'   The default, `0`, applies no shift. Use `NULL` to estimate a suitable
+#'   shift automatically.
+#'
+#' @param scale Positive numeric scalar used to scale the shifted values.
+#'   The default, `1`, applies no scaling. Use `NULL` to estimate a suitable
+#'   scale automatically.
+#'
+#' @param zero Logical scalar. If `TRUE`, the ACD transformation is fitted to
+#'   the positive values and exact-zero values are assigned zero. Callers must
+#'   supply previously validated nonnegative values. If `FALSE`,
+#'   all observations are included after any requested shifting and scaling.
+#'
+#' @return
+#' A list containing:
+#'
+#' \describe{
+#'   \item{\code{acd}}{
+#'     Numeric vector containing the fitted ACD-transformed values.
+#'   }
+#'
+#'   \item{\code{beta0}}{
+#'     Estimated intercept of the selected FP1 approximation.
+#'   }
+#'
+#'   \item{\code{beta1}}{
+#'     Estimated coefficient of the selected FP1 approximation.
+#'   }
+#'
+#'   \item{\code{power}}{
+#'     Selected FP1 power.
+#'   }
+#'
+#'   \item{\code{shift}}{
+#'     Shift applied before fitting the transformation.
+#'   }
+#'
+#'   \item{\code{scale}}{
+#'     Scale applied before fitting the transformation.
+#'   }
+#' }
+#'
+#' @references
+#' Royston, P. (2014). A smooth covariate rank transformation for use in
+#' regression models with a sigmoid dose-response function.
+#' \emph{The Stata Journal}, 14(2), 329--341.
+#'
+#' Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD
+#' covariate transformation for enhanced parametric multivariable modeling.
+#' \emph{The Stata Journal}, 16(1), 72--87.
+#'
+#' @examples
+#' set.seed(42)
+#'
+#' # Positive-valued covariate requiring no shift.
+#' x <- rgamma(100, shape = 2, rate = 0.5)
+#' acd_fit <- fit_acd(x)
+#'
+#' acd_fit$power
+#' head(acd_fit$acd)
+#'
+#' # Estimate the shift and scale automatically.
+#' x_unscaled <- rnorm(100, mean = 10, sd = 20)
+#' acd_auto <- fit_acd(
+#'   x_unscaled,
+#'   shift = NULL,
+#'   scale = NULL
+#' )
+#'
+#' \dontrun{
+#' # ACD can ordinarily be requested directly during MFP fitting.
+#' fit <- mfp2(
+#'   outcome ~ fp(exposure, acd = TRUE) + fp(age),
+#'   data = analysis_data,
+#'   verbose = FALSE
+#' )
+#' }
+#'
+#' @keywords internal
+#' @noRd
+fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE,
+                    fitter = c("base", "fastglm")) {
+  fitter <- match.arg(fitter)
+
   # --- Input checks ---
   if (!is.numeric(x)) {
     stop("`x` must be a numeric vector.")
@@ -82,7 +212,7 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
   if (anyNA(x)) {
     stop("`x` contains missing values. Please remove or impute them before calling fit_acd().")
   }
-  
+
   if (!is.null(powers)) {
     if (!is.numeric(powers) || any(!is.finite(powers))) {
       stop("`powers` must be a numeric vector of finite values or NULL.")
@@ -90,141 +220,287 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
   } else {
     powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
-  
+
   if (!is.null(shift) && (!is.numeric(shift) || length(shift) != 1 || is.na(shift))) {
     stop("`shift` must be a single numeric value or NULL.")
   }
-  
+
   if (!is.null(scale) && (!is.numeric(scale) || length(scale) != 1 || scale <= 0 || is.na(scale))) {
     stop("`scale` must be a single positive numeric value or NULL.")
   }
-  
-  if (!is.logical(zero) || length(zero) != 1) {
+
+  if (!is.logical(zero) || length(zero) != 1 || is.na(zero)) {
     stop("`zero` must be a single logical value (TRUE or FALSE).")
   }
-  
+
   # --- Preprocessing ---
-  if (is.null(shift)) {
-    shift <- find_shift_factor(x)
-  } 
-  
+  # With structural-zero handling, ACD is a positive-part transformation:
+  # zero observations do not enter the empirical ranks or the auxiliary FP1
+  # regression, and they are restored as exact zeros in the returned vector.
+  # Keeping the row mask on the original scale is important because a positive
+  # value can legitimately transform to the numeric value zero (e.g. log(1)).
   if (zero) {
-    x[x <= 0] <- 0
-    # zero transformation overrides shift
+    if (any(x < 0)) {
+      stop("`x` must be nonnegative when `zero = TRUE`.", call. = FALSE)
+    }
+
+    zero_rows <- x == 0
+    fit_rows <- !zero_rows
+    x_fit <- x[fit_rows]
+
+    if (length(x_fit) < 2L) {
+      stop(
+        "At least two positive values are required to fit ACD when `zero = TRUE`.",
+        call. = FALSE
+      )
+    }
+
+    if (length(unique(x_fit)) < 2L) {
+      stop(
+        paste0(
+          "At least two distinct positive values are required to fit ACD ",
+          "when `zero = TRUE`."
+        ),
+        call. = FALSE
+      )
+    }
+
+    # Structural-zero handling overrides any requested/automatic shift.
     shift <- 0
+  } else {
+    zero_rows <- rep(FALSE, length(x))
+    fit_rows <- rep(TRUE, length(x))
+    x_fit <- x
+
+    if (is.null(shift)) {
+      shift <- find_shift_factor(x_fit)
+    }
   }
-  
+
+  # In zero mode, automatic scaling is estimated from the positive part only.
+  # This is immaterial for mfp2()'s normal ACD path (whose scale is fixed at 1)
+  # but makes direct fit_acd(..., scale = NULL) calls mathematically coherent.
   if (is.null(scale)) {
-    scale <- find_scale_factor(x)
+    scale <- find_scale_factor(x_fit)
   }
-  
-  x <- (x + shift) / scale
-  
-  # check whether acd is estimable
-  #if (!all(x > 0) && !zero) {
-  #  warning("All values of `x` must be positive after shifting. ",
-  #       "Try specifying a larger `shift` or use `shift = NULL` to estimate it automatically.")
-  #}
+
+  x_fit <- (x_fit + shift) / scale
+
   # --- ACD transformation ---
   # see here for details: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5663339/pdf/emss-59479.pdf)
-  n <- length(x)
-  z <- stats::qnorm((rank(x, ties.method = "average") - 0.5) / n)
+  n_fit <- length(x_fit)
+  z <- stats::qnorm(
+    (rank(x_fit, ties.method = "average") - 0.5) / n_fit
+  )
 
   # estimate the best p in model E(z) = beta0 + beta1*x^p using the data
-  fit <- find_best_fp1_for_acd(x = x, y = z, powers = powers, zero = zero)
-  
-  coefx <- fit$fit$coefficients
-  zhat <- fit$fit$fitted.values
+  fit <- find_best_fp1_for_acd(
+    y = z, x = x_fit, powers = powers, zero = FALSE, fitter = fitter
+  )
 
-  list(acd = stats::pnorm(zhat), 
-       beta0 = coefx[1], 
-       beta1 = coefx[2], 
-       power = fit$power, 
-       shift = shift, 
+  coefx <- fit$coefficients
+  zhat <- fit$fitted_values
+
+  acd <- numeric(length(x))
+  acd[fit_rows] <- stats::pnorm(zhat)
+  # Defensive assignment documents and enforces the public invariant even if
+  # the construction above changes in the future.
+  acd[zero_rows] <- 0
+
+  list(acd = acd,
+       beta0 = coefx[1],
+       beta1 = coefx[2],
+       power = fit$power,
+       shift = shift,
        scale = scale)
 }
 
 #' Function to apply Approximate Cumulative Distribution (ACD)
-#' 
-#' Applies the acd transformation as outlined in Royston (2014) and Royston and 
-#' Sauerbrei (2016). 
+#'
+#' Applies the acd transformation as outlined in Royston (2014) and Royston and
+#' Sauerbrei (2016).
 #' Designed to work with the output of \code{fit_acd()}, Please refer to the corresponding
 #' documentation for more details.
-#' 
+#'
 #' @param x a numeric vector.
-#' @param beta0,beta1 each a numeric value, representing the coefficients of 
+#' @param beta0,beta1 each a numeric value, representing the coefficients of
 #' the FP1 model for the ACD transformation.
-#' @param power a numeric value, estimated power to be used in the FP1 model for 
+#' @param power a numeric value, estimated power to be used in the FP1 model for
 #' the ACD transformation.
 #' @param shift a numeric value that is used to shift the values of `x` to
-#' positive values. 
-#' @param scale a numeric value used to scale `x`. 
-#' @param zero Logical indicating whether only positive values of the variable 
-#' should be transformed, with nonpositive values (zero or negative) set to zero. 
-#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values 
-#' are replaced with zero before transformation.
+#' positive values.
+#' @param scale a numeric value used to scale `x`.
+#' @param zero Logical indicating whether only positive values of a nonnegative
+#' variable should be transformed, with exact-zero values retained as zero. If
+#' `TRUE`, stored ACD parameters are applied only to `x > 0` and `A(0)` is
+#' exactly zero.
 #' @param ... not used.
-#' 
-#' @return 
+#'
+#' @return
 #' The transformed input vector `x`.
+#' @keywords internal
+#' @noRd
 apply_acd <- function(x, beta0, beta1, power, shift, scale, zero, ...) {
-  
+
   if (length(power) != 1) {
     stop("! `power` must be a single numeric value.")
   }
-  
-  if (zero) {
-    x[x <= 0] <- 0
-    shift <- 0
+
+  if (!is.logical(zero) || length(zero) != 1L || is.na(zero)) {
+    stop("`zero` must be a single logical value (TRUE or FALSE).", call. = FALSE)
   }
-  
-  x <- (x + shift) / scale
-  zhat <- beta0 + beta1 * transform_vector_power(x = x, power = power, zero = FALSE)
-  
-  stats::pnorm(zhat)
+
+  if (zero && any(x < 0, na.rm = TRUE)) {
+    stop("`x` must be nonnegative when `zero = TRUE`.", call. = FALSE)
+  }
+
+  zero_rows <- if (zero) x == 0 else rep(FALSE, length(x))
+  apply_rows <- !zero_rows
+  out <- numeric(length(x))
+
+  # Prediction data may legitimately contain only structural zeros. No FP
+  # evaluation is then needed and every ACD value is exactly zero.
+  if (!any(apply_rows)) {
+    return(out)
+  }
+
+  x_power <- transform_vector_fp(
+    x            = x[apply_rows],
+    power        = power,
+    shift        = shift,
+    scale        = scale,
+    zero         = FALSE,
+    check_binary = FALSE
+  )
+
+  zhat <- beta0 + beta1 * x_power[, 1L]
+  out[apply_rows] <- stats::pnorm(zhat)
+  out[zero_rows] <- 0
+  out
 }
 
 #' Function to fit univariable FP1 models for acd transformation
-#' 
+#'
 #' To be used in \code{fit_acd()}.
-#' 
+#'
 #' @inheritParams fit_acd
 #' @param y normal cdf of rank transform of `x`.
-#' 
-#' @return 
-#' The best FP power with smallest deviance and the fitted model.
-find_best_fp1_for_acd <- function(x, 
-                                  y, 
+#'
+#' @return
+#' The best FP power with smallest deviance, together with its coefficients and
+#' fitted values. The temporary candidate fit objects are not retained.
+#' @keywords internal
+#' @noRd
+find_best_fp1_for_acd <- function(x,
+                                  y,
                                   powers,
-                                  zero) {
-  
+                                  zero,
+                                  fitter = c("base", "fastglm")) {
+  fitter <- match.arg(fitter)
+
   if (!is.null(dim(x))) {
     stop("! `x` must be a vector.")
   }
-  
-  # generate all possible FP1 transformations
-  trafo <- generate_transformations_fp(x = x, degree = 1, powers = powers, zero = zero)$data
-  
-  # Fit linear models for each FP1 function
+
+  # Build one compact FP1 basis instead of a list of n x 1 candidate matrices.
+  # For degree 1 the arithmetic count is already close to minimal, but the
+  # compact representation still avoids one R matrix object per power and
+  # lets the candidate loop copy directly from one contiguous shared basis.
+  # This is the same representation used by the ordinary mfp2 FP search.
+  fp_basis <- generate_transformations_fp_basis(
+    x = x,
+    degree = 1L,
+    powers = powers,
+    zero = zero
+  )
+  basis <- fp_basis$basis
+  candidate_map <- fp_basis$candidate_map
+
+  # Fit linear Gaussian models for each FP1 function.
   n_powers <- length(powers)
-  
-  # store deviance and model object
-  devs <- vector("numeric", n_powers)
-  fits <- vector("list", n_powers)
-  
-  for (i in seq_len(n_powers)) {
-    # fit linear model
-    fit <- fit_model(x = trafo[[i]], y = y, family = "gaussian")
-    
-    devs[i] <- -2 * fit$logl
-    fits[[i]] <- fit$fit
+  if (NROW(candidate_map) != n_powers || NCOL(candidate_map) != 1L) {
+    stop("Internal error: compact FP1 candidate map has unexpected dimensions.",
+         call. = FALSE)
   }
-  
-  # find best model
-  index <- which.min(devs)
-  
+
+  family_gaussian <- stats::gaussian()
+  family_string_gaussian <- family_gaussian$family
+  control_gaussian <- normalize_fit_control(
+    control = NULL,
+    family_string = family_string_gaussian,
+    fitter = fitter
+  )
+
+  # Reuse one intercept-augmented design matrix across candidate fits.
+  # Only the numeric FP column changes; the intercept and column names remain
+  # fixed for the entire search. copy_fp_basis_candidate_cpp() mutates this
+  # private matrix in place, so no n-length candidate matrix is materialized.
+  design_mat <- matrix(
+    0,
+    nrow = NROW(basis),
+    ncol = 2L,
+    dimnames = list(NULL, c("(Intercept)", "fp1"))
+  )
+  design_mat[, 1L] <- 1
+  fp_col <- 2L
+
+  # Retain only the best candidate's lightweight results. The underlying
+  # glm.fit()/fastglm objects are unnecessary once their likelihood and
+  # selected coefficients and fitted values have been extracted.
+  best_deviance <- Inf
+  best_power <- NULL
+  best_coefficients <- NULL
+  best_fitted_values <- NULL
+
+  for (i in seq_len(n_powers)) {
+    # Copy the one mapped FP1 basis column into the reusable design matrix.
+    # The helper writes directly into design_mat[, fp_col] and therefore avoids
+    # allocating trafo[[i]] or another n-length temporary candidate matrix.
+    copy_fp_basis_candidate_cpp(
+      target = design_mat,
+      basis = basis,
+      source_cols = as.integer(candidate_map[i, 1L]),
+      target_cols = fp_col
+    )
+
+    # Keep the generic fit_model() abstraction so base and fastglm candidate
+    # fits continue to share exactly the same fitting and likelihood handling.
+    # The ACD auxiliary regression is intentionally unweighted and has no
+    # outcome-model offset: it approximates the normal-score transform of x,
+    # rather than fitting the user's outcome model.
+    #
+    # Only the fitted-values vector is needed for the winning FP1 candidate.
+    # Ask fit_model() for that lightweight vector directly and discard the
+    # complete glm.fit()/fastglm object before returning to this candidate loop.
+    fit <- fit_model(
+      x = design_mat,
+      y = y,
+      family = family_gaussian,
+      family_string = family_string_gaussian,
+      fitter = fitter,
+      control = control_gaussian,
+      x_has_intercept = TRUE,
+      keep_fit = FALSE,
+      keep_fitted_values = TRUE
+    )
+
+    candidate_deviance <- -2 * fit$logl
+    if (is.finite(candidate_deviance) &&
+        candidate_deviance < best_deviance) {
+      best_deviance <- candidate_deviance
+      best_power <- powers[[i]]
+      best_coefficients <- fit$coefficients
+      best_fitted_values <- fit$fitted_values
+    }
+  }
+
+  if (is.null(best_power)) {
+    stop("No finite ACD candidate model was fitted.", call. = FALSE)
+  }
+
   list(
-    power = powers[[index]], 
-    fit = fits[[index]]
+    power = best_power,
+    coefficients = best_coefficients,
+    fitted_values = best_fitted_values
   )
 }

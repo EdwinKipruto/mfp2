@@ -2,8 +2,7 @@
 % Please edit documentation in R/fracplot.R
 \name{fracplot}
 \alias{fracplot}
-\alias{plot_mfp}
-\title{Plot response functions from a fitted \code{mfp2} object}
+\title{Deprecated Fractional-Polynomial Plotting Interface}
 \usage{
 fracplot(
   model,
@@ -13,138 +12,129 @@ fracplot(
   ref = NULL,
   terms_seq = c("data", "equidistant"),
   alpha = 0.05,
+  show_titles = TRUE,
+  show_grid = FALSE,
   color_points = "#AAAAAA",
   color_line = "red",
   color_line_spike = "red",
   color_fill = "#000000",
-  shape = 1,
+  shape = 16,
   size_points = 1,
   size_points_spike = 2,
   linetype = "solid",
   linewidth = 1,
   alpha_fill = 0.1
 )
-
-plot_mfp(...)
 }
 \arguments{
-\item{model}{A fitted \code{`mfp2`} model.}
+\item{model}{A fitted object of class \code{"mfp2"}.}
 
-\item{terms}{Character vector with variable names to be plotted.  If \code{NULL},
-all fractional polynomial terms in the model are plotted.}
+\item{terms}{Names of the variables to plot, for example,
+\code{c("age", "cavol")}. By default (\code{NULL}), requests all variables kept in
+the final model. See \strong{Choosing terms}.}
 
-\item{partial_only}{Logical. If \code{TRUE}, only the partial predictor (model
-component) is plotted. If \code{FALSE} (default), component-plus-residual plots
-are drawn. Only used if \code{type = "terms"}. See below for details.}
+\item{partial_only}{Whether to show only the fitted effect and confidence
+interval. Defaults to \code{FALSE}. See \strong{Component-plus-residual plots}.}
 
-\item{type}{Character, one of \code{"terms"} or \code{"contrasts"}. Passed to
-\code{predict.mfp2()}. \code{"terms"} plots partial predictors (with or without
-residuals), while \code{"contrasts"} plots contrasts relative to a reference
-value.}
+\item{type}{Either \code{"terms"} (default) or \code{"contrasts"}.
+See \strong{Choosing the plot type}.}
 
-\item{ref}{Reference list passed to \code{predict.mfp2()} when \code{type = "contrasts"}. Ignored otherwise.}
+\item{ref}{Named list of reference values for contrast plots, for example,
+\code{list(age = 50)}. See \strong{Contrasts and reference values}.}
 
-\item{terms_seq}{Character, one of \code{"data"} or \code{"equidistant"}. Passed to
-\code{predict.mfp2()}. \code{"data"} uses the observed values, \code{"equidistant"} creates
-a grid over the covariate range.}
+\item{terms_seq}{Either \code{"data"} or \code{"equidistant"}.
+See \strong{Evaluation values} for their meaning and defaults.}
 
-\item{alpha}{Confidence level for intervals. Passed to \code{predict.mfp2()}.}
+\item{alpha}{Significance level for confidence intervals. The default,
+\code{0.05}, gives 95 percent intervals. See \strong{Confidence intervals}.}
 
-\item{color_points}{Character value. Color of points used when residuals
-are displayed.}
+\item{show_titles}{Whether to show titles describing the fitted
+transformation or variable representation. Defaults to \code{TRUE}.}
 
-\item{color_line}{Character value. Color of the line representing
-the partial predictor.}
+\item{show_grid}{Whether to show the major and minor panel grid lines of
+\code{\link[ggplot2:theme_bw]{ggplot2::theme_bw()}}. Defaults to \code{FALSE}, which draws plots without
+grid lines.}
 
-\item{color_line_spike}{Character value. Color of the point drawn at zero
-when the covariate includes a spike-at-zero component (\code{spike_decision = 1}).}
+\item{color_points}{Colour of component-plus-residual points, for example,
+\code{"grey60"} or \code{"#AAAAAA"}. All colour arguments accept ggplot2 colour
+names or hexadecimal codes. See \link[ggplot2:aes_colour_fill_alpha]{ggplot2::aes_colour_fill_alpha}.}
 
-\item{color_fill}{Character value. Fill color of the confidence interval ribbon.}
+\item{color_line}{Colour of fitted curves and fitted points for binary
+predictors and factors, for example, \code{"black"} or \code{"blue"}. Also used
+for the zero endpoint of a term fitted with \code{zero = TRUE} alone.}
 
-\item{shape}{Numeric value. Shape of points used when residuals
-are displayed.}
+\item{color_line_spike}{Colour of the separate zero endpoint for a
+\code{catzero} or spike-at-zero term with a continuous component,
+for example, \code{"red"}.}
 
-\item{size_points}{Numeric value. Size of points used when residuals
-are displayed.}
+\item{color_fill}{Fill colour of confidence bands, for example,
+\code{"lightblue"} or \code{"#56B4E9"}.}
 
-\item{size_points_spike}{Numeric value. Size of the point drawn at zero
-when the covariate includes a spike-at-zero component (\code{spike_decision = 1}).}
+\item{shape}{Shape of component-plus-residual points. Common ggplot2
+shape codes include \code{1} for open circles and \code{16} for solid circles.
+The default is \code{16}. See \code{\link[ggplot2:scale_shape]{ggplot2::scale_shape()}}.}
 
-\item{linetype}{Character value. Line type for the partial predictor.
-See \code{\link[ggplot2:geom_path]{ggplot2::geom_line()}} for options.}
+\item{size_points}{Numeric size of component-plus-residual points,
+in millimetres, for example, \code{1} or \code{2}. The default is \code{1}.
+See \code{\link[ggplot2:geom_point]{ggplot2::geom_point()}}.}
 
-\item{linewidth}{Numeric value. Width of the line representing
-the partial predictor.}
+\item{size_points_spike}{Numeric size of fitted points for binary
+predictors, factors, and zero endpoints.
+For example, use \code{3} for larger points. The default is \code{2}.
+See \code{\link[ggplot2:geom_point]{ggplot2::geom_point()}}.}
 
-\item{alpha_fill}{Numeric value between 0 and 1. Transparency of the
-confidence interval ribbon.}
+\item{linetype}{Line style of fitted curves, for example, \code{"solid"},
+\code{"dashed"}, or \code{"dotted"}. The default is \code{"solid"}.
+See \code{\link[ggplot2:scale_linetype]{ggplot2::scale_linetype()}}.}
 
-\item{...}{Further arguments passed from the alias \code{plot_mfp()}.}
+\item{linewidth}{Numeric width of fitted curves, for example, \code{0.5}
+or \code{1}. Larger values produce thicker lines. The default is \code{1}.
+See \code{\link[ggplot2:geom_line]{ggplot2::geom_line()}}.}
+
+\item{alpha_fill}{Confidence-band transparency, from \code{0} (transparent)
+to \code{1} (opaque).}
 }
 \value{
-A list of \code{ggplot2} plot objects, one for each term requested. Can be
-drawn as individual plots or facetted / combined easily using e.g.
-\code{patchwork::wrap_plots} and further customized.
+A named list of \code{ggplot2} objects, one for each plotted term, identical to
+the result returned by \code{\link[=plot.mfp2]{plot.mfp2()}} called with the same arguments
+(including the colours).
 }
 \description{
-Produces partial predictor plots (or contrasts) with confidence intervals
-against selected covariates from a fitted \code{`mfp2`} model. If requested,
-component-plus-residual plots are also supported.
+\code{fracplot()} is retained temporarily for compatibility with code written
+for earlier versions of \code{mfp2}. Use \code{\link[=plot.mfp2]{plot.mfp2()}} or \code{plot()} instead.
 }
 \details{
-Confidence intervals are based on the variance–covariance matrix of the
-final fitted model. They reflect uncertainty in the regression coefficients
-but not in the selection of fractional polynomial powers. Intervals may
-therefore be too narrow. A bootstrap approach (not yet implemented) is
-recommended for more realistic intervals (see Royston & Sauerbrei, 2008,
-Section 4.9.2).
-
-Component-plus-residual plots are available if \code{type = "terms"}. Deviance
-residuals are used for generalized linear models, while martingale residuals
-are used for Cox regression. This matches the behavior of the Stata \code{mfp}
-program.
-
-Spike-at-zero covariates are handled according to the \code{spike_decision} code:
-\itemize{
-\item \code{1} – Include both the transformed FP function for positive values and the binary
-spike-at-zero indicator.
-\item \code{2} – Ignore the spike; treat the variable as continuous (usual FP plot).
-\item \code{3} – Show only the binary spike-at-zero indicator.
+The function forwards its arguments to \code{\link[=plot.mfp2]{plot.mfp2()}} and returns the same
+plot objects, except that its own defaults for \code{color_line} and
+\code{color_line_spike} are \code{"red"}, whereas \code{\link[=plot.mfp2]{plot.mfp2()}} uses \code{"black"}.
+The sections referred to in the argument
+descriptions, such as \strong{Choosing terms}, are on the help page of
+\code{\link[=plot.mfp2]{plot.mfp2()}}.
 }
-
-Plot behavior for each decision:
-\itemize{
-\item If \code{spike_decision == 1}, the plot shows the FP function for positive values
-and includes the binary spike-at-zero indicator. The term
-\eqn{\hat{\beta}_0 + \hat{\beta}} for observations equal to zero is also
-displayed with a vertical error bar. The plot title includes
-\code{+ z} to indicate the presence of the spike-at-zero component. The FP power
-for the positive part is enclosed in parentheses. For example, \code{FP(0) + z}
-indicates an FP power of 0 (log) for the positive values.
-\item If \code{spike_decision == 3}, the plot shows the binary indicator alone (\verb{z only} in
-the title). Mean values at 0 and 1 are connected with a line, and a ribbon showing
-confidence intervals is displayed.
-\item If \code{spike_decision == 2} (or not specified), the covariate is plotted as a
-continuous FP function in the usual way.
-See \code{fracplot} for details on partial predictors
-}
-}
-\section{Functions}{
-\itemize{
-\item \code{plot_mfp()}: Alias for fracplot.
-
-}}
 \examples{
-
-# Gaussian response
 data("prostate")
-x = as.matrix(prostate[,2:8])
-y = as.numeric(prostate$lpsa)
-# default interface
-fit = mfp2(x, y, verbose = FALSE)
-fracplot(fit) # generate plots
+
+fit <- mfp2(
+  lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+  data = prostate,
+  verbose = FALSE
+)
+
+# Plotting requires ggplot2.
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  # Recommended interface
+  plots <- plot(fit, terms = "cavol")
+  print(plots)
+}
+
+\donttest{
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  # Deprecated compatibility interface
+  old_plots <- fracplot(fit, terms = "cavol")
+}
+}
 
 }
 \seealso{
-\code{predict.mfp2()}
+\code{\link[=plot.mfp2]{plot.mfp2()}}
 }

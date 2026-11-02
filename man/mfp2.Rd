@@ -19,25 +19,30 @@ mfp2(x, ...)
   df = 4,
   center = TRUE,
   subset = NULL,
-  family = "gaussian",
-  criterion = c("pvalue", "aic", "bic"),
+  family = gaussian(),
+  criterion = NULL,
   select = 0.05,
   alpha = 0.05,
   keep = NULL,
   xorder = c("ascending", "descending", "original"),
   powers = NULL,
-  ties = c("breslow", "efron", "exact"),
+  ties = c("efron", "breslow"),
   strata = NULL,
-  nocenter = NULL,
-  acdx = NULL,
+  nocenter = c(-1, 0, 1),
+  acd_vars = NULL,
   ftest = FALSE,
   control = NULL,
-  zero = NULL,
-  catzero = NULL,
-  spike = NULL,
-  min_prop = 0.05,
-  max_prop = 0.95,
+  zero_vars = NULL,
+  catzero_vars = NULL,
+  spike_vars = NULL,
+  min_saz_prop = 0.1,
+  force_max_fp_vars = NULL,
+  term_groups = NULL,
   verbose = TRUE,
+  fitter = c("base", "fastglm"),
+  id = NULL,
+  waves = NULL,
+  acdx = NULL,
   ...
 )
 
@@ -52,838 +57,1048 @@ mfp2(x, ...)
   df = 4,
   center = TRUE,
   subset = NULL,
-  family = "gaussian",
-  criterion = c("pvalue", "aic", "bic"),
+  family = gaussian(),
+  criterion = NULL,
   select = 0.05,
   alpha = 0.05,
   keep = NULL,
   xorder = c("ascending", "descending", "original"),
   powers = NULL,
-  ties = c("breslow", "efron", "exact"),
+  ties = c("efron", "breslow"),
   strata = NULL,
-  nocenter = NULL,
+  nocenter = c(-1, 0, 1),
   ftest = FALSE,
   control = NULL,
-  min_prop = 0.05,
-  max_prop = 0.95,
+  min_saz_prop = 0.1,
   verbose = TRUE,
+  fitter = c("base", "fastglm"),
+  id = NULL,
+  waves = NULL,
   ...
 )
 }
 \arguments{
-\item{x}{for \code{mfp2.default}: \code{x} is an input matrix of dimensions
-nobs x nvars. Each row is an observation vector.}
+\item{x}{For \code{mfp2.default()}, a numeric matrix with one row per observation
+and one column per predictor. Column names are required.}
 
-\item{\dots}{Not used.}
+\item{\dots}{Used to pass arguments from \code{mfp2()} to its fitting method.
+Additional arguments supplied to the fitting method are not
+used; a warning names them.}
 
-\item{y}{for \code{mfp2.default}: \code{y} is a vector for the response variable.
-For \code{family = "binomial"} it should be  a vector with two levels (see
-\code{\link[stats:glm]{stats::glm()}}). For \code{family = "cox"} it must be a \code{\link[survival:Surv]{survival::Surv()}} object
-containing 2 columns.}
+\item{y}{Outcome for \code{mfp2.default()}. In the formula interface, put the
+outcome on the left side of the formula. Its required format depends on
+\code{family}; see \strong{Model families and responses}.}
 
-\item{weights}{a vector of observation weights of length nobs.
-Default is \code{NULL} which assigns a weight of 1 to each observation.}
+\item{weights}{Optional numeric observation weights. All weights must
+be strictly positive. In the formula interface, an expression is evaluated
+first in \code{data} and then in the formula environment.}
 
-\item{offset}{a vector of length nobs that is included in the linear
-predictor. Useful for the poisson family (e.g. log of exposure time).
-Default is \code{NULL} which assigns an offset  of 0 to each observation.
-If supplied, then values must also be supplied to the \code{predict()} function.}
+\item{offset}{A known term added to the model, such as the log of exposure
+time. With formula input you can write \code{offset()} in the formula instead.
+When predicting for new data, supply the matching offset.}
 
-\item{cycles}{an integer, specifying the maximum number of iteration cycles.
-Default is 5.}
+\item{cycles}{Maximum number of MFP backfitting cycles. Default \code{5}.}
 
-\item{scale}{a numeric vector of length \code{nvars} or single numeric specifying
-scaling factors. If a single numeric, then the value will be replicated as
-necessary. The formula interface \code{mfp2.formula} only supports single numeric
-input to set a default value, individual values can be set using \code{fp} terms
-in the \code{formula} input.
-Default is \code{NULL} which lets the program estimate the scaling factors
-(see Details section). If scaling is not required set \code{scale = 1} to disable
-it. The final regression coefficients are expressed in the original scale of
-the data.}
+\item{scale}{Divisor used when preparing predictors for FP selection.
+\code{NULL} chooses scales automatically; \code{1} turns off automatic scaling.
+In \code{mfp2.default()}, use a named value such as \code{c(age = 10)} to set
+one column's scale. In formulas, a single unnamed value applies to every
+term that does not set its own; use \code{fp()} or \code{fp2()} for one term.
+Binary and ACD predictors always use scale \code{1}. Predictors with exact-zero
+handling (\code{zero}, \code{catzero}, or \code{spike}) use an automatic scale of \code{1}; an
+explicitly supplied scale is still used. See \strong{Shifting, scaling, and
+centering}.}
 
-\item{shift}{a numeric vector of length \code{nvars} or a single numeric specifying
-shift terms. If a single numeric, then the value will be replicated as
-necessary. The formula interface \code{mfp2.formula} only supports single numeric
-input to set a default value, individual values can be set using \code{fp} terms
-in the \code{formula} input.
-Default is \code{NULL} which lets the program estimate the shifts
-(see Details section). If shifting is not required, set \code{shift = 0} to
-disable it.}
+\item{shift}{Value added to predictors before FP transformation.
+\code{NULL} chooses shifts automatically; \code{0} turns off automatic shifting.
+In \code{mfp2.default()}, use a named value such as \code{c(age = 20)} to set
+one column's shift. In formulas, a single unnamed value applies to every
+term that does not set its own; use \code{fp()} or \code{fp2()} for one term.
+Binary and linear predictors, and those using exact-zero handling,
+always have shift \code{0}. See \strong{Shifting, scaling, and centering}.}
 
-\item{df}{a numeric vector of length nvars or a single numeric that sets the
-(default) degrees of freedom (df) for each predictor. If a single numeric,
-then the value will be replicated as necessary. The formula interface
-\code{mfp2.formula} only supports single numeric input to set a default value,
-individual values can be set using \code{fp} terms in the \code{formula} input.
-The df (not counting the intercept) are twice the degree of a fractional
-polynomial (FP). For example, an FP2 has 4 df, while FPm has 2*m df.
-The program overrides default df based on the number of distinct (unique)
-values for a variable as follows:
-2-3 distinct values are assigned \code{df = 1} (linear), 4-5 distinct values are
-assigned \code{df = min(2, default)} and >= 6 distinct values are assigned
-\code{df = default}.}
+\item{df}{Maximum FP complexity: \code{1} allows linear only, \code{2} allows up
+to FP1, and \code{4} allows up to FP2. The default is \code{4}. Selection may
+choose a simpler form or omit the predictor. In \code{mfp2.default()}, use
+a named value such as \code{c(age = 2)} for one column. In \code{mfp2.formula()},
+the top-level value applies only to terms outside \code{fp()} or \code{fp2()};
+those terms default to \code{df = 4} unless set explicitly, for example
+\code{fp(age, df = 2)}. Predictors with few distinct values may be limited
+to a simpler form. See \strong{Fractional-polynomial model selection}.}
 
-\item{center}{a logical determining whether variables are centered before
-final model fitting. The default \code{TRUE} implies mean centering, except for
-binary covariates, where the covariate is centered using the lower of the two
-distinct values of the covariate. See Details section below.}
+\item{center}{If \code{TRUE} (default), center predictors after any FP or ACD
+transformation; \code{FALSE} leaves them uncentered. Continuous terms use
+their mean and binary terms use their lower observed value in the data.
+Centering does not change fitted values. In \code{mfp2.default()},
+use one logical value for all predictors or a named vector for selected
+columns; unspecified columns use \code{TRUE}. In \code{mfp2.formula()}, the
+top-level value applies only to terms outside \code{fp()} or \code{fp2()}; set
+\code{center} inside the term to change it for an \code{fp()} term.}
 
-\item{subset}{an optional vector specifying a subset of observations
-to be used in the fitting process. Default is \code{NULL} and all observations are
-used. See Details below.}
+\item{subset}{Optional observations used for model selection and fitting.
+Formula calls accept an expression evaluated in \code{data} and the formula
+environment. Matrix calls accept a logical vector or unique numeric/integer
+row positions. Automatic shift and scale values are estimated before the
+subset is applied. See the Subsetting section.}
 
-\item{family}{Either a character string specifying the model family
-(e.g., "gaussian", "binomial", "poisson", "cox") or a function that
-returns a GLM family object, such as \code{stats::gaussian(link = "identity")}
-or \code{stats::binomial(link = "logit")}. For Cox models, only the character
-string \code{"cox"} is allowed.}
+\item{family}{Model family; default \code{"gaussian"}. Supported GLM families
+are \code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, \code{"Gamma"}, and
+\code{"inverse.gaussian"}, supplied as a name, function, or family object.
+Quasi families are not supported. Use \code{\link[=negbin_family]{negbin_family()}} for
+negative-binomial models, choosing a \code{"log"} (default), \code{"sqrt"}, or
+\code{"identity"} link; \code{"negbin"} is shorthand for
+\code{negbin_family(link = "log")}. Use \code{"multinomial"} or
+\code{\link[=multinomial_family]{multinomial_family()}} for multinomial models;
+\code{"ordinal"} or \code{\link[=ordinal_family]{ordinal_family()}} for cumulative-link ordinal models;
+\code{"cox"} for Cox models; \code{\link[=survreg_family]{survreg_family()}} for parametric survival
+models; \code{\link[=finegray_family]{finegray_family()}} for Fine--Gray models; or \code{\link[=gee_family]{gee_family()}}
+for generalized estimating equations. GEE supports Gaussian,
+binomial, Poisson, and Gamma response families, but not
+negative-binomial responses.}
 
-\item{criterion}{a character string specifying the criterion used to select
-variables and FP models of different degrees.
-Default is to use p-values in which case the user can specify
-the nominal significance level (or use default level of 0.05) for variable and
-functional form selection (see \code{select} and \code{alpha} parameters below).
-If the user specifies the BIC (\code{bic}) or AIC (\code{aic}) criteria the program
-ignores the nominal significance levels and selects variables and functional
-forms using the chosen information criterion.}
+\item{criterion}{Model-selection criterion: \code{"pvalue"}, \code{"aic"}, or
+\code{"bic"}. If \code{NULL} (default), \code{"aic"} is used for GEE models
+(\code{\link[=gee_family]{gee_family()}}) and \code{"pvalue"} for all other families. Supply
+\code{criterion = "pvalue"} explicitly to use robust Wald p-value selection for
+GEE models. With \code{"pvalue"}, \code{select} controls predictor
+inclusion and \code{alpha} controls FP functional form and spike-at-zero component
+comparisons. With \code{"aic"} or \code{"bic"}, the model with the lowest score is
+selected. For GEE models, \code{"aic"} and \code{"bic"} use quasi likelihood
+based scores; see \strong{Model selection criteria} for their definitions.}
 
-\item{select}{a numeric vector of length nvars or a single numeric that
-sets the nominal significance levels for variable selection on each predictor
-by backward elimination. If a single numeric, then the value will be replicated
-as necessary. The formula interface \code{mfp2.formula} only supports single numeric
-input to set a default value, individual values can be set using \code{fp} terms
-in the \code{formula} input. The default nominal significance level is 0.05
-for all variables. Setting the nominal significance level to be 1 for
-certain variables forces them into the model, leaving all other variables
-to be selected.}
+\item{select}{Significance level for predictor inclusion when
+\code{criterion = "pvalue"}; default \code{0.05}. In \code{mfp2.default()}, a single
+value applies to all predictors. A named vector sets the selection level
+for the specified predictors; all others use the default of \code{0.05}. In
+\code{mfp2.formula()}, the top-level value applies only to terms outside
+\code{fp()} or \code{fp2()}; those terms each default to \code{0.05} unless set
+explicitly, for example \code{fp(x, select = 1)}. Under p-value selection,
+\code{select = 1} forces inclusion. For spike-at-zero terms, \code{select}
+controls initial inclusion; \code{alpha} controls subsequent component
+removal. \code{select} does not affect AIC or BIC selection; use \code{keep}
+to retain a term under those criteria.}
 
-\item{alpha}{a numeric vector of length nvars or a single numeric that
-sets the significance levels for testing between FP models of
-different degrees. If a single numeric, then the value will be replicated
-as necessary. The formula interface \code{mfp2.formula} only supports single numeric
-input to set a default value, individual values can be set using \code{fp} terms
-in the \code{formula} input. The default nominal significance level is 0.05 for all
-variables.}
+\item{alpha}{Significance level for choosing between FP forms when
+\code{criterion = "pvalue"}; default \code{0.05}. A simpler form is chosen only
+when its comparison p-value is greater than \code{alpha}, so \code{alpha = 1}
+prevents this simplification. For spike-at-zero terms, \code{alpha} also
+controls tests that remove either component. In \code{mfp2.default()},
+a single value applies to all predictors. A named vector sets values
+for specified predictors; all others use \code{0.05}. In
+\code{mfp2.formula()}, the top-level value applies only to terms outside
+\code{fp()} or \code{fp2()}. Set \code{alpha} within \code{fp()} or \code{fp2()} to change it
+for those terms. \code{alpha} does not affect AIC or BIC selection.}
 
-\item{keep}{a character vector with names of variables to be kept
-in the model. In case that \code{criterion = "pvalue"}, this is equivalent to
-setting the selection level for the variables in \code{keep} to 1.
-However, this option also keeps the specified variables in the model when
-using the BIC or AIC criteria.}
+\item{keep}{Character vector naming predictors to retain in the final
+model under any selection criterion. For a formula interface, use a
+predictor name  from the formula, such as \code{keep = "age"}. For a matrix
+interface, use a column name from \code{x} or a name in \code{term_groups}. Keeping a
+predictor does not prevent selection of a simpler functional form.}
 
-\item{xorder}{a string determining the order of entry of the covariates
-into the model-selection algorithm (backfitting algorithm). The default is
-\code{ascending}, which enters them by ascending p-values, or decreasing order of
-significance in a multiple regression (i.e. most significant first).
-\code{descending} places them in reverse significance order, whereas
-\code{original} respects the original order in \code{x}.}
+\item{xorder}{Order in which predictors are examined during backfitting:
+\code{"ascending"} (default), \code{"descending"}, or \code{"original"}.
+To rank predictors, each is tested as a whole by removing it from
+the full starting model. \code{"ascending"} visits the smallest
+p-value first, \code{"descending"} the largest, and \code{"original"} follows
+the input term order.}
 
-\item{powers}{a named list of numeric values specifying the set of candidate
-FP powers for each covariate. The default is \code{NULL}, in which case every
-covariate is assigned \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where
-\code{0} denotes the natural logarithm. Powers are sorted before further
-processing. If some variables are not explicitly assigned powers, the default
-set is used. In the formula interface, powers can be specified either through
-the \code{powers} argument or within the \code{fp()} function. If both are provided for
-the same variable, the specification inside \code{fp()} takes precedence. Each
-variable must be assigned at least two candidate powers for model selection.
-To restrict a variable to a single transformation, pre-transform the variable
-and fit it with \code{df = 1}.}
+\item{powers}{Optional named list of candidate FP powers for individual
+predictors, for example \code{list(age = c(0, 1, 2))}. Predictors not named
+use \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where \code{0} denotes a
+logarithm. Each list element must contain at least one finite numeric
+power; duplicate powers are removed. Use the predictor's column name
+as the list name. To allow only a linear effect, set \code{df = 1}. Powers
+supplied inside \code{fp()} or \code{fp2()} take precedence over this list.}
 
-\item{ties}{a character string specifying the method for tie handling in
-Cox regression. If there are no tied death times all the methods are
-equivalent. Default is the Breslow method. This argument is used for Cox
-models only and has no effect on other model families.
-See \code{survival::coxph()} for details.}
+\item{ties}{Method for handling tied event times in Cox and Fine--Gray models.
+Supported values are \code{"efron"} (default) and \code{"breslow"}. \code{"exact"} is not
+supported. The argument has no effect for other families. See
+\code{\link[survival:coxph]{survival::coxph()}} for details.}
 
-\item{strata}{a numeric vector or matrix of variables that define strata
-to be used for stratification in a Cox model. A new factor, whose levels are
-all possible combinations of the variables supplied will be created.
-Default is \code{NULL} and a Cox model without stratification would be fitted.
-See \code{survival::coxph()} for details.}
+\item{strata}{Optional stratification for Cox, parametric survival, and
+Fine--Gray models. In \code{mfp2.default()}, supply one stratum label per
+observation as a vector or factor. To stratify by several variables,
+supply a matrix or data frame with one variable per column. In
+\code{mfp2.formula()}, put \code{strata(...)} in the formula. The separate
+\code{strata} argument is deprecated for formula fits; if both are supplied,
+the formula term takes precedence.}
 
-\item{nocenter}{a numeric vector with a list of values for fitting Cox
-models. See \code{survival::coxph()} for details.}
+\item{nocenter}{Numeric values that exempt a Cox or Fine--Gray predictor
+column from centering when every value in that column is among them.
+The default, \code{c(-1, 0, 1)}, leaves indicator columns uncentered, as in
+\code{\link[survival:coxph]{survival::coxph()}}. Set \code{NULL} to allow all predictor columns to be
+centered. Ignored for other model families.}
 
-\item{acdx}{a character vector giving the names of continuous variables to
-undergo the approximate cumulative distribution (ACD) transformation. Using
-this also triggers the function-selection procedure for ACD (FSPA) to
-determine the best-fitting FP1(p1, p2) model (see Details). This argument is
-not available in the formula interface (\code{mfp2.formula}), where the user
-should instead use \code{fp()}. Within \code{fp()} terms, the ACD transformation is
-specified via the logical argument \code{acdx} rather than by listing variable
-names. The variable representing the ACD transformation of \code{x} is named \code{A_x}.}
+\item{acd_vars}{Character vector naming continuous columns of \code{x} to
+consider for approximate cumulative distribution (ACD) modelling.
+ACD functions are compared with simpler alternatives and need not be
+selected. Applies only to \code{mfp2.default()}; in formulas, use
+\code{fp(x, acd = TRUE)} or \code{fp2(x, acd = TRUE)}. See \strong{ACD modelling}.}
 
-\item{ftest}{a logical indicating whether \code{mfp2} should use critical values
-from the F-distribution instead of the Chi-Square distribution for small-sample
-normal error models. This affects variable selection, functional form selection,
-and spike-at-zero testing when evaluating fractional polynomial terms. Default
-is \code{FALSE}, in which case the Chi-Square distribution is used. This argument
-applies only to Gaussian models.}
+\item{ftest}{Logical. If \code{TRUE}, use F-tests for selection in ordinary
+Gaussian regression models when \code{criterion = "pvalue"}. These tests cover
+variable selection, functional-form selection, and spike-at-zero testing,
+and may improve small-sample behaviour. Default \code{FALSE}. Not applicable
+to GEE or other model families.}
 
-\item{control}{a list of parameters controlling the fitting process, as
-returned by \code{\link[stats:glm.control]{stats::glm.control()}} or \code{\link[survival:coxph.control]{survival::coxph.control()}}. Default
-is \code{NULL}, in which case \code{mfp2} uses the default settings for the specified
-model family.}
+\item{control}{Optional named list of model-fitting settings. If \code{NULL},
+the package uses its default settings for the selected model family.
+The available settings depend on the model family: see
+\code{\link[stats:glm.control]{stats::glm.control()}} for ordinary GLMs, \code{\link[survival:coxph.control]{survival::coxph.control()}} for
+Cox and Fine--Gray models, \code{\link[survival:survreg.control]{survival::survreg.control()}} for parametric
+survival models, and \code{\link[geepack:geese.control]{geepack::geese.control()}} for GEE models.
+Multinomial models accept \code{maxit}, \code{reltol}, \code{abstol}, \code{trace}, and
+\code{MaxNWts}; ordinal models accept \code{maxit}, \code{eps}, \code{tol}, and \code{trace}.}
 
-\item{zero}{A character vector specifying the names of continuous variables
-for which nonpositive values should be treated as zero. This enables fitting a
-fractional polynomial (FP) model using only the positive values of the
-covariate, while setting nonpositive values to zero during transformation.
-In \code{fp()} terms, \code{zero} is a logical value indicating whether the adjustment
-should be applied to the variable. See the \strong{Details} section.}
+\item{zero_vars}{Names of nonnegative continuous predictors with exact zeros.
+Only positive values are transformed; zeros remain zero before centering.
+If a predictor is also in \code{acd_vars}, ACD is fitted using only its positive
+values. The shift is fixed at zero. Applies to \code{mfp2.default()} only; in
+formulas, use \code{fp(x, zero = TRUE)}. Negative values are rejected. See zero
+and spike-at-zero modelling section.}
 
-\item{catzero}{A character vector specifying the names of continuous variables
-for which nonpositive values should be treated as zero, similar to \code{zero}. In
-addition, \code{mfp2} automatically creates a binary indicator variable and
-includes it in the model alongside the transformed variable.
-In \code{fp()} terms, \code{catzero} is a logical value indicating whether the adjustment
-and indicator should be applied. See the \strong{Details} section.}
+\item{catzero_vars}{Names of nonnegative continuous predictors with exact
+zeros. Positive values are transformed, and a separate indicator for zero
+values is added to the model. This also enables \code{zero_vars} behavior for
+each predictor. Applies to \code{mfp2.default()} only; in formulas, use
+\code{fp(x, catzero = TRUE)}. Negative values are rejected. See the zero
+and spike-at-zero modelling section.}
 
-\item{spike}{A character vector specifying the names of continuous variables
-to be assessed for a spike at zero. Supplying this triggers the spike-at-zero
-(SAZ) algorithm (see Details). This argument is not available in the formula
-interface (\code{mfp2.formula}), where spike is specified as a logical value within
-\code{fp()} terms for each variable.}
+\item{spike_vars}{Names of nonnegative continuous predictors to assess with
+spike-at-zero selection. The model may retain the transformed positive
+values, an indicator for zeros, or both. Selection uses two-stage tests
+when \code{criterion = "pvalue"} and compares candidate models when using AIC
+or BIC. Each group must meet \code{min_saz_prop}; binary predictors are
+ineligible. Ineligible requests are ignored. Applies to \code{mfp2.default()}
+only; in formulas, use \code{fp(x, spike = TRUE)}.}
 
-\item{min_prop}{A numeric value between 0 and 1; the minimum proportion of
-zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.}
+\item{min_saz_prop}{Minimum proportion of observations required in each
+group (\code{x = 0} and \code{x > 0}) for spike-at-zero selection. Must be strictly
+between 0 and 0.5; default \code{0.10}. Predictors that do not meet this threshold
+are not assessed. In large samples, a lower threshold may still leave
+enough observations in each group.}
 
-\item{max_prop}{A numeric value between 0 and 1; the maximum proportion of
-zeros for which SAZ modeling is applied. Defaults to 0.95.
-before calling this function, for example with}
+\item{force_max_fp_vars}{Names of predictors whose most complex permitted
+form should be kept in the model, regardless of the selection criterion.
+The maximum is set by \code{df}; when \code{df = 1}, it is a linear form. For an
+eligible predictor in \code{spike_vars}, both the zero indicator and the most
+complex permitted function of positive values are kept. Default \code{NULL}.
+Applies to \code{mfp2.default()} only; in formulas, use
+\code{fp(x, force_max_fp = TRUE)}.}
 
-\item{verbose}{Logical specifying whether to print progress messages. Default is FALSE.}
+\item{term_groups}{For \code{mfp2.default()}, an optional named list of columns
+to select and test together as one term. This is useful for dummy columns
+representing a categorical predictor. For example,
+\code{list(race = c("raceB", "raceC"))} treats both columns as the predictor
+\code{race}. Grouped columns must be linear (\code{df = 1}) and cannot use ACD or
+zero, catzero, or spike-at-zero modelling. Columns not listed are handled
+individually.}
 
-\item{formula}{for \code{mfp2.formula}: an object of class \code{formula}: a symbolic
-description of the model to be fitted. Special \code{fp} terms can be used to
-define fp-transformations. The details of model specification are given
-under ‘Details’.}
+\item{verbose}{Logical. If \code{TRUE}, print progress messages during model
+fitting. Default \code{TRUE}.}
 
-\item{data}{for \code{mfp2.formula}: a \code{data.frame} which contains all variables
-specified in \code{formula}.}
+\item{fitter}{Backend for GLM candidate fits during the FP search.
+\code{"base"} (default) uses \code{\link[stats:glm.fit]{stats::glm.fit()}}; \code{"fastglm"} uses the
+optional \code{fastglm} package. If \code{fastglm} is unavailable, ordinary GLMs
+use the base backend with a warning. Negative-binomial models
+always use \code{fastglm} and require it to be installed. Survival,
+multinomial, ordinal, and GEE models use their own fitters and ignore
+this setting.}
+
+\item{id}{A subject or cluster identifier, with one value per observation.
+Use the same ID for observations from the same subject or cluster. IDs
+cannot be missing. Fine--Gray models require \code{id} for start--stop
+multi-state data; it is optional when there is one row per subject. GEE
+models always require \code{id} and group observations by cluster before
+fitting, preserving their order within each cluster. In formula fits,
+\code{id} is looked up first in \code{data}, then in the formula environment. It
+is not used by other model families.}
+
+\item{waves}{Optional index giving the order of repeated observations
+within each \code{id} cluster in GEE models. Supply one positive integer per
+observation; values must be unique within each cluster. \code{waves} does not
+reorder rows. See \code{\link[geepack:geeglm]{geepack::geeglm()}} for further details. In formula
+fits, \code{waves} is looked up first in \code{data}, then in the formula environment.}
+
+\item{acdx}{Deprecated compatibility alias for \code{acd_vars} in
+\code{mfp2.default()}. Use \code{acd_vars} in matrix interface.}
+
+\item{formula}{For \code{mfp2.formula()}, a model formula. Use \code{\link[=fp]{fp()}} or \code{\link[=fp2]{fp2()}}
+to set variable-specific FP, ACD, zero, catzero, or SAZ options.}
+
+\item{data}{For \code{mfp2.formula()}, a data frame containing the variables in
+\code{formula}.}
 }
 \value{
-\code{mfp2()} returns an object of class inheriting from \code{glm} or \code{copxh},
-depending on the \code{family} parameter.
+An object of class \code{mfp2}, built from the final fitted model and extended
+with MFP selection and transformation information. Depending on the model
+family, it also inherits from:
 
-The function \code{summary()} (i.e. \code{summary.mfp2()}) can be used to obtain or
-print a summary of the results.
-The generic accessor function \code{coef()} can be used to extract the vector of
-coefficients from the fitted model object.
-The generic \code{predict()} can be used to obtain predictions from the fitted
-model object.
-
-An object of class \code{mfp2} is a list containing all entries as for \code{glm}
-or \code{coxph}, and in addition the following entries:
 \itemize{
-\item convergence_mfp: logical value indicating convergence of mfp algorithm.
-\item fp_terms: a data.frame with information on fractional polynomial
-terms.
-\item transformations: a data.frame with information on shifting, scaling
-and centering for all variables.
-\item fp_powers: a list with all powers of fractional polynomial terms.
-Each entry of the list is named according to the transformation of the
-variable.
-\item acd: a vector with information for which variables the acd
-transformation was applied.
-\item x_original: the scaled and shifted input matrix but without
-transformations.
-\item y: the original outcome variable.
-\item x: the final transformed input matrix used to fit the final model.
-\item call_mfp: the call to the \code{mfp2()} function.
-\item family: the family stored as either character string or function.
-\item family_string: the family stored as character string.
-\item zero: named logical vector indicating, for each variable, whether only
-positive values were transformed.
-\item catzero: named logical vector indicating which columns in \code{x} treated
-nonpositive values as zero and included an additional binary indicator in
-the model.
-\item catzero_list: A list of binary variables created when \code{catzero} is set to
-TRUE. Returns \code{NULL} if \code{catzero} is FALSE.
-\item spike_decision: named numeric vector with values 1, 2, or 3 specifying
-spike-at-zero handling for each variable. Value 1 includes both the
-transformed variable and a binary indicator, 2 disables the spike and binary
-indicator, and 3 retains only the binary indicator.
+\item \code{glm} for Gaussian, binomial, Poisson, Gamma, and inverse-Gaussian models;
+\item \code{fastglm_nb} and \code{fastglm} for negative-binomial models;
+\item \code{geeglm} for GEE models;
+\item \code{multinom} and \code{nnet} for multinomial logistic models;
+\item \code{orm} for ordinal regression models;
+\item \code{coxph} for Cox and Fine--Gray models;
+\item \code{survreg} for parametric survival models.
 }
-The \code{mfp2} object may contain further information depending on family.
+
+Standard fitted-model components, such as coefficients, residuals, fitted
+values, and the model call, remain available. \code{mfp2()} adds the following
+components to describe its selection results:
+
+\describe{
+\item{convergence_mfp}{
+Logical value indicating whether the MFP selection algorithm converged.
+}
+
+\item{fp_terms}{
+A data frame with one row per model term. It records the MFP complexity
+setting (\code{df_setting}) separately from the initial and final model degrees
+of freedom (\code{df_initial} and \code{df_final}), together with selection settings,
+selected status, searched-FP identity (\code{searched_fp}),
+fractional-polynomial powers, the ACD, zero, catzero, and spike settings
+actually applied after validation and eligibility checks, and \code{prop_zero}
+for retained spike-at-zero terms.
+}
+
+\item{fp_powers}{
+A named list containing the selected fractional-polynomial powers for
+each model term. Terms excluded from the final model contain missing
+powers.
+}
+
+\item{transformations}{
+A data frame describing the shift, scale, and centering setting of each
+model term. The shift and centering apply to the final fitted basis;
+the scale is used only during FP selection, so the final basis and its
+coefficients use shifted, unscaled values (see \strong{Shifting, scaling, and
+centering}).
+}
+
+\item{acd}{
+A named logical vector indicating which terms were assessed with the ACD
+extension. The selected powers identify whether the final representation
+retained an ACD component.
+}
+
+\item{zero}{
+A named logical vector indicating which continuous terms were
+transformed using only their positive values.
+}
+
+\item{catzero}{
+A named logical vector indicating which terms include a separate
+indicator for exact-zero values.
+}
+
+\item{spike_dec}{
+A named numeric vector containing the final spike-at-zero decision for
+each term. A value of \code{1} retains both the zero indicator and continuous
+component, \code{2} retains the continuous component only, and \code{3} retains
+the zero indicator only. Non-spike terms use the standard value \code{2}.
+}
+
+\item{call_mfp}{
+The call used to fit the model.
+}
+}
+
+Use \code{print()}, \code{summary()}, \code{coef()}, \code{predict()}, and \code{plot()} for the main
+model operations. Use \code{\link[=get_selected_variable_names]{get_selected_variable_names()}} to obtain the names of
+terms retained in the selected model.
+
+Only documented components form part of the stable public interface. Other
+components may change between package versions.
 }
 \description{
-Selects the multivariable fractional polynomial (MFP) model that best predicts
-the outcome variable. It also supports approximate cumulative
-distribution (ACD) transformations for continuous variables, which enable
-modeling of sigmoid relationships between predictors \code{x} and the outcome \code{y}
-(Royston, 2014; Royston and Sauerbrei, 2016). In addition, it implements
-spike-at-zero (SAZ) modeling, a method for appropriately handling
-semi-continuous predictors with a non-negligible proportion of zero values
-(Becher et al., 2012). The function provides two interfaces for input data:
-one for supplying the data matrix \code{x} and the outcome \code{y} directly, where \code{y}
-may be a numeric vector for continuous or binary outcomes, or a \code{Surv} object
-for Cox proportional hazards models; and another for using a \code{formula} object
-together with a dataframe \code{data}. Both interfaces are equivalent in functionality.
+\code{mfp2()} selects predictors for a regression model and chooses a linear or
+fractional-polynomial form for each selected continuous predictor. It also
+supports approximate cumulative distribution (ACD) transformations for
+sigmoid-shaped relationships and spike-at-zero modelling for predictors
+with many exact zeros. Models can be specified with a formula and data frame
+or with a numeric predictor matrix and an outcome. Both interfaces use the
+same selection procedure. The formula interface handles categorical predictors
+automatically; the matrix interface requires them to be coded as numeric
+columns. Supported regression models include Gaussian, binomial, Poisson, Gamma,
+inverse Gaussian, negative binomial, multinomial, and ordinal models.
+For time-to-event outcomes, it supports Cox, parametric survival,
+and Fine--Gray competing-risks models. It also supports generalized
+estimating equations (GEE) for clustered data.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{mfp2(default)}: Default method using input matrix \code{x} and outcome vector \code{y}.
+\item \code{mfp2(default)}: Matrix interface: accepts a numeric predictor matrix \code{x}
+and response vector \code{y}. Categorical predictors must be pre-coded as
+numeric columns; group related columns with \code{term_groups}.
 
-\item \code{mfp2(formula)}: Provides formula interface for \code{mfp2}.
+\item \code{mfp2(formula)}: Formula interface: accepts a model formula and data frame.
+Factors are expanded automatically. Use \code{\link[=fp]{fp()}} or \code{\link[=fp2]{fp2()}} to set
+variable-specific options.
 
 }}
-\section{Brief summary of fractional polynomials (FPs)}{
+\section{Fractional-polynomial model selection}{
 
+For a continuous predictor \code{x}, a linear effect has the form
+\eqn{\beta_1 x}. A first-degree fractional polynomial (FP1) replaces
+\code{x} with a selected power:
 
-Fractional polynomials (FPs) provide a flexible framework for modeling
-nonlinear relationships between a continuous predictor \eqn{x} and an outcome.
-In general, we denote an FP of degree \eqn{m} as \eqn{FPm(p_1, \dots, p_m)},
-where \eqn{p_1, \dots, p_m} are the selected powers and \eqn{m \ge 1}.
+\deqn{\beta_1 x^{p_1}.}
 
-The most commonly used cases are:
-\itemize{
-\item \strong{FP1:} a single-term transformation, \eqn{FP1(p_1) = \beta_1 x^{p_1}},
-representing the simplest FP model.
-\item \strong{FP2:} a two-term transformation, \eqn{FP2(p_1, p_2) = \beta_1 x^{p_1} + \beta_2 x^{p_2}},
-where \eqn{p_1 \ne p_2}, providing greater flexibility to capture nonlinear
-effects.
+A second-degree fractional polynomial (FP2) uses two powers:
+
+\deqn{\beta_1 x^{p_1} + \beta_2 x^{p_2}.}
+
+By convention, a power of zero means \eqn{\log(x)}. If the two powers
+are equal, the second term is \eqn{x^p\log(x)}; for two zero powers,
+the terms are \eqn{\log(x)} and \eqn{\{\log(x)\}^2}. Here \code{x} denotes
+the positive input after any shifting and scaling. The default candidate
+powers are \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}.
+
+The \code{df} setting limits the maximum FP degree: \code{df = 1} allows only a
+linear effect, \code{df = 2} allows up to FP1, and the default \code{df = 4}
+allows up to FP2. Higher degrees can be allowed. Predictors with only
+two or three distinct values are restricted to \code{df = 1}. With four or
+five distinct values, a default or global \code{df} is capped at \code{2}, but
+an explicitly set predictor-specific value is retained. Selection may
+still omit a predictor or choose a simpler form. Predictors in \code{keep}
+cannot be omitted, but their functional forms may still be selected.
+A selected FP1 with power \code{1} has the same fitted basis as the fixed
+linear form, but retains the FP power-search degrees of freedom. The
+\code{fp_terms$searched_fp} column distinguishes these cases: \code{TRUE} means
+the final continuous form came from an FP candidate class; \code{FALSE} means
+it came from the fixed linear candidate or no continuous form was retained.
+The flag identifies the form that won selection, not whether FP candidates
+were considered. For a single-predictor term with power \code{1}, this gives
+\code{df_final = 2} for FP1 and \code{df_final = 1} for the fixed linear form.
+
+With \code{criterion = "pvalue"}, a closed-test-style procedure uses \code{select}
+for predictor inclusion and \code{alpha} for functional-form comparisons.
+With \code{"aic"} or \code{"bic"}, candidate models are compared using the chosen
+information criterion.
+
+See \code{vignette("mfp-methodology", package = "mfp2")} for methodological
+details.
 }
 
-When \eqn{p_1 = p_2} (repeated powers), the FP2 model is defined as
-\deqn{FP2(p_1, p_2) = \beta_1 x^{p_1} + \beta_2 x^{p_1} \log(x).}
+\section{Formula and matrix interfaces}{
 
-The powers \eqn{p_1} and \eqn{p_2} are usually chosen from a predefined set
-\eqn{S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}, where a power of 0 indicates
-the natural logarithm. The best FP2 model is then selected using a closed
-testing procedure that evaluates all 36 pairs of powers \eqn{(p_1, p_2)}.
+For most users, the formula interface is the simpler choice:
+\code{mfp2(formula, data, ...)}. It handles factors automatically. Use \code{\link[=fp]{fp()}}
+or \code{\link[=fp2]{fp2()}} to set options for individual continuous predictors; other
+predictors, including those added with \code{.}, use the applicable top-level
+settings. An \code{fp()} term has its own default \code{select = 0.05}, so set
+\code{select} inside the term if a different value is needed. Formulas may
+also include \code{offset()} and, for survival models, \code{strata()}.
 
-For further details, see Sauerbrei et al. (2006) and Royston and Sauerbrei (2008).
-For the effects of influential points on FP functions, see Sauerbrei et al. (2023).
+The matrix interface, \code{mfp2(x, y, ...)}, takes a numeric predictor
+matrix. Categorical predictors must first be coded as numeric columns.
+If several columns represent one predictor, use \code{term_groups} to have
+them selected and tested together.
+
+Both interfaces use the same selection procedure. Predictor names must
+be unique, non-empty, and free of backticks. Names given in options such
+as \code{keep} and \code{powers} must match predictors in the model.
 }
 
-\section{Details on \code{family} option}{
+\section{Model families and responses}{
 
+Set \code{family} to choose the model. Standard choices are \code{"gaussian"} for
+numeric outcomes, \code{"binomial"} for binary outcomes, \code{"poisson"} for counts,
+and \code{"Gamma"} or \code{"inverse.gaussian"} for positive numeric outcomes.
+Use \code{\link[=negbin_family]{negbin_family()}} for negative-binomial count regression with a
+\code{"log"}, \code{"sqrt"}, or \code{"identity"} link; \code{"negbin"} is shorthand for
+\code{negbin_family(link = "log")}. The first five also accept a GLM family
+function or object, so you can choose a link supported by \code{\link[stats:glm]{stats::glm()}}.
+Quasi families are not supported.
 
-\code{mfp2()} supports the \code{family} argument as used by \code{stats::glm()}.
-Families can be specified either as a character string or as a function
-returning a GLM family object (e.g., \code{stats::gaussian(link = "identity")}
-or \code{stats::binomial(link = "logit")}).
+Binomial responses may be values from 0 to 1, a two-level factor, or a
+two-column matrix of success and failure counts. Poisson and negative-
+binomial responses must be nonnegative integer counts. Count matrices
+must contain at least one trial in every row.
 
-Only the following families are supported at the moment: \code{"gaussian"},
-\code{"binomial"}, \code{"poisson"}, and \code{"cox"}.
+For outcomes with at least three categories, use \code{\link[=multinomial_family]{multinomial_family()}}
+for unordered categories or \code{\link[=ordinal_family]{ordinal_family()}} for ordered categories.
+Multinomial models also accept a matrix of counts by category. See
+\strong{Multinomial models} and \strong{Ordinal models} for response details.
 
-Examples with character strings:
-\code{mfp2(..., family = "binomial")} fits a logistic regression model.
-\code{mfp2(..., family = "gaussian")} fits a linear regression model using ordinary least squares.
+For survival outcomes, use \code{"cox"} with a right-censored \code{\link[survival:Surv]{survival::Surv()}}
+response, \code{\link[=survreg_family]{survreg_family()}} for parametric survival regression, or
+\code{\link[=finegray_family]{finegray_family()}} for competing risks with a multi-state \code{Surv}
+response. The character values \code{"survreg"} and \code{"finegray"} use the
+respective default settings.
 
-Examples with family functions and custom links:
-\code{mfp2(..., family = gaussian(link = "log"))} fits a linear model with a log
-link. \code{mfp2(..., family = binomial(link = "probit"))} fits a logistic
-regression model with a probit link.
-
-For Cox proportional hazards models, the response should be a \code{Surv} object
-(created with \code{survival::Surv()}), and the \code{family} argument should be set to
-\code{"cox"}. Only right-censored data are currently supported.
-Stratified Cox models can be specified using the \code{strata} argument, or by
-including \code{strata} terms in the model formula when using the formula interface
-\code{mfp2.formula}.
+For clustered observations, use \code{\link[=gee_family]{gee_family()}} with a Gaussian,
+binomial, Poisson, or Gamma response family. The response follows the
+rules for that family. See \strong{Generalized estimating equations}.
 }
 
-\section{Details on shifting, scaling, centering}{
+\section{Generalized estimating equations}{
 
+Specify a GEE model with \code{\link[=gee_family]{gee_family()}}. The required \code{id} argument
+identifies clusters; the package groups their observations before fitting.
+The optional \code{waves} argument specifies visit order within clusters.
+\code{\link[=gee_family]{gee_family()}} sets the response family, working correlation,
+standard-error method, and scale settings. The final model is returned
+as a \code{geeglm} object.
 
-Fractional polynomials are defined only for positive variables due to the
-use of logarithms and other powers. Thus, \code{mfp2()} estimates shifts for
-each variables to ensure positivity or assumes that the variables are
-already positive when computing fractional powers of the input variables
-in case that shifting is disabled manually.
+The default selection criterion for GEE models is \code{criterion = "aic"};
+all other families default to \code{criterion = "pvalue"}.
 
-If the values of the variables are too large or too small, it is important to
-conduct variable scaling to reduce the chances of numerical underflow or
-overflow which can lead to inaccuracies and difficulties in estimating the
-model. Scaling can be done automatically or by directly specifying the
-scaling values so that the magnitude of the \code{x} values are not too extreme.
-By default scaling factors are estimated by the program as follows.
+With \code{criterion = "pvalue"}, selection uses approximate comparisons of
+overall robust Wald statistics, following Stata's \code{mfp: xtgee}
+calculation. During verbose fitting, the selection tables display
+\verb{Wald chi-sq} for candidates and \verb{Wald diff.} for comparisons. The robust
+covariance uses the finite-cluster correction \eqn{K/(K-1)}, where
+\eqn{K} is the number of clusters.
 
-After adjusting the location of \eqn{x} so that its minimum value is positive,
-creating \eqn{x'}, automatic scaling will divide each value of \eqn{x'} by
-\eqn{10^p} where the exponent \eqn{p} is given by
-\deqn{p = sign(k) \times floor(|k|) \quad \text{where} \quad k = log_{10} (max(x')- min(x'))}
+With \code{criterion = "aic"} or \code{"bic"}, selection uses quasi-likelihood
+scores:
 
-After the final FP powers are estimated, the program backscales \eqn{x'} to
-the original scale \eqn{x}, ensuring that the final regression coefficients
-are expressed in the original scale of the data. The FP transformation of
-\eqn{x} is centered on the mean of the observed values of \eqn{x}. For example,
-for the FP1 model \eqn{\beta_0 + \beta_1x^p},the actual model fitted by the
-software would be \eqn{\beta'_0 + \beta'_1(x^p-mean(x^p))}. This approach
-ensures that the revised constant \eqn{\beta'_0} or baseline hazard function
-in a Cox model retains a meaningful interpretation.
+\deqn{-2Q/\phi + 2p \quad\text{or}\quad -2Q/\phi + \log(n)p,}
 
-So in brief: shifting is required to make input values positive, scaling
-helps to bring the values to a reasonable range. Both operations are
-conducted before estimating the FP powers for an input variable.
-Centering, however, is done after estimating the FP functions for each
-variable.
+respectively. Here \eqn{Q} is the quasi-likelihood, \eqn{\phi} is a single
+reference dispersion shared by all comparisons, and \eqn{n} is the number
+of clusters by default (or observations if
+\code{gee_family(qbic_penalty = "observations")}).
+The reference dispersion is estimated once from a full model containing all
+predictors at their maximum allowed FP degrees, unless supplied through
+\code{gee_family(reference_dispersion = ...)}. Reference powers are fixed from
+the permitted sets before the one reference fit. Geepack continues to
+estimate scale for each GEE
+fit; that fitted scale is used for fitting and reporting, not for these
+information-criterion comparisons. \eqn{p} counts
+mean-model coefficients, including the intercept, plus an allowance for
+selecting FP powers. The first is an MFP-adjusted QICu score; the second
+is a package-specific BIC-like score.
 
-Additionally, any variable marked as \code{zero}, \code{catzero}, or with degrees of
-freedom equal to 1 (\code{df = 1}) has its shift automatically set to zero. This
-ensures that variables for which transformations are unnecessary like linear
-are not artificially shifted.
-
-Centering before estimating the FP powers may result in different powers and
-should be avoided. Also see \code{transform_vector_fp()} for some more details.
+For AIC or BIC selection, \code{\link[=print.mfp2]{print.mfp2()}} and \code{\link[=summary.mfp2]{summary.mfp2()}} show the
+full-linear and selected-MFP scores under \verb{Selection Scores}. Smaller
+scores are preferred. For GEE p-value selection, they omit the \verb{Model Fit}
+block; Wald comparisons appear during verbose fitting.
 }
 
-\section{Details on the \code{subset} argument}{
+\section{Shifting, scaling, and centering}{
 
-Subsetting in \code{mfp2()} occurs after data pre-processing (shifting, scaling,
-or centering) but before model selection and fitting. Specifically, if the
-\code{subset} option is used and scale, shift, or centering parameters need to be
-estimated, \code{mfp2()} first estimates these parameters using the full dataset
-(without subsetting). The subset is then applied before performing model
-selection and fitting on the specified portion of the data.
+FP functions involving logarithms or non-integer or negative powers need
+positive inputs. By default, \code{mfp2()} adds a shift when needed and chooses
+a power-of-ten scale for ordinary FP predictors to keep values numerically
+manageable during selection. ACD predictors may be shifted but are not
+scaled. Use \code{shift = 0} or \code{scale = 1} to turn off the corresponding
+automatic step for ordinary FP predictors.
 
-Consequently, subsetting within \code{mfp2()} is not equivalent to subsetting the
-data prior to calling the function. It should not be used to implement tasks
-such as cross-validation or removal of \code{NA} values, which should be handled
-by the user beforehand. The \code{subset} argument is primarily useful when the
-same pre-processing should be applied to multiple subsets. For example, one
-might estimate separate models for women and men while using identical
-data pre-processing (e.g., centering or scaling) across both subsets. In
-this case, \code{subset} can restrict model selection to the chosen group while
-retaining consistent pre-processing parameters.
+Predictors with exact-zero handling (\code{zero}, \code{catzero}, or \code{spike}) that
+contain exact zeros are not scaled automatically (their automatic scale is
+\code{1}). Their zeros stay at zero while only the positive values are
+transformed, so dividing by a scale factor would add a constant to
+logarithmic terms on the positive values only. That would make the
+selected powers depend on the arbitrary scale factor. Without scaling, FP
+selection compares the same models that are finally fitted. A scale you
+supply explicitly is still used.
+
+In \code{mfp2.default()}, a single unnamed value applies to all predictors.
+A named value applies only to the specified column: for example,
+\code{shift = c(age = 20)} fixes the shift for \code{age}, while shifts for other
+columns are chosen automatically. The same rule applies to \code{scale}.
+Do not supply \code{NA} as an explicit shift or scale value.
+
+A supplied shift is not increased automatically. If it leaves values
+nonpositive for a nonlinear FP that requires positive inputs, fitting
+stops with an error. Linear predictors (\code{df = 1}) and predictors using
+\code{zero}, \code{catzero}, or \code{spike} receive a shift of zero.
+
+With \code{center = TRUE}, transformed continuous columns are centered on
+their mean in the fitted sample. For a predictor with exact-zero handling,
+its transformed values are set to zero at the original zeros \emph{before}
+this mean is subtracted. Thus, its centered values at zero need not be
+zero. Binary columns have their lower observed value subtracted.
+Formula-generated factor columns follow the appropriate binary or
+mean-centering rule. Centering changes the intercept but not fitted values.
+
+The final fitted FP basis uses shifted, unscaled values; scaling is used
+during selection. Supply new observations to \code{\link[=predict.mfp2]{predict.mfp2()}} on their
+original predictor scale. Prediction applies the fitted transformation
+and centering settings automatically.
 }
 
-\section{mfp2 formula interface}{
+\section{Categorical predictors and grouped terms}{
 
-
-The \code{mfp2.formula()} constructs a model frame from the supplied formula
-and data, processes all predictor variables, and fits a multivariable fractional
-polynomial model by calling \code{mfp2.default()} internally.
-
-The formula interface automatically handles several tasks:
-\itemize{
-\item detection and transformation of variables wrapped in \code{fp()};
-\item creation of dummy variables for factors using \code{model.matrix()};
-\item synchronization of arguments such as \code{select} and \code{keep} with
-the expanded model matrix.
-}
-
-When the user specifies a variable name in \code{keep}, all corresponding
-dummy variables generated from that variable are automatically included
-and protected from exclusion during model selection.
-}
-
-\section{Handling of Categorical Variables}{
-
-
-The \code{mfp2.formula()} method expands categorical variables through
-\code{\link[stats]{model.matrix}}, ensuring that the model is fitted on
-a fully numeric design matrix. This affects how predictors are represented
-internally and how arguments such as \code{keep} and \code{select} are
-interpreted.
-\subsection{Unordered Factors}{
-
-Unordered categorical variables (created using \code{factor()}) are encoded
-using the default treatment contrasts (\code{\link[stats]{contr.treatment}}).
-The first level of the factor is treated as the reference category, and a
-dummy variable is created for each of the remaining levels. For example:
+In the formula interface, factors are expanded into contrast columns
+automatically. Each factor is selected or removed as one term. To keep a
+factor, give \code{keep} its name, not the names of its contrast columns:
 
 \preformatted{
-x <- factor(c("A", "B", "C"))
-model.matrix(~ x)
-# (Intercept) xB xC
+mfp2(y ~ age + race, data = dat, keep = "race")
 }
 
-When the argument \code{keep} includes the name of a categorical variable,
-all dummy variables derived from that factor (e.g., \code{xB}, \code{xC})
-are automatically retained in the model. The corresponding entries in
-\code{select} are internally set to 1 to prevent their removal during
-variable selection.
-}
+Factors are not FP-transformed, and ACD and zero options do not apply
+to them. Ordered factors use their configured contrasts, which are
+polynomial by default. They are tested as a whole, rather than with a
+single trend test.
 
-\subsection{Ordered Factors}{
-
-Ordered categorical variables (created using \code{ordered()}) are, by default,
-encoded using polynomial contrasts (\code{\link[stats]{contr.poly}}), which
-produce orthogonal contrasts representing trend effects across ordered levels
-(e.g., \code{x.L}, \code{x.Q}, \code{x.C}).
-
-If the analysis requires dummy coding that reflects ordinal thresholds—
-for instance, comparing level A versus the rest, or levels A and B versus
-the rest—the user must define and assign an appropriate contrast matrix
-before calling \code{mfp2.formula()}. This can be done using the
-\code{contr.cumulative()} function provided in this package:
+In the matrix interface, create the indicator or contrast columns yourself.
+Use \code{term_groups} to select columns representing one categorical predictor
+together. For example, if \code{x} has columns \code{age}, \code{raceB}, and \code{raceC}:
 
 \preformatted{
-data$x <- ordered(data$x, levels = c("A", "B", "C", "D"))
-contrasts(data$x) <- contr.cumulative(levels(data$x))
-fit <- mfp2(y ~ x, data = data)
+mfp2(x, y, term_groups = list(race = c("raceB", "raceC")),
+     keep = "race")
 }
 
-This approach generates cumulative dummy variables that preserve the
-ordinal nature of the variable while allowing for interpretable
-threshold-type effects. Users should ensure that the contrast specification
-reflects the intended interpretation prior to fitting the model.
+Here \code{keep = "race"} retains both \code{raceB} and \code{raceC}. With centering
+enabled, formula-generated treatment indicators keep their zero reference;
+other contrast columns are centered on their fitted-sample means. See
+\strong{Shifting, scaling, and centering}.
 }
 
-\subsection{The \code{mfp2.default()} Method}{
+\section{ACD modelling}{
 
-The default method \code{mfp2.default()} does not perform any automatic
-expansion of factor variables. It assumes that the input design matrix
-\code{x} consists solely of numeric predictors. Therefore, when calling
-\code{mfp2.default()} directly, the user must create any required dummy or
-contrast-coded variables manually before model fitting.
-}
-}
+The approximate cumulative distribution (ACD) transformation can model
+a smooth S-shaped relationship between a continuous predictor and the
+outcome (Royston, 2014; Royston and Sauerbrei, 2016). It uses smoothed
+ranks to transform predictor values to a scale between 0 and 1.
 
-\section{Details on  approximate cumulative distribution transformation}{
+In the matrix interface, specify predictors in \code{acd_vars}. In a formula,
+use \code{fp(x, acd = TRUE)}. Model selection considers ACD-based forms,
+ordinary fractional polynomials, a linear effect, and exclusion of the
+predictor. If the predictor has fewer than five distinct values, standard
+MFP is used instead. ACD predictors may be shifted but are not scaled.
+Selection uses the ACD function-selection procedure with
+\code{criterion = "pvalue"}; with \code{"aic"} or \code{"bic"}, candidate models are
+compared using the chosen criterion.
 
+When ACD is combined with \code{zero = TRUE}, the transformation is fitted
+using positive values only; at least two distinct positive values are
+required. Exact zeros receive a transformed value of zero before
+centering. During prediction and plotting, positive values use the fitted
+transformation, and exact zeros again receive zero before centering.
 
-The approximate cumulative distribution (ACD) transformation is a method
-to model continuous covariates flexibly in regression models. Instead of
-including the raw variable \eqn{X} directly, a smooth function approximating
-its empirical cumulative distribution function (ecdf) is used.
-
-\strong{Method}
-
-Let \eqn{x_1, \dots, x_n} be a sample from the distribution of \eqn{X}.
-The ACD transformation proceeds in three steps:
-\enumerate{
-\item \strong{Inverse normal transformation of ranks:}
-Compute the rank of each \eqn{x_i} in the sample and transform it using the
-standard normal inverse CDF (probit):
-\deqn{z_i = \Phi^{-1} \Big( \frac{\text{rank}(x_i) - 0.5}{n} \Big),}
-where \eqn{\Phi^{-1}} is the inverse standard normal CDF. This maps the
-empirical distribution of \eqn{X} to approximately standard normal values.
-\item \strong{Power-linear approximation:}
-Fit a one-term fractional polynomial regression of \eqn{z_i} on a shifted
-and powered version of \eqn{X}:
-\deqn{\hat{z}_i = \hat{\beta}_0 + \hat{\beta}_1 (x_i + \text{shift})^p,}
-where \eqn{p} is the best-fitting power, and \eqn{\text{shift}} ensures all
-values are positive if necessary. Ordinary least squares is used to estimate
-\eqn{\hat{\beta}_0} and \eqn{\hat{\beta}_1}. A power of 0 corresponds to a
-log transformation.
-\item \strong{Back-transformation to the (0,1) scale:}
-The fitted values \eqn{\hat{z}_i} are transformed back to the interval (0,1)
-using the standard normal CDF:
-\deqn{\text{ACD}(x_i) = a_i = \Phi(\hat{z}_i) = \Phi(\hat{\beta}_0 + \hat{\beta}_1 (x_i + \text{shift})^p),}
-producing a smooth approximation of the ecdf.
+See \code{vignette("acd-transformations", package = "mfp2")} for the ACD
+function-selection procedure.
 }
 
-\strong{Interpretation}
+\section{Zero, catzero, and spike-at-zero modelling}{
 
-The ACD transformation maps \eqn{X} to an approximately uniform scale on (0,1).
-When a regression model is specified as
-\eqn{E(Y) = \beta_0 + \beta_1 \text{ACD}(X)}, the expected value of \eqn{Y}
-changes smoothly from \eqn{\beta_0} at \eqn{\text{ACD}(X) \approx 0}
-(corresponding to the minimum of \eqn{X}) to \eqn{\beta_0 + \beta_1} at
-\eqn{\text{ACD}(X) \approx 1} (corresponding to the maximum of \eqn{X}).
+Three options are available for nonnegative predictors that contain
+exact zeros.
 
-Because the mapping from \eqn{X} to \eqn{\text{ACD}(X)} is S-shaped—changing
-slowly at the extremes and more rapidly in the central range—the resulting
-relationship between \eqn{Y} and \eqn{X} is typically nonlinear and
-sigmoid-shape. This sigmoid shape cannot be achieved by standard fractional
-polynomial (FP) functions.
-
-Intuitively, the ACD transformation “stretches” the middle of \eqn{X}'s
-distribution while compressing the tails. A linear effect of
-\eqn{\text{ACD}(X)} in the regression thus produces slow changes in \eqn{Y}
-for extreme values of \eqn{X} and faster changes for central values,
-generating a characteristic sigmoid curve.
-
-Details of the precise definition and some possible uses of the ACD
-transformation in a univariate context are given by Royston (2014).
-
-\strong{FP1 with ACD component}
-
-Royston (2014) and Royston and Sauerbrei (2016) describe extending the FP2
-family by replacing one FP1 term with an ACD-transformed term:
-\deqn{FP1(p_1, p_2) = \beta_1 x^{p_1} + \beta_2 \text{ACD}(x)^{p_2},}
-which allows modeling of sigmoid-like effects while maintaining flexibility
-similar to standard FP2 functions.
-
-The powers \eqn{p_1} and \eqn{p_2} are chosen from a predefined set
-\eqn{S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}, with 0 corresponding to a
-logarithmic transformation. All 64 combinations of \eqn{(p_1, p_2)} are
-considered during model selection.
-
-\strong{Model simplification}
-
-After fitting, the chosen FP1+ACD function can be simplified via a function
-selection procedure (FSPA) that evaluates six nested sub-families:
 \itemize{
-\item M1: FP1(p1, p2) (no simplification)
-\item M2: FP1(p1, .) (regular FP1 in \eqn{x})
-\item M3: FP1(., p2) (FP1 in \eqn{ACD(x)})
-\item M4: FP1(1, .) (linear in \eqn{x})
-\item M5: FP1(., 1) (linear in \eqn{ACD(x)})
-\item M6: null (\eqn{x} omitted)
+\item \code{zero} applies the continuous transformation to positive values
+only. Its value at zero is set to zero before centering.
+\item \code{catzero} transforms positive values in the same way as \code{zero}
+and adds a binary variable that equals 1 when the predictor is zero
+and 0 otherwise.
+\item \code{spike} uses the spike-at-zero selection algorithm to decide whether
+the final model includes the positive-value function, the zero indicator,
+both, or neither.
 }
 
-\strong{Closed test procedure to choose final model}
+In the matrix interface, use \code{zero_vars}, \code{catzero_vars}, or \code{spike_vars}.
+In a formula, use \code{fp(x, zero = TRUE)}, \code{fp(x, catzero = TRUE)}, or
+\code{fp(x, spike = TRUE)}. \code{catzero} includes \code{zero} handling. An eligible
+\code{spike} request includes both \code{catzero} and \code{zero} handling. If ACD is
+also requested, its transformation uses positive values only.
 
-Selection among these six sub-functions is performed by a closed test
-procedure known as the function-selection pocedure FSPA.
-It maintains the family-wise type 1 error
-probability for selecting \eqn{x} at the value determined by the
-\code{select} parameter. To obtain a 'final' model, a structured sequence of up
-to five tests is carried out, the first at the significance level specified
-by the \code{select} parameter, and the remainder at the significance level
-provided by the \code{alpha} option.
-The sequence of tests is as follows:
-\itemize{
-\item Test 1: Compare the deviances of models 6 and 1 on 4 d.f.
-If not significant then stop and omit \eqn{x}, otherwise continue to step 2.
-\item Test 2: Compare the deviances of models 4 and 1 on 3 d.f.
-If not significant then accept model 4 and stop. Otherwise, continue to step 3.
-\item Test 3: Compare the deviance of models 2 and 1 on 2 d.f.
-If not significant then accept model 2 and stop. Otherwise continue to step 4.
-\item Test 4: Compare the deviance of models 3 and 1 on 2 d.f.
-If significant then model 1 cannot be simplified; accept model 1 and stop.
-Otherwise continue to step 5.
-\item Test 5: Compare the deviances of models 5 and 3 on 1 d.f.
-If significant then model 3 cannot be simplified; accept model 3.
-Otherwise, accept model 5. End of procedure.
-}
-The result is the selection of one of the six models. For details see
-Royston and Sauerbrei (2016).
+Negative values cause an error and are never treated as zeros. These
+options do not apply to binary predictors. \code{zero} and \code{catzero} are
+ignored if the predictor has no exact zeros.
 
-\strong{Information criteria}
-
-As an alternative criterion, the fit of models M1–M6 can be evaluated using
-AIC or BIC. The model with the smallest AIC or BIC is selected.
+Spike-at-zero selection requires at least \code{min_saz_prop} of observations
+with zero values and at least that proportion with positive values.
+The default is \code{0.10}. If either group is too small, spike-at-zero
+selection is skipped. Separately requested \code{zero} or \code{catzero} handling
+remains in effect. With \code{criterion = "pvalue"}, spike-at-zero selection uses
+a two-stage procedure controlled by \code{select} and \code{alpha}. With
+\code{criterion = "aic"} or \code{"bic"}, it uses a one-stage procedure that
+compares all candidate models directly. Further details on spike-at-zero
+modelling are given by Kipruto and Sauerbrei (2026).
 }
 
-\section{Details on  spike-at-zero (SAZ) modeling}{
+\section{Subsetting}{
 
-In epidemiological and clinical studies, a continuous covariate \code{x} may have a
-mixture of zeros and positive values, which is called a semi-continuous variable.
-There is a ‘spike’ at zero in an otherwise continuous distribution. Examples
-include occupational exposures (e.g., asbestos) or alcohol/tobacco consumption,
-where some individuals have no exposure while others have positive values. When
-\code{x = 0} defines a distinct subpopulation, the outcome for these individuals can
-be modeled using a binary variable \code{Z}, while positive values are modeled with a
-continuous FP function or ACD transformation. To select a model, a two-stage
-procedure has been proposed and implemented in the \code{mfp2()} function as
-described below.
+When you use \code{subset}, \code{mfp2()} determines automatic shifts and scales
+from the full input data before selecting observations. Model selection
+and fitting then use only the selected observations. The result may
+differ from a fit where the data were subset before calling \code{mfp2()}.
 
-\strong{Stage 1: Functional form selection}
+In the formula interface, you can select rows using a column of \code{data}.
+For example, if \code{dat} has a column called \code{group}, this fits the model
+using only rows where \code{group} is \code{"A"}:
 
-A binary indicator \code{Z} is created (\code{Z = 1} if \code{x = 0}, \code{0} otherwise). FP
-transformations are applied only to positive values of \code{x}, so there is no need
-to shift \code{x}. The user must choose a significance level (\code{select}) if the
-criterion is \code{"pvalue"}. If \code{"aic"} or \code{"bic"} is used, the model with the minimum
-information criterion is selected. The user must also choose the maximum complexity
-of the FP function for \code{x} (default is FP2).
-
-Suppose FP2 is the maximum complexity and \code{criterion = "pvalue"}. The selection
-procedure proceeds sequentially as follows:
-\enumerate{
-\item Compare the most complex model (best FP2 + Z) with the null model
-(df = 5: 4 from FP2, 1 from Z). If significant, continue; otherwise, choose the null model.
-\item Compare best FP2 + Z versus linear + Z (df = 3). If significant, continue; otherwise, select linear + Z.
-\item Compare best FP2 + Z versus best FP1 + Z (df = 2). If significant, retain best FP2 + Z; otherwise, select best FP1 + Z.
+\preformatted{
+mfp2(y ~ age, data = dat, subset = group == "A")
 }
 
-This ensures that the functional form is selected sequentially, retaining only
-models that significantly improve fit, always including \code{Z}. Stage 1 mirrors the
-standard MFP function selection process, except that \code{Z} is forced into the model.
-To force the SAZ variable into the model, set \code{select = 1} or use the \code{keep}
-argument.
+In the matrix interface, supply a logical vector or unique row numbers.
+The package applies the subset to \code{x}, \code{y}, \code{weights}, \code{offset}, and
+\code{strata} together. Row numbers retain the order you specify.
 
-\strong{Stage 2: Component assessment}
-
-The selected model from Stage 1 is evaluated to decide which components are
-needed. If the null model is selected in Stage 1, Stage 2 is not executed.
-Otherwise, suppose the selected model is best FP2 + Z:
-\itemize{
-\item Test 1: Compare best FP2 + Z versus best FP2 alone to assess the contribution of Z.
-\item Test 2: Compare best FP2 + Z versus Z alone to assess the contribution of the FP2 term.
+Use \code{subset} when analyses of different groups should use shifts and
+scales determined from the same full dataset. For cross-validation or
+removal of missing values, prepare the analysis data before fitting.
+The subset must leave more observations than predictor columns.
 }
 
-Decision rules:
-\itemize{
-\item If both tests are significant, retain both Z and FP2 in the final model,
-because each component adds information beyond the other.
-\item If Test 1 is significant but Test 2 is not, retain only Z, because the
-spike indicator improves the model while the functional form does not
-contribute additional information.
-\item If Test 2 is significant but Test 1 is not, retain only FP2, because the
-functional form improves the model while the spike indicator does not add
-further explanatory value.
-\item If neither test is significant, compare the deviances of the Z-only and
-FP2-only models. The final model is the one with the smaller deviance,
-since it provides the better fit to the data without unnecessary terms.
+\section{Survival models}{
+
+Cox models require a right-censored \code{\link[survival:Surv]{survival::Surv()}} response, usually
+\code{Surv(time, event)} with \code{0} for censoring and \code{1} for an event. For
+stratification, use \code{strata()} in a formula or the \code{strata} argument with
+matrix input. The separate \code{strata} argument in the formula interface is
+deprecated. Cox settings such as \code{ties}, \code{nocenter}, and \code{control} follow
+\code{\link[survival:coxph]{survival::coxph()}}.
+
+Parametric survival models use \code{\link[=survreg_family]{survreg_family()}} and return a \code{survreg}
+object. Here, \code{strata} allows separate scale parameters, as in
+\code{\link[survival:survreg]{survival::survreg()}}.
+
+Fine--Gray models use \code{\link[=finegray_family]{finegray_family()}} with a multi-state \code{Surv}
+response. By default, \code{strata()} applies to both the censoring
+distribution and the baseline subdistribution hazard; change this with
+\code{strata_action}. Supply \code{id} for start–stop responses; it is optional
+when each subject has one row.
+
+See \code{\link[=predict.mfp2]{predict.mfp2()}} for the data needed to predict survival probabilities.
 }
 
-For \code{criterion = "aic"} or \code{criterion = "bic"}, the information criteria for
-the three models (FP2 + Z, FP2, and Z only) are compared, and the one with
-the minimum value is chosen.
-If \eqn{Z} is removed, the spike at zero plays no specific role, and a
-standard FP function is selected for the positive values of \code{x}. Conversely,
-if the FP function is removed, leaving only \eqn{Z} in the model, the
-covariate's effect is entirely captured by the binary indicator. It should
-be noted that the presence of \eqn{Z} in Stage 1 may influence the selection
-of FP powers; consequently, the final FP powers may differ from those obtained
-in a standard FP analysis where \code{zero = TRUE} and \code{spike = FALSE}.
+\section{Multinomial models}{
+
+Use \code{family = "multinomial"} or \code{\link[=multinomial_family]{multinomial_family()}} for an outcome
+with at least three unordered classes. The response can contain class
+labels or be a matrix of counts, with one column per class. The first
+class is the reference; use \code{multinomial_family(reference = ...)} to
+choose another.
+
+For each continuous predictor, the selected FP powers are shared across
+classes, but each non-reference class has its own coefficients. Selection
+degrees of freedom account for both the class-specific coefficients and
+the search for shared powers. The final fit inherits from \code{multinom}.
 }
 
-\section{Handling Extreme Proportions of Zeros in Spike-at-Zero Modeling}{
+\section{Ordinal models}{
 
-The spike-at-zero (SAZ) approach is meaningful only when the proportion of
-zeros in a covariate is moderate. Covariates with fewer than 5\% zeros may
-not contain sufficient information to justify a separate binary indicator,
-particularly in small samples where estimation of separate FP terms could be
-unstable. Conversely, covariates with more than 95\% zeros are dominated by
-the zero values, leaving the positive portion too sparse
-for reliable functional form estimation.
+Use \code{\link[=ordinal_family]{ordinal_family()}} when the outcome has at least three categories
+with a meaningful order. An ordered factor specifies that order.
+Otherwise, numeric values are ordered from smallest to largest, and
+character values and unordered factor levels are ordered alphabetically.
+For example, to set the order of named categories:
 
-In the implementation, the \code{reset_spike} function automatically addresses such
-extreme cases. By default, if the proportion of zeros is below 5\% or above 95\%,
-the spike is reset to \code{FALSE}, and the variable is treated as a standard
-continuous covariate. This ensures that SAZ modeling is applied only when both
-the zero and positive portions of the covariate provide sufficient information.
-Users may override these thresholds using the \code{min_prop} and \code{max_prop} options.
+\preformatted{
+severity <- factor(
+  c("low", "high", "medium", "low"),
+  levels = c("low", "medium", "high"),
+  ordered = TRUE
+)
 }
 
-\section{Details on model specification using a \code{formula}}{
-
-\code{mfp2} supports model specification through two interfaces.
-The first accepts the design matrix \code{x} together with an outcome object \code{y},
-similar to \code{stats::glm.fit()} or \code{glmnet::glmnet()}. For generalized linear
-models this may be a vector, but in the case of Cox regression \code{y} must be a
-two-column survival object (time and event indicator) created using
-\code{survival::Surv()}. The second interface follows the formula style used by
-functions such as \code{stats::glm()} or \code{survival::coxph()}.
-
-Both interfaces are equivalent in functionality; only the details of
-specification differ. In the standard interface all details regarding
-FP-transformations are given as vectors, while in the formula interface
-they are specified using the special \code{fp()} function. The following options
-can be set: degrees of freedom (\code{df}), nominal significance level for
-variable selection (\code{select}), nominal significance level for functional form
-selection (\code{alpha}), shift values (\code{shift}), scale values (\code{scale}),
-centering (\code{center}), ACD-transformation (\code{acd}), handling of nonpositive
-values (\code{zero}), automatic creation of binary indicators for nonpositive
-values (\code{catzero}), and assessment of a potential spike at zero (\code{spike}).
-When arguments are supplied both inside \code{fp()} and as global defaults in
-\code{mfp2()}, the specifications inside \code{fp()} take precedence. For example, in
-\code{mfp2(y ~ fp(x, df = 2), df = 4, data = data)}, the fractional polynomial for
-\code{x} is fitted with \code{df = 2}, and the global setting \code{df = 4} is ignored.
-
-The formula may also contain \code{strata} terms to fit stratified Cox models, or
-an \code{offset} term to specify a model offset.
-
-Note that for a formula using \code{.}, such as \code{y ~ .} the \code{mfp2()} function may
-not fit a linear model, but may perform variable and functional form selection
-using FP-transformations, depending on the global default settings of \code{df},
-\code{select} and \code{alpha} passed as arguments to \code{mfp2()}. For example, using
-\code{y ~ .} with default settings means that \code{mfp2()} will apply FP transformation
-with 4 df to all continuous variables and use alpha equal to 0.05 to select
-functional forms, along with the selection algorithm with a significance
-level of 0.05 for all variables.
+The default \code{link = "logistic"} fits a proportional-odds model. It uses
+the same fitted function for each predictor when comparing higher outcome
+categories with lower ones. The final fit is an \code{orm} object and requires
+the optional \code{rms} package (version 7.0-0 or later). See \code{\link[=ordinal_family]{ordinal_family()}}
+for case weights, other links, and
+how to interpret coefficient signs.
 }
 
-\section{Handling Nonpositive Values (\code{zero} and \code{catzero})}{
+\section{Compatibility with the \code{mfp} package}{
 
+Both \code{mfp} and \code{mfp2} provide \code{fp()}. In formulas passed to \code{mfp2()}
+or \code{mfpi()}, \code{fp()} always uses the \code{mfp2} version, even when both
+packages are loaded. \code{fp()} and \code{\link[=fp2]{fp2()}} are equivalent in these formulas:
 
-The \code{zero} and \code{catzero} options provide mechanisms for handling
-covariates with nonpositive values in fractional polynomial (FP) models,
-especially when those values have a qualitatively different interpretation
-than positive ones.
-
-The \code{zero} argument enables fitting FP models using only the positive
-values of a covariate, while treating nonpositive values (e.g., zero or
-negative) as exactly zero. In other words, only the positive values of \eqn{x}
-are transformed, and the nonpositive values are set to zero. This approach is
-useful when the relationship between the covariate and the outcome is expected
-to start above zero. For example, in modeling the effect of cigarette
-consumption, nonsmokers (zero cigarettes) may be fundamentally different from
-smokers. Instead of applying a constant shift (e.g., adding 1) to all values
-before transformation, the \code{zero} argument allows the model to treat
-zero values as a separate baseline and apply FP transformations only to the
-positive values.
-
-The \code{catzero} argument extends this idea by automatically creating a
-binary indicator for whether the covariate is positive. Specifically, for
-each covariate where \code{catzero = TRUE}, a binary variable \code{Z} is
-created such that:
-
-\code{Z = 1} if the covariate value is zero (x = 0)  and
-\code{Z = 0} if the covariate value is positive (x > 0)
-
-This indicator is  included in the model alongside the transformed version
-of the covariate. Both are treated as a single predictor during model
-selection (if applicable). This approach captures the potential difference
-between having a value of zero and having any positive value, while still
-allowing flexible modeling of the positive range.
-
-The \code{spike} argument triggers the spike-at-zero (SAZ) algorithm. When
-\code{spike = TRUE}, the binary indicator created by \code{catzero} is
-formally evaluated together with the FP terms during model selection. When
-\code{spike = FALSE} but \code{catzero = TRUE}, the binary indicator is
-included in the model without SAZ testing.
-
-This methodology is based on work by Royston and Sauerbrei (2008, Section 4.15)
-and is particularly relevant in epidemiological contexts where exposure may
-have a threshold effect.
+\preformatted{
+fit1 <- mfp2(y ~ fp(x1) + fp(x2), data = dat)
+fit2 <- mfp2(y ~ fp2(x1) + fp2(x2), data = dat)
+}
 }
 
-\section{Compatibility with \code{mfp} package}{
+\section{Convergence and inference}{
 
-\code{mfp2} is an extension of the \code{mfp} package and can be used to reproduce
-the results from a model fitted by \code{mfp}. Since both packages implement the
-MFP algorithm, they use functions with the same names (e.g \code{fp()}). Therefore,
-if you load both packages using a call to \code{library}, there will
-be namespace conflicts and only the functions from the package loaded last
-will work properly.
-}
+MFP selection usually converges within 2–4 cycles. With \code{verbose = TRUE},
+progress messages report when it converges. Lack of convergence involves
+oscillation between two or more models and is extremely rare. If selection
+does not converge within the allowed number of \code{cycles}, \code{mfp2()}
+returns the model obtained after the final cycle. Consider
+increasing \code{cycles}, changing \code{select} or \code{alpha}, or using
+\code{criterion = "aic"} or \code{"bic"}.
 
-\section{Convergence and Troubleshooting}{
-
-Typically, \code{mfp2} requires two to five cycles to achieve convergence. Lack of
-convergence involves oscillation between two or more models and is extremely
-rare. If convergence problems occur, consider adjusting the nominal
-significance levels for variable selection (\code{select}) or functional form
-selection (\code{alpha})
+Standard errors, confidence intervals, and p-values from the final model
+do not account for uncertainty from selecting predictors or their
+functional forms, including ACD and spike-at-zero selection.
 }
 
 \examples{
 
-# Gaussian model
+# Gaussian model: formula interface (recommended for most users)
 data("prostate")
-x = as.matrix(prostate[,2:8])
-y = as.numeric(prostate$lpsa)
-# default interface
-fit1 = mfp2(x, y, verbose = FALSE)
-fit1$fp_terms
-fracplot(fit1) # generate plots
-summary(fit1)
-# formula interface
-fit1b = mfp2(lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) + fp(weight) +
-fp(bph) + fp(cp), data = prostate)
+fit_formula <- mfp2(
+  lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) +
+    fp(weight) + fp(bph) + fp(cp),
+  data = prostate,
+  verbose = FALSE
+)
 
-# logistic regression model
-data("pima")
-xx <- as.matrix(pima[, 2:9])
-yy <- as.vector(pima$y)
-fit2 <- mfp2(xx, yy, family = "binomial", verbose = FALSE)
-fit2$fp_terms
+fit_formula
+summary(fit_formula)
+get_selected_variable_names(fit_formula)
 
-# Cox regression model
-data("gbsg")
-# create dummy variable for grade using ordinal coding
-gbsg <- create_dummy_variables(gbsg, var_ordinal = "grade", drop_variables = TRUE)
-xd <- as.matrix(gbsg[, -c(1, 6, 10, 11)])
-yd <- survival::Surv(gbsg$rectime, gbsg$censrec)
-# fit mfp and keep hormon in the model
-fit3 <- mfp2(xd, yd, family = "cox", keep = "hormon", verbose = FALSE)
-fit3$fp_terms
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plots <- plot(fit_formula)
+  print(plots[[1]])
+}
+
+predict(fit_formula, newdata = prostate[1:5, ])
+
+# Matrix interface
+x <- as.matrix(prostate[, 2:8])
+y <- prostate$lpsa
+fit_matrix <- mfp2(x, y, verbose = FALSE)
+fit_matrix
+
+# Named partial settings apply only to the named columns. Here age is fixed,
+# while shifts and scales for every other matrix column remain automatic.
+fit_partial <- mfp2(
+  x,
+  y,
+  shift = c(age = 20),
+  scale = c(age = 10),
+  verbose = FALSE
+)
+fit_partial$transformations[c("age", "weight"), c("shift", "scale")]
+
+\donttest{
+# ACD modelling
+fit_acd_formula <- mfp2(
+  lpsa ~ fp(cavol, acd = TRUE) + fp(age) + svi,
+  data = prostate,
+  verbose = FALSE
+)
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plot(fit_acd_formula, terms = "cavol")[[1]]
+}
+
+# Spike-at-zero modelling
+set.seed(1)
+n <- 200
+exposure <- numeric(n)
+zero_rows <- sample(seq_len(n), size = round(0.25 * n))
+exposure[-zero_rows] <- rgamma(
+  n - length(zero_rows),
+  shape = 2,
+  rate = 0.5
+)
+age <- runif(n, 20, 80)
+outcome <- 1.5 * (exposure == 0) +
+  2 * log(ifelse(exposure > 0, exposure, 1)) +
+  0.02 * age + rnorm(n)
+
+d_spike <- data.frame(outcome, exposure, age)
+
+# Formula interface
+fit_spike_formula <- mfp2(
+  outcome ~ fp(exposure, spike = TRUE) + fp(age),
+  data = d_spike,
+  verbose = FALSE
+)
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plot(fit_spike_formula, terms = "exposure")[[1]]
+}
+
+# Matrix interface
+x_spike <- as.matrix(d_spike[, c("exposure", "age")])
+fit_spike_matrix <- mfp2(
+  x_spike,
+  d_spike$outcome,
+  spike_vars = "exposure",
+  verbose = FALSE
+)
+
+# Unordered factor: all treatment-contrast columns are selected jointly
+set.seed(42)
+d_factor <- data.frame(
+  y = rnorm(60),
+  age = runif(60, 20, 80),
+  group = factor(rep(c("A", "B", "C"), each = 20))
+)
+fit_factor <- mfp2(
+  y ~ age + group,
+  data = d_factor,
+  keep = "group",
+  verbose = FALSE
+)
+predict(fit_factor, newdata = d_factor[1:4, ])
+
+# Ordered factor: the default polynomial contrasts form one joint term
+d_factor$severity <- ordered(
+  rep(c("mild", "moderate", "severe"), length.out = nrow(d_factor)),
+  levels = c("mild", "moderate", "severe")
+)
+fit_ordered <- mfp2(
+  y ~ age + severity,
+  data = d_factor,
+  keep = "severity",
+  verbose = FALSE
+)
+predict(
+  fit_ordered,
+  newdata = data.frame(
+    age = c(40, 40),
+    severity = ordered(
+      c("mild", "severe"),
+      levels = levels(d_factor$severity)
+    )
+  )
+)
+
+# Matrix interface: manually created dummy columns can be grouped as one term
+x_grouped <- cbind(
+  age = d_factor$age,
+  groupB = as.integer(d_factor$group == "B"),
+  groupC = as.integer(d_factor$group == "C")
+)
+fit_grouped <- mfp2(
+  x_grouped,
+  d_factor$y,
+  term_groups = list(group = c("groupB", "groupC")),
+  keep = "group",
+  verbose = FALSE
+)
+
+# Examples for every supported model family -----------------------------
+set.seed(2026)
+n_family <- 120
+family_data <- data.frame(
+  x1 = runif(n_family, 0.5, 3),
+  x2 = rnorm(n_family)
+)
+eta <- with(family_data, 0.2 + 0.3 * x1 - 0.2 * x2)
+mu <- exp(eta)
+simulate_inverse_gaussian <- function(mu, shape) {
+  squared_normal <- stats::rnorm(length(mu))^2
+  candidate <- mu + (mu^2 * squared_normal) / (2 * shape) -
+    (mu / (2 * shape)) * sqrt(
+      4 * mu * shape * squared_normal + mu^2 * squared_normal^2
+    )
+  choose_candidate <- stats::runif(length(mu)) <= mu / (mu + candidate)
+  ifelse(choose_candidate, candidate, mu^2 / candidate)
+}
+family_data$y_gaussian <- eta + rnorm(n_family)
+family_data$y_binomial <- rbinom(n_family, 1, plogis(eta - 1))
+family_data$y_poisson <- rpois(n_family, mu)
+family_data$y_gamma <- rgamma(n_family, shape = 5, scale = mu / 5)
+family_data$y_inverse_gaussian <- simulate_inverse_gaussian(mu, shape = 8)
+family_data$y_negbin <- rnbinom(n_family, mu = mu, size = 2)
+family_data$y_multinomial <- sample.int(
+  3L, n_family, replace = TRUE, prob = c(0.45, 0.35, 0.20)
+)
+family_data$y_ordinal <- ordered(
+  cut(
+    eta + stats::rlogis(n_family),
+    breaks = c(-Inf, -0.5, 0.5, 1.5, Inf),
+    labels = c("low", "medium", "high", "very high")
+  )
+)
+
+fit_gaussian <- mfp2(
+  y_gaussian ~ x1 + x2, data = family_data, family = "gaussian",
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+fit_binomial <- mfp2(
+  y_binomial ~ x1 + x2, data = family_data, family = "binomial",
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+fit_poisson <- mfp2(
+  y_poisson ~ x1 + x2, data = family_data, family = "poisson",
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+fit_gamma <- mfp2(
+  y_gamma ~ x1 + x2, data = family_data,
+  family = stats::Gamma(link = "log"),
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+fit_inverse_gaussian <- mfp2(
+  y_inverse_gaussian ~ x1 + x2, data = family_data,
+  family = stats::inverse.gaussian(link = "log"),
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+
+# Negative binomial uses the optional fastglm backend. `"negbin"` is
+# shorthand for negbin_family(link = "log"); see ?negbin_family for the
+# square-root and identity links.
+if (requireNamespace("fastglm", quietly = TRUE)) {
+  fit_negbin <- mfp2(
+    y_negbin ~ x1 + x2, data = family_data,
+    family = "negbin",
+    df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+  )
+}
+
+# Integer class labels are converted to a multinomial factor response.
+fit_multinomial <- mfp2(
+  y_multinomial ~ x1 + x2, data = family_data,
+  family = multinomial_family(),
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+
+# Ordinal regression uses the optional rms package.
+if (requireNamespace("rms", quietly = TRUE) &&
+    utils::packageVersion("rms") >= "7.0-0") {
+  fit_ordinal <- mfp2(
+    y_ordinal ~ x1 + x2, data = family_data,
+    family = ordinal_family(),
+    df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+  )
+}
+
+# Cox proportional hazards and parametric survival models.
+event_time <- rexp(n_family, rate = exp(eta - 2))
+censor_time <- rexp(n_family, rate = 0.15)
+survival_data <- transform(
+  family_data,
+  time = pmin(event_time, censor_time),
+  status = as.integer(event_time <= censor_time)
+)
+fit_cox <- mfp2(
+  survival::Surv(time, status) ~ x1 + x2,
+  data = survival_data, family = "cox",
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+fit_survreg <- mfp2(
+  survival::Surv(time, status) ~ x1 + x2,
+  data = survival_data, family = survreg_family(dist = "weibull"),
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+
+# Fine--Gray subdistribution hazards for a competing-risks response.
+finegray_data <- transform(
+  family_data,
+  ftime = rexp(n_family, rate = 0.12),
+  event = factor(
+    sample(
+      c("censor", "cause1", "cause2"), n_family, replace = TRUE,
+      prob = c(0.35, 0.40, 0.25)
+    ),
+    levels = c("censor", "cause1", "cause2")
+  )
+)
+fit_finegray <- mfp2(
+  survival::Surv(ftime, event) ~ x1 + x2,
+  data = finegray_data, family = finegray_family(etype = "cause1"),
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+}
 
 }
 \references{
 Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
-A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
+A Pragmatic Approach to Regression Analysis based on Fractional Polynomials
 for Modelling Continuous Variables. John Wiley & Sons.}\cr
+
+Liang, K.-Y. and Zeger, S. L., 1986. \emph{Longitudinal data analysis using
+generalized linear models. Biometrika, 73(1): 13--22.}\cr
+
+Pan, W., 2001. \emph{Akaike's information criterion in generalized
+estimating equations. Biometrics, 57(1): 120--125.}\cr
 
 Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.
 \emph{Multivariable regression model building by using fractional
@@ -915,7 +1130,8 @@ with a spike at zero: simulation study and practical application to survival dat
 Biostatistics & Epidemiology, 3(1), pp.23-37.}
 }
 \seealso{
-\code{summary.mfp2()}, \code{coef.mfp2()}, \code{predict.mfp2()}, \code{fp()}
-\code{\link[stats]{model.matrix}}, \code{\link[stats]{contr.treatment}},
-\code{\link[stats]{contr.poly}}
+\code{\link[=fp]{fp()}}, \code{\link[=fp2]{fp2()}}, \code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=coef.mfp2]{coef.mfp2()}}, \code{\link[=predict.mfp2]{predict.mfp2()}},
+\code{\link[=plot.mfp2]{plot.mfp2()}}, \code{\link[=get_selected_variable_names]{get_selected_variable_names()}}, \code{\link[=transform_vector_fp]{transform_vector_fp()}},
+\code{\link[=gee_family]{gee_family()}}, \code{\link[=multinomial_family]{multinomial_family()}}, \code{\link[=ordinal_family]{ordinal_family()}},
+\code{\link[=survreg_family]{survreg_family()}}, \code{\link[=finegray_family]{finegray_family()}}
 }

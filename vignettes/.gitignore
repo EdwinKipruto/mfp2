@@ -1,5 +1,4 @@
 *
-!.*.Rmd
-!.*.pdf
-*.html
-*.R
+!*.Rmd
+!*.pdf
+!.gitignore

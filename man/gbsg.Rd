@@ -3,9 +3,9 @@
 \docType{data}
 \name{gbsg}
 \alias{gbsg}
-\title{Breast cancer dataset used in the Royston and Sauerbrei (2008) book.}
+\title{Breast cancer dataset used in Royston and Sauerbrei (2008) book.}
 \format{
-A dataset with 686 observations and 11 variables.
+A dataset with 686 observations and 12 variables.
 \describe{
 \item{id}{Patient identifier.}
 \item{age}{Age in years.}
@@ -25,6 +25,10 @@ A dataset with 686 observations and 11 variables.
 data(gbsg)
 }
 \description{
-Breast cancer dataset used in the Royston and Sauerbrei (2008) book.
+Breast cancer dataset used in Royston and Sauerbrei (2008) book.
+}
+\examples{
+data(gbsg)
+str(gbsg)
 }
 \keyword{data}

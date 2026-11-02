@@ -1,2237 +1,4890 @@
-#' Multivariable Fractional Polynomial Models with Extensions 
+#' Multivariable Fractional Polynomial Models with Extensions
 #'
-#' Selects the multivariable fractional polynomial (MFP) model that best predicts
-#' the outcome variable. It also supports approximate cumulative 
-#' distribution (ACD) transformations for continuous variables, which enable 
-#' modeling of sigmoid relationships between predictors `x` and the outcome `y` 
-#' (Royston, 2014; Royston and Sauerbrei, 2016). In addition, it implements 
-#' spike-at-zero (SAZ) modeling, a method for appropriately handling 
-#' semi-continuous predictors with a non-negligible proportion of zero values 
-#' (Becher et al., 2012). The function provides two interfaces for input data: 
-#' one for supplying the data matrix `x` and the outcome `y` directly, where `y` 
-#' may be a numeric vector for continuous or binary outcomes, or a `Surv` object 
-#' for Cox proportional hazards models; and another for using a `formula` object
-#' together with a dataframe `data`. Both interfaces are equivalent in functionality.
-#' 
-#' @section Brief summary of fractional polynomials (FPs):
-#' 
-#' Fractional polynomials (FPs) provide a flexible framework for modeling
-#' nonlinear relationships between a continuous predictor \eqn{x} and an outcome.
-#' In general, we denote an FP of degree \eqn{m} as \eqn{FPm(p_1, \dots, p_m)}, 
-#' where \eqn{p_1, \dots, p_m} are the selected powers and \eqn{m \ge 1}.
-#' 
-#' The most commonly used cases are:
-#' 
-#' * **FP1:** a single-term transformation, \eqn{FP1(p_1) = \beta_1 x^{p_1}}, 
-#'   representing the simplest FP model.
-#' 
-#' * **FP2:** a two-term transformation, \eqn{FP2(p_1, p_2) = \beta_1 x^{p_1} + \beta_2 x^{p_2}}, 
-#'   where \eqn{p_1 \ne p_2}, providing greater flexibility to capture nonlinear 
-#'   effects.
-#' 
-#' When \eqn{p_1 = p_2} (repeated powers), the FP2 model is defined as
-#' \deqn{FP2(p_1, p_2) = \beta_1 x^{p_1} + \beta_2 x^{p_1} \log(x).}
-#' 
-#' The powers \eqn{p_1} and \eqn{p_2} are usually chosen from a predefined set
-#' \eqn{S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}, where a power of 0 indicates
-#' the natural logarithm. The best FP2 model is then selected using a closed
-#' testing procedure that evaluates all 36 pairs of powers \eqn{(p_1, p_2)}.
-#' 
-#' For further details, see Sauerbrei et al. (2006) and Royston and Sauerbrei (2008). 
-#' For the effects of influential points on FP functions, see Sauerbrei et al. (2023).
+#' `mfp2()` selects predictors for a regression model and chooses a linear or
+#' fractional-polynomial form for each selected continuous predictor. It also
+#' supports approximate cumulative distribution (ACD) transformations for
+#' sigmoid-shaped relationships and spike-at-zero modelling for predictors
+#' with many exact zeros. Models can be specified with a formula and data frame
+#' or with a numeric predictor matrix and an outcome. Both interfaces use the
+#' same selection procedure. The formula interface handles categorical predictors
+#' automatically; the matrix interface requires them to be coded as numeric
+#' columns. Supported regression models include Gaussian, binomial, Poisson, Gamma,
+#' inverse Gaussian, negative binomial, multinomial, and ordinal models.
+#' For time-to-event outcomes, it supports Cox, parametric survival,
+#' and Fine--Gray competing-risks models. It also supports generalized
+#' estimating equations (GEE) for clustered data.
 #'
-#' @section Details on `family` option:
+#' @section Fractional-polynomial model selection:
+#' For a continuous predictor `x`, a linear effect has the form
+#' \eqn{\beta_1 x}. A first-degree fractional polynomial (FP1) replaces
+#' `x` with a selected power:
 #'
-#' `mfp2()` supports the `family` argument as used by \code{stats::glm()}. 
-#' Families can be specified either as a character string or as a function 
-#' returning a GLM family object (e.g., `stats::gaussian(link = "identity")` 
-#' or `stats::binomial(link = "logit")`).  
-#' 
-#' Only the following families are supported at the moment: `"gaussian"`, 
-#' `"binomial"`, `"poisson"`, and `"cox"`.  
-#' 
-#' Examples with character strings:  
-#' `mfp2(..., family = "binomial")` fits a logistic regression model.  
-#' `mfp2(..., family = "gaussian")` fits a linear regression model using ordinary least squares.  
-#' 
-#' Examples with family functions and custom links:  
-#' `mfp2(..., family = gaussian(link = "log"))` fits a linear model with a log 
-#' link. `mfp2(..., family = binomial(link = "probit"))` fits a logistic 
-#' regression model with a probit link.  
-#' 
-#' For Cox proportional hazards models, the response should be a `Surv` object 
-#' (created with `survival::Surv()`), and the `family` argument should be set to 
-#' `"cox"`. Only right-censored data are currently supported.  
-#' Stratified Cox models can be specified using the `strata` argument, or by 
-#' including `strata` terms in the model formula when using the formula interface 
-#' `mfp2.formula`.
+#' \deqn{\beta_1 x^{p_1}.}
 #'
-#' @section Details on shifting, scaling, centering:
-#' 
-#' Fractional polynomials are defined only for positive variables due to the 
-#' use of logarithms and other powers. Thus, `mfp2()` estimates shifts for 
-#' each variables to ensure positivity or assumes that the variables are 
-#' already positive when computing fractional powers of the input variables
-#' in case that shifting is disabled manually. 
-#' 
-#' If the values of the variables are too large or too small, it is important to
-#' conduct variable scaling to reduce the chances of numerical underflow or 
-#' overflow which can lead to inaccuracies and difficulties in estimating the
-#' model. Scaling can be done automatically or by directly specifying the
-#' scaling values so that the magnitude of the `x` values are not too extreme.
-#' By default scaling factors are estimated by the program as follows.
+#' A second-degree fractional polynomial (FP2) uses two powers:
 #'
-#' After adjusting the location of \eqn{x} so that its minimum value is positive,
-#' creating \eqn{x'}, automatic scaling will divide each value of \eqn{x'} by 
-#' \eqn{10^p} where the exponent \eqn{p} is given by 
-#' \deqn{p = sign(k) \times floor(|k|) \quad \text{where} \quad k = log_{10} (max(x')- min(x'))}
+#' \deqn{\beta_1 x^{p_1} + \beta_2 x^{p_2}.}
 #'
-#' After the final FP powers are estimated, the program backscales \eqn{x'} to 
-#' the original scale \eqn{x}, ensuring that the final regression coefficients 
-#' are expressed in the original scale of the data. The FP transformation of 
-#' \eqn{x} is centered on the mean of the observed values of \eqn{x}. For example,
-#' for the FP1 model \eqn{\beta_0 + \beta_1x^p},the actual model fitted by the 
-#' software would be \eqn{\beta'_0 + \beta'_1(x^p-mean(x^p))}. This approach 
-#' ensures that the revised constant \eqn{\beta'_0} or baseline hazard function 
-#' in a Cox model retains a meaningful interpretation.
-#' 
-#' So in brief: shifting is required to make input values positive, scaling
-#' helps to bring the values to a reasonable range. Both operations are 
-#' conducted before estimating the FP powers for an input variable. 
-#' Centering, however, is done after estimating the FP functions for each 
-#' variable.
-#' 
-#' Additionally, any variable marked as `zero`, `catzero`, or with degrees of 
-#' freedom equal to 1 (`df = 1`) has its shift automatically set to zero. This
-#' ensures that variables for which transformations are unnecessary like linear
-#' are not artificially shifted. 
-#' 
-#' Centering before estimating the FP powers may result in different powers and
-#' should be avoided. Also see \code{transform_vector_fp()} for some more details.
-#' 
-#' @section Details on the `subset` argument: 
-#' Subsetting in `mfp2()` occurs after data pre-processing (shifting, scaling, 
-#' or centering) but before model selection and fitting. Specifically, if the 
-#' `subset` option is used and scale, shift, or centering parameters need to be 
-#' estimated, `mfp2()` first estimates these parameters using the full dataset 
-#' (without subsetting). The subset is then applied before performing model 
-#' selection and fitting on the specified portion of the data.
+#' By convention, a power of zero means \eqn{\log(x)}. If the two powers
+#' are equal, the second term is \eqn{x^p\log(x)}; for two zero powers,
+#' the terms are \eqn{\log(x)} and \eqn{\{\log(x)\}^2}. Here `x` denotes
+#' the positive input after any shifting and scaling. The default candidate
+#' powers are `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`.
 #'
-#' Consequently, subsetting within `mfp2()` is not equivalent to subsetting the 
-#' data prior to calling the function. It should not be used to implement tasks 
-#' such as cross-validation or removal of `NA` values, which should be handled 
-#' by the user beforehand. The `subset` argument is primarily useful when the 
-#' same pre-processing should be applied to multiple subsets. For example, one 
-#' might estimate separate models for women and men while using identical 
-#' data pre-processing (e.g., centering or scaling) across both subsets. In 
-#' this case, `subset` can restrict model selection to the chosen group while 
-#' retaining consistent pre-processing parameters. 
-#' 
-#' @section mfp2 formula interface:
-#' 
-#' The \code{mfp2.formula()} constructs a model frame from the supplied formula
-#' and data, processes all predictor variables, and fits a multivariable fractional
-#' polynomial model by calling \code{mfp2.default()} internally.
+#' The `df` setting limits the maximum FP degree: `df = 1` allows only a
+#' linear effect, `df = 2` allows up to FP1, and the default `df = 4`
+#' allows up to FP2. Higher degrees can be allowed. Predictors with only
+#' two or three distinct values are restricted to `df = 1`. With four or
+#' five distinct values, a default or global `df` is capped at `2`, but
+#' an explicitly set predictor-specific value is retained. Selection may
+#' still omit a predictor or choose a simpler form. Predictors in `keep`
+#' cannot be omitted, but their functional forms may still be selected.
+#' A selected FP1 with power `1` has the same fitted basis as the fixed
+#' linear form, but retains the FP power-search degrees of freedom. The
+#' `fp_terms$searched_fp` column distinguishes these cases: `TRUE` means
+#' the final continuous form came from an FP candidate class; `FALSE` means
+#' it came from the fixed linear candidate or no continuous form was retained.
+#' The flag identifies the form that won selection, not whether FP candidates
+#' were considered. For a single-predictor term with power `1`, this gives
+#' `df_final = 2` for FP1 and `df_final = 1` for the fixed linear form.
 #'
-#' The formula interface automatically handles several tasks:
-#' * detection and transformation of variables wrapped in \code{fp()};
-#' * creation of dummy variables for factors using \code{model.matrix()};
-#' * synchronization of arguments such as \code{select} and \code{keep} with 
-#' the expanded model matrix.
+#' With `criterion = "pvalue"`, a closed-test-style procedure uses `select`
+#' for predictor inclusion and `alpha` for functional-form comparisons.
+#' With `"aic"` or `"bic"`, candidate models are compared using the chosen
+#' information criterion.
 #'
-#' When the user specifies a variable name in \code{keep}, all corresponding
-#' dummy variables generated from that variable are automatically included
-#' and protected from exclusion during model selection.
-#' 
-#' @section Handling of Categorical Variables:
+#' See `vignette("mfp-methodology", package = "mfp2")` for methodological
+#' details.
 #'
-#' The \code{mfp2.formula()} method expands categorical variables through
-#' \code{\link[stats]{model.matrix}}, ensuring that the model is fitted on
-#' a fully numeric design matrix. This affects how predictors are represented
-#' internally and how arguments such as \code{keep} and \code{select} are
-#' interpreted.
+#' @section Formula and matrix interfaces:
+#' For most users, the formula interface is the simpler choice:
+#' `mfp2(formula, data, ...)`. It handles factors automatically. Use [fp()]
+#' or [fp2()] to set options for individual continuous predictors; other
+#' predictors, including those added with `.`, use the applicable top-level
+#' settings. An `fp()` term has its own default `select = 0.05`, so set
+#' `select` inside the term if a different value is needed. Formulas may
+#' also include `offset()` and, for survival models, `strata()`.
 #'
-#' ## Unordered Factors
+#' The matrix interface, `mfp2(x, y, ...)`, takes a numeric predictor
+#' matrix. Categorical predictors must first be coded as numeric columns.
+#' If several columns represent one predictor, use `term_groups` to have
+#' them selected and tested together.
 #'
-#' Unordered categorical variables (created using \code{factor()}) are encoded
-#' using the default treatment contrasts (\code{\link[stats]{contr.treatment}}).
-#' The first level of the factor is treated as the reference category, and a
-#' dummy variable is created for each of the remaining levels. For example:
+#' Both interfaces use the same selection procedure. Predictor names must
+#' be unique, non-empty, and free of backticks. Names given in options such
+#' as `keep` and `powers` must match predictors in the model.
+#'
+#' @section Model families and responses:
+#' Set `family` to choose the model. Standard choices are `"gaussian"` for
+#' numeric outcomes, `"binomial"` for binary outcomes, `"poisson"` for counts,
+#' and `"Gamma"` or `"inverse.gaussian"` for positive numeric outcomes.
+#' Use [negbin_family()] for negative-binomial count regression with a
+#' `"log"`, `"sqrt"`, or `"identity"` link; `"negbin"` is shorthand for
+#' `negbin_family(link = "log")`. The first five also accept a GLM family
+#' function or object, so you can choose a link supported by [stats::glm()].
+#' Quasi families are not supported.
+#'
+#' Binomial responses may be values from 0 to 1, a two-level factor, or a
+#' two-column matrix of success and failure counts. Poisson and negative-
+#' binomial responses must be nonnegative integer counts. Count matrices
+#' must contain at least one trial in every row.
+#'
+#' For outcomes with at least three categories, use [multinomial_family()]
+#' for unordered categories or [ordinal_family()] for ordered categories.
+#' Multinomial models also accept a matrix of counts by category. See
+#' **Multinomial models** and **Ordinal models** for response details.
+#'
+#' For survival outcomes, use `"cox"` with a right-censored [survival::Surv()]
+#' response, [survreg_family()] for parametric survival regression, or
+#' [finegray_family()] for competing risks with a multi-state `Surv`
+#' response. The character values `"survreg"` and `"finegray"` use the
+#' respective default settings.
+#'
+#' For clustered observations, use [gee_family()] with a Gaussian,
+#' binomial, Poisson, or Gamma response family. The response follows the
+#' rules for that family. See **Generalized estimating equations**.
+#'
+#' @section Generalized estimating equations:
+#' Specify a GEE model with [gee_family()]. The required `id` argument
+#' identifies clusters; the package groups their observations before fitting.
+#' The optional `waves` argument specifies visit order within clusters.
+#' [gee_family()] sets the response family, working correlation,
+#' standard-error method, and scale settings. The final model is returned
+#' as a `geeglm` object.
+#'
+#' The default selection criterion for GEE models is `criterion = "aic"`;
+#' all other families default to `criterion = "pvalue"`.
+#'
+#' With `criterion = "pvalue"`, selection uses approximate comparisons of
+#' overall robust Wald statistics, following Stata's `mfp: xtgee`
+#' calculation. During verbose fitting, the selection tables display
+#' `Wald chi-sq` for candidates and `Wald diff.` for comparisons. The robust
+#' covariance uses the finite-cluster correction \eqn{K/(K-1)}, where
+#' \eqn{K} is the number of clusters.
+#'
+#' With `criterion = "aic"` or `"bic"`, selection uses quasi-likelihood
+#' scores:
+#'
+#' \deqn{-2Q/\phi + 2p \quad\text{or}\quad -2Q/\phi + \log(n)p,}
+#'
+#' respectively. Here \eqn{Q} is the quasi-likelihood, \eqn{\phi} is a single
+#' reference dispersion shared by all comparisons, and \eqn{n} is the number
+#' of clusters by default (or observations if
+#' `gee_family(qbic_penalty = "observations")`).
+#' The reference dispersion is estimated once from a full model containing all
+#' predictors at their maximum allowed FP degrees, unless supplied through
+#' `gee_family(reference_dispersion = ...)`. Reference powers are fixed from
+#' the permitted sets before the one reference fit. Geepack continues to
+#' estimate scale for each GEE
+#' fit; that fitted scale is used for fitting and reporting, not for these
+#' information-criterion comparisons. \eqn{p} counts
+#' mean-model coefficients, including the intercept, plus an allowance for
+#' selecting FP powers. The first is an MFP-adjusted QICu score; the second
+#' is a package-specific BIC-like score.
+#'
+#' For AIC or BIC selection, [print.mfp2()] and [summary.mfp2()] show the
+#' full-linear and selected-MFP scores under `Selection Scores`. Smaller
+#' scores are preferred. For GEE p-value selection, they omit the `Model Fit`
+#' block; Wald comparisons appear during verbose fitting.
+#'
+#' @section Shifting, scaling, and centering:
+#' FP functions involving logarithms or non-integer or negative powers need
+#' positive inputs. By default, `mfp2()` adds a shift when needed and chooses
+#' a power-of-ten scale for ordinary FP predictors to keep values numerically
+#' manageable during selection. ACD predictors may be shifted but are not
+#' scaled. Use `shift = 0` or `scale = 1` to turn off the corresponding
+#' automatic step for ordinary FP predictors.
+#'
+#' Predictors with exact-zero handling (`zero`, `catzero`, or `spike`) that
+#' contain exact zeros are not scaled automatically (their automatic scale is
+#' `1`). Their zeros stay at zero while only the positive values are
+#' transformed, so dividing by a scale factor would add a constant to
+#' logarithmic terms on the positive values only. That would make the
+#' selected powers depend on the arbitrary scale factor. Without scaling, FP
+#' selection compares the same models that are finally fitted. A scale you
+#' supply explicitly is still used.
+#'
+#' In `mfp2.default()`, a single unnamed value applies to all predictors.
+#' A named value applies only to the specified column: for example,
+#' `shift = c(age = 20)` fixes the shift for `age`, while shifts for other
+#' columns are chosen automatically. The same rule applies to `scale`.
+#' Do not supply `NA` as an explicit shift or scale value.
+#'
+#' A supplied shift is not increased automatically. If it leaves values
+#' nonpositive for a nonlinear FP that requires positive inputs, fitting
+#' stops with an error. Linear predictors (`df = 1`) and predictors using
+#' `zero`, `catzero`, or `spike` receive a shift of zero.
+#'
+#' With `center = TRUE`, transformed continuous columns are centered on
+#' their mean in the fitted sample. For a predictor with exact-zero handling,
+#' its transformed values are set to zero at the original zeros *before*
+#' this mean is subtracted. Thus, its centered values at zero need not be
+#' zero. Binary columns have their lower observed value subtracted.
+#' Formula-generated factor columns follow the appropriate binary or
+#' mean-centering rule. Centering changes the intercept but not fitted values.
+#'
+#' The final fitted FP basis uses shifted, unscaled values; scaling is used
+#' during selection. Supply new observations to [predict.mfp2()] on their
+#' original predictor scale. Prediction applies the fitted transformation
+#' and centering settings automatically.
+#'
+#' @section Categorical predictors and grouped terms:
+#' In the formula interface, factors are expanded into contrast columns
+#' automatically. Each factor is selected or removed as one term. To keep a
+#' factor, give `keep` its name, not the names of its contrast columns:
 #'
 #' \preformatted{
-#' x <- factor(c("A", "B", "C"))
-#' model.matrix(~ x)
-#' # (Intercept) xB xC
+#' mfp2(y ~ age + race, data = dat, keep = "race")
 #' }
 #'
-#' When the argument \code{keep} includes the name of a categorical variable,
-#' all dummy variables derived from that factor (e.g., \code{xB}, \code{xC})
-#' are automatically retained in the model. The corresponding entries in
-#' \code{select} are internally set to 1 to prevent their removal during
-#' variable selection.
+#' Factors are not FP-transformed, and ACD and zero options do not apply
+#' to them. Ordered factors use their configured contrasts, which are
+#' polynomial by default. They are tested as a whole, rather than with a
+#' single trend test.
 #'
-#' ## Ordered Factors
-#'
-#' Ordered categorical variables (created using \code{ordered()}) are, by default,
-#' encoded using polynomial contrasts (\code{\link[stats]{contr.poly}}), which
-#' produce orthogonal contrasts representing trend effects across ordered levels
-#' (e.g., \code{x.L}, \code{x.Q}, \code{x.C}).
-#'
-#' If the analysis requires dummy coding that reflects ordinal thresholds—
-#' for instance, comparing level A versus the rest, or levels A and B versus
-#' the rest—the user must define and assign an appropriate contrast matrix
-#' before calling \code{mfp2.formula()}. This can be done using the
-#' \code{contr.cumulative()} function provided in this package:
+#' In the matrix interface, create the indicator or contrast columns yourself.
+#' Use `term_groups` to select columns representing one categorical predictor
+#' together. For example, if `x` has columns `age`, `raceB`, and `raceC`:
 #'
 #' \preformatted{
-#' data$x <- ordered(data$x, levels = c("A", "B", "C", "D"))
-#' contrasts(data$x) <- contr.cumulative(levels(data$x))
-#' fit <- mfp2(y ~ x, data = data)
+#' mfp2(x, y, term_groups = list(race = c("raceB", "raceC")),
+#'      keep = "race")
 #' }
 #'
-#' This approach generates cumulative dummy variables that preserve the
-#' ordinal nature of the variable while allowing for interpretable
-#' threshold-type effects. Users should ensure that the contrast specification
-#' reflects the intended interpretation prior to fitting the model.
+#' Here `keep = "race"` retains both `raceB` and `raceC`. With centering
+#' enabled, formula-generated treatment indicators keep their zero reference;
+#' other contrast columns are centered on their fitted-sample means. See
+#' **Shifting, scaling, and centering**.
 #'
-#' ## The \code{mfp2.default()} Method
+#' @section ACD modelling:
+#' The approximate cumulative distribution (ACD) transformation can model
+#' a smooth S-shaped relationship between a continuous predictor and the
+#' outcome (Royston, 2014; Royston and Sauerbrei, 2016). It uses smoothed
+#' ranks to transform predictor values to a scale between 0 and 1.
 #'
-#' The default method \code{mfp2.default()} does not perform any automatic
-#' expansion of factor variables. It assumes that the input design matrix
-#' \code{x} consists solely of numeric predictors. Therefore, when calling
-#' \code{mfp2.default()} directly, the user must create any required dummy or
-#' contrast-coded variables manually before model fitting.
+#' In the matrix interface, specify predictors in `acd_vars`. In a formula,
+#' use `fp(x, acd = TRUE)`. Model selection considers ACD-based forms,
+#' ordinary fractional polynomials, a linear effect, and exclusion of the
+#' predictor. If the predictor has fewer than five distinct values, standard
+#' MFP is used instead. ACD predictors may be shifted but are not scaled.
+#' Selection uses the ACD function-selection procedure with
+#' `criterion = "pvalue"`; with `"aic"` or `"bic"`, candidate models are
+#' compared using the chosen criterion.
 #'
-#' @section Details on  approximate cumulative distribution transformation:
-#' 
-#' The approximate cumulative distribution (ACD) transformation is a method
-#' to model continuous covariates flexibly in regression models. Instead of
-#' including the raw variable \eqn{X} directly, a smooth function approximating
-#' its empirical cumulative distribution function (ecdf) is used.
+#' When ACD is combined with `zero = TRUE`, the transformation is fitted
+#' using positive values only; at least two distinct positive values are
+#' required. Exact zeros receive a transformed value of zero before
+#' centering. During prediction and plotting, positive values use the fitted
+#' transformation, and exact zeros again receive zero before centering.
 #'
-#' **Method**
+#' See `vignette("acd-transformations", package = "mfp2")` for the ACD
+#' function-selection procedure.
 #'
-#' Let \eqn{x_1, \dots, x_n} be a sample from the distribution of \eqn{X}.
-#' The ACD transformation proceeds in three steps:
+#' @section Zero, catzero, and spike-at-zero modelling:
+#' Three options are available for nonnegative predictors that contain
+#' exact zeros.
 #'
-#' 1. **Inverse normal transformation of ranks:**
-#' Compute the rank of each \eqn{x_i} in the sample and transform it using the
-#' standard normal inverse CDF (probit):
-#' \deqn{z_i = \Phi^{-1} \Big( \frac{\text{rank}(x_i) - 0.5}{n} \Big),}
-#' where \eqn{\Phi^{-1}} is the inverse standard normal CDF. This maps the
-#' empirical distribution of \eqn{X} to approximately standard normal values.
-#'
-#' 2. **Power-linear approximation:**
-#' Fit a one-term fractional polynomial regression of \eqn{z_i} on a shifted
-#' and powered version of \eqn{X}:
-#' \deqn{\hat{z}_i = \hat{\beta}_0 + \hat{\beta}_1 (x_i + \text{shift})^p,}
-#' where \eqn{p} is the best-fitting power, and \eqn{\text{shift}} ensures all
-#' values are positive if necessary. Ordinary least squares is used to estimate
-#' \eqn{\hat{\beta}_0} and \eqn{\hat{\beta}_1}. A power of 0 corresponds to a
-#' log transformation.
-#'
-#' 3. **Back-transformation to the (0,1) scale:**
-#' The fitted values \eqn{\hat{z}_i} are transformed back to the interval (0,1)
-#' using the standard normal CDF:
-#' \deqn{\text{ACD}(x_i) = a_i = \Phi(\hat{z}_i) = \Phi(\hat{\beta}_0 + \hat{\beta}_1 (x_i + \text{shift})^p),}
-#' producing a smooth approximation of the ecdf.
-#'
-#' **Interpretation**
-#'
-#' The ACD transformation maps \eqn{X} to an approximately uniform scale on (0,1). 
-#' When a regression model is specified as 
-#' \eqn{E(Y) = \beta_0 + \beta_1 \text{ACD}(X)}, the expected value of \eqn{Y} 
-#' changes smoothly from \eqn{\beta_0} at \eqn{\text{ACD}(X) \approx 0} 
-#' (corresponding to the minimum of \eqn{X}) to \eqn{\beta_0 + \beta_1} at 
-#' \eqn{\text{ACD}(X) \approx 1} (corresponding to the maximum of \eqn{X}). 
-#' 
-#' Because the mapping from \eqn{X} to \eqn{\text{ACD}(X)} is S-shaped—changing 
-#' slowly at the extremes and more rapidly in the central range—the resulting 
-#' relationship between \eqn{Y} and \eqn{X} is typically nonlinear and 
-#' sigmoid-shape. This sigmoid shape cannot be achieved by standard fractional 
-#' polynomial (FP) functions.
-#' 
-#' Intuitively, the ACD transformation “stretches” the middle of \eqn{X}'s 
-#' distribution while compressing the tails. A linear effect of 
-#' \eqn{\text{ACD}(X)} in the regression thus produces slow changes in \eqn{Y} 
-#' for extreme values of \eqn{X} and faster changes for central values, 
-#' generating a characteristic sigmoid curve.
-#' 
-#' Details of the precise definition and some possible uses of the ACD 
-#' transformation in a univariate context are given by Royston (2014).
-#'  
-#' **FP1 with ACD component**
-#'
-#' Royston (2014) and Royston and Sauerbrei (2016) describe extending the FP2
-#' family by replacing one FP1 term with an ACD-transformed term:
-#' \deqn{FP1(p_1, p_2) = \beta_1 x^{p_1} + \beta_2 \text{ACD}(x)^{p_2},}
-#' which allows modeling of sigmoid-like effects while maintaining flexibility
-#' similar to standard FP2 functions.
-#'
-#' The powers \eqn{p_1} and \eqn{p_2} are chosen from a predefined set
-#' \eqn{S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}, with 0 corresponding to a
-#' logarithmic transformation. All 64 combinations of \eqn{(p_1, p_2)} are
-#' considered during model selection.
-#'
-#' **Model simplification**
-#'
-#' After fitting, the chosen FP1+ACD function can be simplified via a function
-#' selection procedure (FSPA) that evaluates six nested sub-families:
 #' \itemize{
-#'   \item M1: FP1(p1, p2) (no simplification)
-#'   \item M2: FP1(p1, .) (regular FP1 in \eqn{x})
-#'   \item M3: FP1(., p2) (FP1 in \eqn{ACD(x)})
-#'   \item M4: FP1(1, .) (linear in \eqn{x})
-#'   \item M5: FP1(., 1) (linear in \eqn{ACD(x)})
-#'   \item M6: null (\eqn{x} omitted)
+#'   \item `zero` applies the continuous transformation to positive values
+#'     only. Its value at zero is set to zero before centering.
+#'   \item `catzero` transforms positive values in the same way as `zero`
+#'     and adds a binary variable that equals 1 when the predictor is zero
+#'     and 0 otherwise.
+#'   \item `spike` uses the spike-at-zero selection algorithm to decide whether
+#'   the final model includes the positive-value function, the zero indicator,
+#'   both, or neither.
 #' }
-#' 
-#' **Closed test procedure to choose final model**
-#' 
-#' Selection among these six sub-functions is performed by a closed test 
-#' procedure known as the function-selection pocedure FSPA. 
-#' It maintains the family-wise type 1 error 
-#' probability for selecting \eqn{x} at the value determined by the 
-#' `select` parameter. To obtain a 'final' model, a structured sequence of up 
-#' to five tests is carried out, the first at the significance level specified 
-#' by the `select` parameter, and the remainder at the significance level 
-#' provided by the `alpha` option. 
-#' The sequence of tests is as follows:
-#' \itemize{
-#' \item Test 1: Compare the deviances of models 6 and 1 on 4 d.f. 
-#' If not significant then stop and omit \eqn{x}, otherwise continue to step 2.
-#' \item Test 2: Compare the deviances of models 4 and 1 on 3 d.f. 
-#' If not significant then accept model 4 and stop. Otherwise, continue to step 3.
-#' \item Test 3: Compare the deviance of models 2 and 1 on 2 d.f. 
-#' If not significant then accept model 2 and stop. Otherwise continue to step 4.
-#' \item Test 4: Compare the deviance of models 3 and 1 on 2 d.f. 
-#' If significant then model 1 cannot be simplified; accept model 1 and stop.  
-#' Otherwise continue to step 5.
-#' \item Test 5: Compare the deviances of models 5 and 3 on 1 d.f. 
-#' If significant then model 3 cannot be simplified; accept model 3. 
-#' Otherwise, accept model 5. End of procedure.
+#'
+#' In the matrix interface, use `zero_vars`, `catzero_vars`, or `spike_vars`.
+#' In a formula, use `fp(x, zero = TRUE)`, `fp(x, catzero = TRUE)`, or
+#' `fp(x, spike = TRUE)`. `catzero` includes `zero` handling. An eligible
+#' `spike` request includes both `catzero` and `zero` handling. If ACD is
+#' also requested, its transformation uses positive values only.
+#'
+#' Negative values cause an error and are never treated as zeros. These
+#' options do not apply to binary predictors. `zero` and `catzero` are
+#' ignored if the predictor has no exact zeros.
+#'
+#' Spike-at-zero selection requires at least `min_saz_prop` of observations
+#' with zero values and at least that proportion with positive values.
+#' The default is `0.10`. If either group is too small, spike-at-zero
+#' selection is skipped. Separately requested `zero` or `catzero` handling
+#' remains in effect. With `criterion = "pvalue"`, spike-at-zero selection uses
+#' a two-stage procedure controlled by `select` and `alpha`. With
+#' `criterion = "aic"` or `"bic"`, it uses a one-stage procedure that
+#' compares all candidate models directly. Further details on spike-at-zero
+#' modelling are given by Kipruto and Sauerbrei (2026).
+#'
+#'
+#' @section Subsetting:
+#' When you use `subset`, `mfp2()` determines automatic shifts and scales
+#' from the full input data before selecting observations. Model selection
+#' and fitting then use only the selected observations. The result may
+#' differ from a fit where the data were subset before calling `mfp2()`.
+#'
+#' In the formula interface, you can select rows using a column of `data`.
+#' For example, if `dat` has a column called `group`, this fits the model
+#' using only rows where `group` is `"A"`:
+#'
+#' \preformatted{
+#' mfp2(y ~ age, data = dat, subset = group == "A")
 #' }
-#' The result is the selection of one of the six models. For details see 
-#' Royston and Sauerbrei (2016).
-#' 
-#' **Information criteria**
 #'
-#' As an alternative criterion, the fit of models M1–M6 can be evaluated using 
-#' AIC or BIC. The model with the smallest AIC or BIC is selected.
-#' 
-#' 
-#' @section Details on  spike-at-zero (SAZ) modeling:
-#' In epidemiological and clinical studies, a continuous covariate `x` may have a 
-#' mixture of zeros and positive values, which is called a semi-continuous variable. 
-#' There is a ‘spike’ at zero in an otherwise continuous distribution. Examples 
-#' include occupational exposures (e.g., asbestos) or alcohol/tobacco consumption, 
-#' where some individuals have no exposure while others have positive values. When 
-#' `x = 0` defines a distinct subpopulation, the outcome for these individuals can 
-#' be modeled using a binary variable `Z`, while positive values are modeled with a 
-#' continuous FP function or ACD transformation. To select a model, a two-stage 
-#' procedure has been proposed and implemented in the `mfp2()` function as
-#' described below.
+#' In the matrix interface, supply a logical vector or unique row numbers.
+#' The package applies the subset to `x`, `y`, `weights`, `offset`, and
+#' `strata` together. Row numbers retain the order you specify.
 #'
-#' **Stage 1: Functional form selection**
+#' Use `subset` when analyses of different groups should use shifts and
+#' scales determined from the same full dataset. For cross-validation or
+#' removal of missing values, prepare the analysis data before fitting.
+#' The subset must leave more observations than predictor columns.
 #'
-#' A binary indicator `Z` is created (`Z = 1` if `x = 0`, `0` otherwise). FP 
-#' transformations are applied only to positive values of `x`, so there is no need 
-#' to shift `x`. The user must choose a significance level (`select`) if the 
-#' criterion is `"pvalue"`. If `"aic"` or `"bic"` is used, the model with the minimum 
-#' information criterion is selected. The user must also choose the maximum complexity 
-#' of the FP function for `x` (default is FP2).
+#' @section Survival models:
+#' Cox models require a right-censored [survival::Surv()] response, usually
+#' `Surv(time, event)` with `0` for censoring and `1` for an event. For
+#' stratification, use `strata()` in a formula or the `strata` argument with
+#' matrix input. The separate `strata` argument in the formula interface is
+#' deprecated. Cox settings such as `ties`, `nocenter`, and `control` follow
+#' [survival::coxph()].
 #'
-#' Suppose FP2 is the maximum complexity and `criterion = "pvalue"`. The selection 
-#' procedure proceeds sequentially as follows:
-#' 
-#' 1. Compare the most complex model (best FP2 + Z) with the null model 
-#' (df = 5: 4 from FP2, 1 from Z). If significant, continue; otherwise, choose the null model.
-#' 2. Compare best FP2 + Z versus linear + Z (df = 3). If significant, continue; otherwise, select linear + Z.
-#' 3. Compare best FP2 + Z versus best FP1 + Z (df = 2). If significant, retain best FP2 + Z; otherwise, select best FP1 + Z.
+#' Parametric survival models use [survreg_family()] and return a `survreg`
+#' object. Here, `strata` allows separate scale parameters, as in
+#' [survival::survreg()].
 #'
-#' This ensures that the functional form is selected sequentially, retaining only 
-#' models that significantly improve fit, always including `Z`. Stage 1 mirrors the 
-#' standard MFP function selection process, except that `Z` is forced into the model. 
-#' To force the SAZ variable into the model, set `select = 1` or use the `keep` 
-#' argument.
-#' 
-#' **Stage 2: Component assessment**
-#' 
-#' The selected model from Stage 1 is evaluated to decide which components are 
-#' needed. If the null model is selected in Stage 1, Stage 2 is not executed. 
-#' Otherwise, suppose the selected model is best FP2 + Z:
-#' 
-#' * Test 1: Compare best FP2 + Z versus best FP2 alone to assess the contribution of Z.
-#' * Test 2: Compare best FP2 + Z versus Z alone to assess the contribution of the FP2 term.
-#' 
-#' Decision rules:
-#' - If both tests are significant, retain both Z and FP2 in the final model, 
-#'   because each component adds information beyond the other.
-#' - If Test 1 is significant but Test 2 is not, retain only Z, because the 
-#'   spike indicator improves the model while the functional form does not 
-#'   contribute additional information.
-#' - If Test 2 is significant but Test 1 is not, retain only FP2, because the 
-#'   functional form improves the model while the spike indicator does not add 
-#'   further explanatory value.
-#' - If neither test is significant, compare the deviances of the Z-only and 
-#'   FP2-only models. The final model is the one with the smaller deviance, 
-#'   since it provides the better fit to the data without unnecessary terms.
-#' 
-#' For `criterion = "aic"` or `criterion = "bic"`, the information criteria for
-#' the three models (FP2 + Z, FP2, and Z only) are compared, and the one with 
-#' the minimum value is chosen.
-#' If \eqn{Z} is removed, the spike at zero plays no specific role, and a 
-#' standard FP function is selected for the positive values of `x`. Conversely,
-#' if the FP function is removed, leaving only \eqn{Z} in the model, the
-#' covariate's effect is entirely captured by the binary indicator. It should 
-#' be noted that the presence of \eqn{Z} in Stage 1 may influence the selection
-#' of FP powers; consequently, the final FP powers may differ from those obtained
-#' in a standard FP analysis where \code{zero = TRUE} and \code{spike = FALSE}.
-#' 
-#' @section Handling Extreme Proportions of Zeros in Spike-at-Zero Modeling:
-#' The spike-at-zero (SAZ) approach is meaningful only when the proportion of 
-#' zeros in a covariate is moderate. Covariates with fewer than 5% zeros may 
-#' not contain sufficient information to justify a separate binary indicator, 
-#' particularly in small samples where estimation of separate FP terms could be
-#' unstable. Conversely, covariates with more than 95% zeros are dominated by
-#' the zero values, leaving the positive portion too sparse 
-#' for reliable functional form estimation.
+#' Fine--Gray models use [finegray_family()] with a multi-state `Surv`
+#' response. By default, `strata()` applies to both the censoring
+#' distribution and the baseline subdistribution hazard; change this with
+#' `strata_action`. Supply `id` for start–stop responses; it is optional
+#' when each subject has one row.
 #'
-#' In the implementation, the `reset_spike` function automatically addresses such 
-#' extreme cases. By default, if the proportion of zeros is below 5% or above 95%, 
-#' the spike is reset to `FALSE`, and the variable is treated as a standard 
-#' continuous covariate. This ensures that SAZ modeling is applied only when both 
-#' the zero and positive portions of the covariate provide sufficient information. 
-#' Users may override these thresholds using the `min_prop` and `max_prop` options.
-#' 
-#' @section Details on model specification using a `formula`:
-#' `mfp2` supports model specification through two interfaces. 
-#' The first accepts the design matrix `x` together with an outcome object `y`, 
-#' similar to \code{stats::glm.fit()} or \code{glmnet::glmnet()}. For generalized linear 
-#' models this may be a vector, but in the case of Cox regression `y` must be a
-#' two-column survival object (time and event indicator) created using 
-#' \code{survival::Surv()}. The second interface follows the formula style used by 
-#' functions such as \code{stats::glm()} or \code{survival::coxph()}.
-#' 
-#' Both interfaces are equivalent in functionality; only the details of 
-#' specification differ. In the standard interface all details regarding 
-#' FP-transformations are given as vectors, while in the formula interface 
-#' they are specified using the special `fp()` function. The following options 
-#' can be set: degrees of freedom (`df`), nominal significance level for 
-#' variable selection (`select`), nominal significance level for functional form 
-#' selection (`alpha`), shift values (`shift`), scale values (`scale`), 
-#' centering (`center`), ACD-transformation (`acd`), handling of nonpositive 
-#' values (`zero`), automatic creation of binary indicators for nonpositive 
-#' values (`catzero`), and assessment of a potential spike at zero (`spike`).
-#' When arguments are supplied both inside `fp()` and as global defaults in 
-#' `mfp2()`, the specifications inside `fp()` take precedence. For example, in 
-#' `mfp2(y ~ fp(x, df = 2), df = 4, data = data)`, the fractional polynomial for 
-#' `x` is fitted with `df = 2`, and the global setting `df = 4` is ignored.
-#' 
-#' The formula may also contain `strata` terms to fit stratified Cox models, or
-#' an `offset` term to specify a model offset.
-#' 
-#' Note that for a formula using `.`, such as `y ~ .` the `mfp2()` function may 
-#' not fit a linear model, but may perform variable and functional form selection 
-#' using FP-transformations, depending on the global default settings of `df`, 
-#' `select` and `alpha` passed as arguments to `mfp2()`. For example, using 
-#' `y ~ .` with default settings means that `mfp2()` will apply FP transformation
-#' with 4 df to all continuous variables and use alpha equal to 0.05 to select
-#' functional forms, along with the selection algorithm with a significance 
-#' level of 0.05 for all variables. 
-#' 
-#' @section Handling Nonpositive Values (\code{zero} and \code{catzero}):
+#' See [predict.mfp2()] for the data needed to predict survival probabilities.
 #'
-#' The \code{zero} and \code{catzero} options provide mechanisms for handling 
-#' covariates with nonpositive values in fractional polynomial (FP) models, 
-#' especially when those values have a qualitatively different interpretation
-#' than positive ones.
+#' @section Multinomial models:
+#' Use `family = "multinomial"` or [multinomial_family()] for an outcome
+#' with at least three unordered classes. The response can contain class
+#' labels or be a matrix of counts, with one column per class. The first
+#' class is the reference; use `multinomial_family(reference = ...)` to
+#' choose another.
 #'
-#' The \code{zero} argument enables fitting FP models using only the positive 
-#' values of a covariate, while treating nonpositive values (e.g., zero or 
-#' negative) as exactly zero. In other words, only the positive values of \eqn{x} 
-#' are transformed, and the nonpositive values are set to zero. This approach is 
-#' useful when the relationship between the covariate and the outcome is expected 
-#' to start above zero. For example, in modeling the effect of cigarette 
-#' consumption, nonsmokers (zero cigarettes) may be fundamentally different from
-#' smokers. Instead of applying a constant shift (e.g., adding 1) to all values 
-#' before transformation, the \code{zero} argument allows the model to treat 
-#' zero values as a separate baseline and apply FP transformations only to the
-#' positive values.
+#' For each continuous predictor, the selected FP powers are shared across
+#' classes, but each non-reference class has its own coefficients. Selection
+#' degrees of freedom account for both the class-specific coefficients and
+#' the search for shared powers. The final fit inherits from `multinom`.
 #'
-#' The \code{catzero} argument extends this idea by automatically creating a 
-#' binary indicator for whether the covariate is positive. Specifically, for 
-#' each covariate where \code{catzero = TRUE}, a binary variable \code{Z} is 
-#' created such that:
-#'  
-#' \code{Z = 1} if the covariate value is zero (x = 0)  and 
-#' \code{Z = 0} if the covariate value is positive (x > 0)
-#' 
-#' This indicator is  included in the model alongside the transformed version 
-#' of the covariate. Both are treated as a single predictor during model 
-#' selection (if applicable). This approach captures the potential difference 
-#' between having a value of zero and having any positive value, while still 
-#' allowing flexible modeling of the positive range.
-#' 
-#' The \code{spike} argument triggers the spike-at-zero (SAZ) algorithm. When 
-#' \code{spike = TRUE}, the binary indicator created by \code{catzero} is 
-#' formally evaluated together with the FP terms during model selection. When 
-#' \code{spike = FALSE} but \code{catzero = TRUE}, the binary indicator is 
-#' included in the model without SAZ testing.
+#' @section Ordinal models:
+#' Use [ordinal_family()] when the outcome has at least three categories
+#' with a meaningful order. An ordered factor specifies that order.
+#' Otherwise, numeric values are ordered from smallest to largest, and
+#' character values and unordered factor levels are ordered alphabetically.
+#' For example, to set the order of named categories:
 #'
-#' This methodology is based on work by Royston and Sauerbrei (2008, Section 4.15)
-#' and is particularly relevant in epidemiological contexts where exposure may 
-#' have a threshold effect.
+#' \preformatted{
+#' severity <- factor(
+#'   c("low", "high", "medium", "low"),
+#'   levels = c("low", "medium", "high"),
+#'   ordered = TRUE
+#' )
+#' }
 #'
-#' @section Compatibility with `mfp` package: 
-#' `mfp2` is an extension of the `mfp` package and can be used to reproduce
-#' the results from a model fitted by `mfp`. Since both packages implement the 
-#' MFP algorithm, they use functions with the same names (e.g `fp()`). Therefore,
-#' if you load both packages using a call to `library`, there will
-#' be namespace conflicts and only the functions from the package loaded last
-#' will work properly. 
-#' 
-#' @section Convergence and Troubleshooting: 
-#' Typically, `mfp2` requires two to five cycles to achieve convergence. Lack of 
-#' convergence involves oscillation between two or more models and is extremely
-#' rare. If convergence problems occur, consider adjusting the nominal 
-#' significance levels for variable selection (`select`) or functional form 
-#' selection (`alpha`)
+#' The default `link = "logistic"` fits a proportional-odds model. It uses
+#' the same fitted function for each predictor when comparing higher outcome
+#' categories with lower ones. The final fit is an `orm` object and requires
+#' the optional `rms` package (version 7.0-0 or later). See [ordinal_family()]
+#' for case weights, other links, and
+#' how to interpret coefficient signs.
 #'
-#' @param x for `mfp2.default`: `x` is an input matrix of dimensions 
-#' nobs x nvars. Each row is an observation vector.
-#' @param y for `mfp2.default`: `y` is a vector for the response variable.
-#' For `family = "binomial"` it should be  a vector with two levels (see 
-#' [stats::glm()]). For `family = "cox"` it must be a [survival::Surv()] object
-#' containing 2 columns.
-#' @param formula for `mfp2.formula`: an object of class `formula`: a symbolic 
-#' description of the model to be fitted. Special `fp` terms can be used to 
-#' define fp-transformations. The details of model specification are given 
-#' under ‘Details’.
-#' @param data for `mfp2.formula`: a `data.frame` which contains all variables
-#' specified in `formula`.
-#' @param weights a vector of observation weights of length nobs. 
-#' Default is `NULL` which assigns a weight of 1 to each observation.
-#' @param offset a vector of length nobs that is included in the linear
-#' predictor. Useful for the poisson family (e.g. log of exposure time).
-#' Default is `NULL` which assigns an offset  of 0 to each observation.
-#' If supplied, then values must also be supplied to the `predict()` function.
-#' @param cycles an integer, specifying the maximum number of iteration cycles. 
-#' Default is 5.
-#' @param scale a numeric vector of length `nvars` or single numeric specifying 
-#' scaling factors. If a single numeric, then the value will be replicated as
-#' necessary. The formula interface `mfp2.formula` only supports single numeric 
-#' input to set a default value, individual values can be set using `fp` terms
-#' in the `formula` input. 
-#' Default is `NULL` which lets the program estimate the scaling factors 
-#' (see Details section). If scaling is not required set `scale = 1` to disable 
-#' it. The final regression coefficients are expressed in the original scale of
-#' the data.
-#' @param shift a numeric vector of length `nvars` or a single numeric specifying
-#' shift terms. If a single numeric, then the value will be replicated as
-#' necessary. The formula interface `mfp2.formula` only supports single numeric 
-#' input to set a default value, individual values can be set using `fp` terms
-#' in the `formula` input.
-#' Default is `NULL` which lets the program estimate the shifts
-#' (see Details section). If shifting is not required, set `shift = 0` to 
-#' disable it.
-#' @param df a numeric vector of length nvars or a single numeric that sets the 
-#' (default) degrees of freedom (df) for each predictor. If a single numeric, 
-#' then the value will be replicated as necessary. The formula interface
-#' `mfp2.formula` only supports single numeric input to set a default value, 
-#' individual values can be set using `fp` terms in the `formula` input. 
-#' The df (not counting the intercept) are twice the degree of a fractional 
-#' polynomial (FP). For example, an FP2 has 4 df, while FPm has 2*m df. 
-#' The program overrides default df based on the number of distinct (unique) 
-#' values for a variable as follows: 
-#' 2-3 distinct values are assigned `df = 1` (linear), 4-5 distinct values are
-#' assigned `df = min(2, default)` and >= 6 distinct values are assigned  
-#' `df = default`. 
-#' @param center a logical determining whether variables are centered before 
-#' final model fitting. The default `TRUE` implies mean centering, except for
-#' binary covariates, where the covariate is centered using the lower of the two 
-#' distinct values of the covariate. See Details section below.
-#' @param subset an optional vector specifying a subset of observations
-#' to be used in the fitting process. Default is `NULL` and all observations are 
-#' used. See Details below. 
-#' @param family Either a character string specifying the model family 
-#'   (e.g., "gaussian", "binomial", "poisson", "cox") or a function that 
-#'   returns a GLM family object, such as `stats::gaussian(link = "identity")` 
-#'   or `stats::binomial(link = "logit")`. For Cox models, only the character 
-#'   string `"cox"` is allowed.
-#' @param criterion a character string specifying the criterion used to select 
-#' variables and FP models of different degrees. 
-#' Default is to use p-values in which case the user can specify
-#' the nominal significance level (or use default level of 0.05) for variable and
-#' functional form selection (see `select` and `alpha` parameters below).
-#' If the user specifies the BIC (`bic`) or AIC (`aic`) criteria the program  
-#' ignores the nominal significance levels and selects variables and functional 
-#' forms using the chosen information criterion.
-#' @param select a numeric vector of length nvars or a single numeric that 
-#' sets the nominal significance levels for variable selection on each predictor
-#' by backward elimination. If a single numeric, then the value will be replicated
-#' as necessary. The formula interface `mfp2.formula` only supports single numeric 
-#' input to set a default value, individual values can be set using `fp` terms
-#' in the `formula` input. The default nominal significance level is 0.05 
-#' for all variables. Setting the nominal significance level to be 1 for  
-#' certain variables forces them into the model, leaving all other variables
-#' to be selected. 
-#' @param alpha a numeric vector of length nvars or a single numeric that 
-#' sets the significance levels for testing between FP models of 
-#' different degrees. If a single numeric, then the value will be replicated
-#' as necessary. The formula interface `mfp2.formula` only supports single numeric 
-#' input to set a default value, individual values can be set using `fp` terms
-#' in the `formula` input. The default nominal significance level is 0.05 for all 
-#' variables. 
-#' @param keep a character vector with names of variables to be kept 
-#' in the model. In case that `criterion = "pvalue"`, this is equivalent to
-#' setting the selection level for the variables in `keep` to 1. 
-#' However, this option also keeps the specified variables in the model when 
-#' using the BIC or AIC criteria. 
-#' @param xorder a string determining the order of entry of the covariates
-#' into the model-selection algorithm (backfitting algorithm). The default is 
-#' `ascending`, which enters them by ascending p-values, or decreasing order of 
-#' significance in a multiple regression (i.e. most significant first).
-#' `descending` places them in reverse significance order, whereas 
-#' `original` respects the original order in `x`.
-#' @param powers a named list of numeric values specifying the set of candidate 
-#' FP powers for each covariate. The default is `NULL`, in which case every 
-#' covariate is assigned `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where 
-#' `0` denotes the natural logarithm. Powers are sorted before further 
-#' processing. If some variables are not explicitly assigned powers, the default 
-#' set is used. In the formula interface, powers can be specified either through 
-#' the `powers` argument or within the `fp()` function. If both are provided for 
-#' the same variable, the specification inside `fp()` takes precedence. Each 
-#' variable must be assigned at least two candidate powers for model selection. 
-#' To restrict a variable to a single transformation, pre-transform the variable 
-#' and fit it with `df = 1`.
-#' @param ties a character string specifying the method for tie handling in 
-#' Cox regression. If there are no tied death times all the methods are 
-#' equivalent. Default is the Breslow method. This argument is used for Cox 
-#' models only and has no effect on other model families. 
-#' See \code{survival::coxph()} for details.
-#' @param strata a numeric vector or matrix of variables that define strata
-#' to be used for stratification in a Cox model. A new factor, whose levels are 
-#' all possible combinations of the variables supplied will be created. 
-#' Default is `NULL` and a Cox model without stratification would be fitted. 
-#' See \code{survival::coxph()} for details. 
-#' @param nocenter a numeric vector with a list of values for fitting Cox 
-#' models. See \code{survival::coxph()} for details.
-#' @param acdx a character vector giving the names of continuous variables to 
-#' undergo the approximate cumulative distribution (ACD) transformation. Using 
-#' this also triggers the function-selection procedure for ACD (FSPA) to 
-#' determine the best-fitting FP1(p1, p2) model (see Details). This argument is 
-#' not available in the formula interface (`mfp2.formula`), where the user
-#' should instead use `fp()`. Within `fp()` terms, the ACD transformation is 
-#' specified via the logical argument `acdx` rather than by listing variable 
-#' names. The variable representing the ACD transformation of `x` is named `A_x`.
-#' @param ftest a logical indicating whether `mfp2` should use critical values 
-#' from the F-distribution instead of the Chi-Square distribution for small-sample 
-#' normal error models. This affects variable selection, functional form selection, 
-#' and spike-at-zero testing when evaluating fractional polynomial terms. Default 
-#' is `FALSE`, in which case the Chi-Square distribution is used. This argument 
-#' applies only to Gaussian models.
-#' @param control a list of parameters controlling the fitting process, as 
-#' returned by [stats::glm.control()] or [survival::coxph.control()]. Default 
-#' is `NULL`, in which case `mfp2` uses the default settings for the specified 
-#' model family.
-#' @param zero A character vector specifying the names of continuous variables 
-#' for which nonpositive values should be treated as zero. This enables fitting a 
-#' fractional polynomial (FP) model using only the positive values of the 
-#' covariate, while setting nonpositive values to zero during transformation. 
-#' In `fp()` terms, `zero` is a logical value indicating whether the adjustment 
-#' should be applied to the variable. See the **Details** section.
-#' @param catzero A character vector specifying the names of continuous variables 
-#' for which nonpositive values should be treated as zero, similar to `zero`. In 
-#' addition, `mfp2` automatically creates a binary indicator variable and 
-#' includes it in the model alongside the transformed variable. 
-#' In `fp()` terms, `catzero` is a logical value indicating whether the adjustment 
-#' and indicator should be applied. See the **Details** section.
-#' @param spike A character vector specifying the names of continuous variables 
-#' to be assessed for a spike at zero. Supplying this triggers the spike-at-zero 
-#' (SAZ) algorithm (see Details). This argument is not available in the formula 
-#' interface (`mfp2.formula`), where spike is specified as a logical value within 
-#' `fp()` terms for each variable.
-#' @param min_prop A numeric value between 0 and 1; the minimum proportion of 
-#' zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.
-#' @param max_prop A numeric value between 0 and 1; the maximum proportion of 
-#' zeros for which SAZ modeling is applied. Defaults to 0.95.
-#' before calling this function, for example with 
-#' @param verbose Logical specifying whether to print progress messages. Default is FALSE.
-#' @param \dots Not used.
+#' @section Compatibility with the `mfp` package:
+#' Both `mfp` and `mfp2` provide `fp()`. In formulas passed to `mfp2()`
+#' or `mfpi()`, `fp()` always uses the `mfp2` version, even when both
+#' packages are loaded. `fp()` and [fp2()] are equivalent in these formulas:
+#'
+#' \preformatted{
+#' fit1 <- mfp2(y ~ fp(x1) + fp(x2), data = dat)
+#' fit2 <- mfp2(y ~ fp2(x1) + fp2(x2), data = dat)
+#' }
+#'
+#' @section Convergence and inference:
+#' MFP selection usually converges within 2–4 cycles. With `verbose = TRUE`,
+#' progress messages report when it converges. Lack of convergence involves
+#' oscillation between two or more models and is extremely rare. If selection
+#' does not converge within the allowed number of `cycles`, `mfp2()`
+#' returns the model obtained after the final cycle. Consider
+#' increasing `cycles`, changing `select` or `alpha`, or using
+#' `criterion = "aic"` or `"bic"`.
+#'
+#' Standard errors, confidence intervals, and p-values from the final model
+#' do not account for uncertainty from selecting predictors or their
+#' functional forms, including ACD and spike-at-zero selection.
+#'
+#' @param x For `mfp2.default()`, a numeric matrix with one row per observation
+#' and one column per predictor. Column names are required.
+#' @param y Outcome for `mfp2.default()`. In the formula interface, put the
+#' outcome on the left side of the formula. Its required format depends on
+#' `family`; see **Model families and responses**.
+#' @param term_groups For `mfp2.default()`, an optional named list of columns
+#' to select and test together as one term. This is useful for dummy columns
+#' representing a categorical predictor. For example,
+#' `list(race = c("raceB", "raceC"))` treats both columns as the predictor
+#' `race`. Grouped columns must be linear (`df = 1`) and cannot use ACD or
+#' zero, catzero, or spike-at-zero modelling. Columns not listed are handled
+#' individually.
+#' @param formula For `mfp2.formula()`, a model formula. Use [fp()] or [fp2()]
+#'   to set variable-specific FP, ACD, zero, catzero, or SAZ options.
+#' @param data For `mfp2.formula()`, a data frame containing the variables in
+#' `formula`.
+#' @param weights Optional numeric observation weights. All weights must
+#' be strictly positive. In the formula interface, an expression is evaluated
+#' first in `data` and then in the formula environment.
+#' @param offset A known term added to the model, such as the log of exposure
+#' time. With formula input you can write `offset()` in the formula instead.
+#' When predicting for new data, supply the matching offset.
+#' @param subset Optional observations used for model selection and fitting.
+#' Formula calls accept an expression evaluated in `data` and the formula
+#' environment. Matrix calls accept a logical vector or unique numeric/integer
+#' row positions. Automatic shift and scale values are estimated before the
+#' subset is applied. See the Subsetting section.
+#' @param cycles Maximum number of MFP backfitting cycles. Default `5`.
+#' @param scale Divisor used when preparing predictors for FP selection.
+#' `NULL` chooses scales automatically; `1` turns off automatic scaling.
+#' In `mfp2.default()`, use a named value such as `c(age = 10)` to set
+#' one column's scale. In formulas, a single unnamed value applies to every
+#' term that does not set its own; use `fp()` or `fp2()` for one term.
+#' Binary and ACD predictors always use scale `1`. Predictors with exact-zero
+#' handling (`zero`, `catzero`, or `spike`) use an automatic scale of `1`; an
+#' explicitly supplied scale is still used. See **Shifting, scaling, and
+#' centering**.
+#' @param shift Value added to predictors before FP transformation.
+#' `NULL` chooses shifts automatically; `0` turns off automatic shifting.
+#' In `mfp2.default()`, use a named value such as `c(age = 20)` to set
+#' one column's shift. In formulas, a single unnamed value applies to every
+#' term that does not set its own; use `fp()` or `fp2()` for one term.
+#' Binary and linear predictors, and those using exact-zero handling,
+#' always have shift `0`. See **Shifting, scaling, and centering**.
+#' @param df Maximum FP complexity: `1` allows linear only, `2` allows up
+#' to FP1, and `4` allows up to FP2. The default is `4`. Selection may
+#' choose a simpler form or omit the predictor. In `mfp2.default()`, use
+#' a named value such as `c(age = 2)` for one column. In `mfp2.formula()`,
+#' the top-level value applies only to terms outside `fp()` or `fp2()`;
+#' those terms default to `df = 4` unless set explicitly, for example
+#' `fp(age, df = 2)`. Predictors with few distinct values may be limited
+#' to a simpler form. See **Fractional-polynomial model selection**.
+#' @param center If `TRUE` (default), center predictors after any FP or ACD
+#' transformation; `FALSE` leaves them uncentered. Continuous terms use
+#' their mean and binary terms use their lower observed value in the data.
+#' Centering does not change fitted values. In `mfp2.default()`,
+#' use one logical value for all predictors or a named vector for selected
+#' columns; unspecified columns use `TRUE`. In `mfp2.formula()`, the
+#' top-level value applies only to terms outside `fp()` or `fp2()`; set
+#' `center` inside the term to change it for an `fp()` term.
+#' @param family Model family; default `"gaussian"`. Supported GLM families
+#' are `"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`, and
+#' `"inverse.gaussian"`, supplied as a name, function, or family object.
+#' Quasi families are not supported. Use [negbin_family()] for
+#' negative-binomial models, choosing a `"log"` (default), `"sqrt"`, or
+#' `"identity"` link; `"negbin"` is shorthand for
+#' `negbin_family(link = "log")`. Use `"multinomial"` or
+#' [multinomial_family()] for multinomial models;
+#' `"ordinal"` or [ordinal_family()] for cumulative-link ordinal models;
+#' `"cox"` for Cox models; [survreg_family()] for parametric survival
+#' models; [finegray_family()] for Fine--Gray models; or [gee_family()]
+#' for generalized estimating equations. GEE supports Gaussian,
+#' binomial, Poisson, and Gamma response families, but not
+#' negative-binomial responses.
+#' @param fitter Backend for GLM candidate fits during the FP search.
+#' `"base"` (default) uses [stats::glm.fit()]; `"fastglm"` uses the
+#' optional `fastglm` package. If `fastglm` is unavailable, ordinary GLMs
+#' use the base backend with a warning. Negative-binomial models
+#' always use `fastglm` and require it to be installed. Survival,
+#' multinomial, ordinal, and GEE models use their own fitters and ignore
+#' this setting.
+#' @param criterion Model-selection criterion: `"pvalue"`, `"aic"`, or
+#' `"bic"`. If `NULL` (default), `"aic"` is used for GEE models
+#' ([gee_family()]) and `"pvalue"` for all other families. Supply
+#' `criterion = "pvalue"` explicitly to use robust Wald p-value selection for
+#' GEE models. With `"pvalue"`, `select` controls predictor
+#' inclusion and `alpha` controls FP functional form and spike-at-zero component
+#' comparisons. With `"aic"` or `"bic"`, the model with the lowest score is
+#' selected. For GEE models, `"aic"` and `"bic"` use quasi likelihood
+#' based scores; see **Model selection criteria** for their definitions.
+#' @param select Significance level for predictor inclusion when
+#' `criterion = "pvalue"`; default `0.05`. In `mfp2.default()`, a single
+#' value applies to all predictors. A named vector sets the selection level
+#' for the specified predictors; all others use the default of `0.05`. In
+#' `mfp2.formula()`, the top-level value applies only to terms outside
+#' `fp()` or `fp2()`; those terms each default to `0.05` unless set
+#' explicitly, for example `fp(x, select = 1)`. Under p-value selection,
+#' `select = 1` forces inclusion. For spike-at-zero terms, `select`
+#' controls initial inclusion; `alpha` controls subsequent component
+#' removal. `select` does not affect AIC or BIC selection; use `keep`
+#' to retain a term under those criteria.
+#' @param alpha Significance level for choosing between FP forms when
+#' `criterion = "pvalue"`; default `0.05`. A simpler form is chosen only
+#' when its comparison p-value is greater than `alpha`, so `alpha = 1`
+#' prevents this simplification. For spike-at-zero terms, `alpha` also
+#' controls tests that remove either component. In `mfp2.default()`,
+#' a single value applies to all predictors. A named vector sets values
+#' for specified predictors; all others use `0.05`. In
+#' `mfp2.formula()`, the top-level value applies only to terms outside
+#' `fp()` or `fp2()`. Set `alpha` within `fp()` or `fp2()` to change it
+#' for those terms. `alpha` does not affect AIC or BIC selection.
+#' @param keep Character vector naming predictors to retain in the final
+#' model under any selection criterion. For a formula interface, use a
+#' predictor name  from the formula, such as `keep = "age"`. For a matrix
+#' interface, use a column name from `x` or a name in `term_groups`. Keeping a
+#' predictor does not prevent selection of a simpler functional form.
+#' @param xorder Order in which predictors are examined during backfitting:
+#' `"ascending"` (default), `"descending"`, or `"original"`.
+#' To rank predictors, each is tested as a whole by removing it from
+#' the full starting model. `"ascending"` visits the smallest
+#' p-value first, `"descending"` the largest, and `"original"` follows
+#' the input term order.
+#' @param powers Optional named list of candidate FP powers for individual
+#' predictors, for example `list(age = c(0, 1, 2))`. Predictors not named
+#' use `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where `0` denotes a
+#' logarithm. Each list element must contain at least one finite numeric
+#' power; duplicate powers are removed. Use the predictor's column name
+#' as the list name. To allow only a linear effect, set `df = 1`. Powers
+#' supplied inside `fp()` or `fp2()` take precedence over this list.
+#' @param ties Method for handling tied event times in Cox and Fine--Gray models.
+#' Supported values are `"efron"` (default) and `"breslow"`. `"exact"` is not
+#' supported. The argument has no effect for other families. See
+#' [survival::coxph()] for details.
+#' @param strata Optional stratification for Cox, parametric survival, and
+#' Fine--Gray models. In `mfp2.default()`, supply one stratum label per
+#' observation as a vector or factor. To stratify by several variables,
+#' supply a matrix or data frame with one variable per column. In
+#' `mfp2.formula()`, put `strata(...)` in the formula. The separate
+#' `strata` argument is deprecated for formula fits; if both are supplied,
+#' the formula term takes precedence.
+#' @param id A subject or cluster identifier, with one value per observation.
+#' Use the same ID for observations from the same subject or cluster. IDs
+#' cannot be missing. Fine--Gray models require `id` for start--stop
+#' multi-state data; it is optional when there is one row per subject. GEE
+#' models always require `id` and group observations by cluster before
+#' fitting, preserving their order within each cluster. In formula fits,
+#' `id` is looked up first in `data`, then in the formula environment. It
+#' is not used by other model families.
+#' @param waves Optional index giving the order of repeated observations
+#' within each `id` cluster in GEE models. Supply one positive integer per
+#' observation; values must be unique within each cluster. `waves` does not
+#' reorder rows. See [geepack::geeglm()] for further details. In formula
+#' fits, `waves` is looked up first in `data`, then in the formula environment.
+#' @param nocenter Numeric values that exempt a Cox or Fine--Gray predictor
+#' column from centering when every value in that column is among them.
+#' The default, `c(-1, 0, 1)`, leaves indicator columns uncentered, as in
+#' [survival::coxph()]. Set `NULL` to allow all predictor columns to be
+#' centered. Ignored for other model families.
+#' @param acd_vars Character vector naming continuous columns of `x` to
+#' consider for approximate cumulative distribution (ACD) modelling.
+#' ACD functions are compared with simpler alternatives and need not be
+#' selected. Applies only to `mfp2.default()`; in formulas, use
+#' `fp(x, acd = TRUE)` or `fp2(x, acd = TRUE)`. See **ACD modelling**.
+#' @param acdx Deprecated compatibility alias for `acd_vars` in
+#' `mfp2.default()`. Use `acd_vars` in matrix interface.
+#' @param ftest Logical. If `TRUE`, use F-tests for selection in ordinary
+#' Gaussian regression models when `criterion = "pvalue"`. These tests cover
+#' variable selection, functional-form selection, and spike-at-zero testing,
+#' and may improve small-sample behaviour. Default `FALSE`. Not applicable
+#' to GEE or other model families.
+#' @param control Optional named list of model-fitting settings. If `NULL`,
+#' the package uses its default settings for the selected model family.
+#' The available settings depend on the model family: see
+#' [stats::glm.control()] for ordinary GLMs, [survival::coxph.control()] for
+#' Cox and Fine--Gray models, [survival::survreg.control()] for parametric
+#' survival models, and [geepack::geese.control()] for GEE models.
+#' Multinomial models accept `maxit`, `reltol`, `abstol`, `trace`, and
+#' `MaxNWts`; ordinal models accept `maxit`, `eps`, `tol`, and `trace`.
+#' @param zero_vars Names of nonnegative continuous predictors with exact zeros.
+#' Only positive values are transformed; zeros remain zero before centering.
+#' If a predictor is also in `acd_vars`, ACD is fitted using only its positive
+#' values. The shift is fixed at zero. Applies to `mfp2.default()` only; in
+#' formulas, use `fp(x, zero = TRUE)`. Negative values are rejected. See zero
+#' and spike-at-zero modelling section.
+#' @param catzero_vars Names of nonnegative continuous predictors with exact
+#' zeros. Positive values are transformed, and a separate indicator for zero
+#' values is added to the model. This also enables `zero_vars` behavior for
+#' each predictor. Applies to `mfp2.default()` only; in formulas, use
+#' `fp(x, catzero = TRUE)`. Negative values are rejected. See the zero
+#' and spike-at-zero modelling section.
+#' @param spike_vars Names of nonnegative continuous predictors to assess with
+#' spike-at-zero selection. The model may retain the transformed positive
+#' values, an indicator for zeros, or both. Selection uses two-stage tests
+#' when `criterion = "pvalue"` and compares candidate models when using AIC
+#' or BIC. Each group must meet `min_saz_prop`; binary predictors are
+#' ineligible. Ineligible requests are ignored. Applies to `mfp2.default()`
+#' only; in formulas, use `fp(x, spike = TRUE)`.
+#' @param min_saz_prop Minimum proportion of observations required in each
+#' group (`x = 0` and `x > 0`) for spike-at-zero selection. Must be strictly
+#' between 0 and 0.5; default `0.10`. Predictors that do not meet this threshold
+#' are not assessed. In large samples, a lower threshold may still leave
+#' enough observations in each group.
+#' @param force_max_fp_vars Names of predictors whose most complex permitted
+#' form should be kept in the model, regardless of the selection criterion.
+#' The maximum is set by `df`; when `df = 1`, it is a linear form. For an
+#' eligible predictor in `spike_vars`, both the zero indicator and the most
+#' complex permitted function of positive values are kept. Default `NULL`.
+#' Applies to `mfp2.default()` only; in formulas, use
+#' `fp(x, force_max_fp = TRUE)`.
+#' @param verbose Logical. If `TRUE`, print progress messages during model
+#' fitting. Default `TRUE`.
+#' @param \dots Used to pass arguments from `mfp2()` to its fitting method.
+#'   Additional arguments supplied to the fitting method are not
+#'   used; a warning names them.
 #' @examples
 #'
-#' # Gaussian model
+#' # Gaussian model: formula interface (recommended for most users)
 #' data("prostate")
-#' x = as.matrix(prostate[,2:8])
-#' y = as.numeric(prostate$lpsa)
-#' # default interface
-#' fit1 = mfp2(x, y, verbose = FALSE)
-#' fit1$fp_terms
-#' fracplot(fit1) # generate plots
-#' summary(fit1)
-#' # formula interface
-#' fit1b = mfp2(lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) + fp(weight) +
-#' fp(bph) + fp(cp), data = prostate)
-#' 
-#' # logistic regression model
-#' data("pima")
-#' xx <- as.matrix(pima[, 2:9])
-#' yy <- as.vector(pima$y)
-#' fit2 <- mfp2(xx, yy, family = "binomial", verbose = FALSE)
-#' fit2$fp_terms
-#' 
-#' # Cox regression model
-#' data("gbsg")
-#' # create dummy variable for grade using ordinal coding
-#' gbsg <- create_dummy_variables(gbsg, var_ordinal = "grade", drop_variables = TRUE)
-#' xd <- as.matrix(gbsg[, -c(1, 6, 10, 11)])
-#' yd <- survival::Surv(gbsg$rectime, gbsg$censrec)
-#' # fit mfp and keep hormon in the model
-#' fit3 <- mfp2(xd, yd, family = "cox", keep = "hormon", verbose = FALSE)
-#' fit3$fp_terms
-#' 
-#' @return 
-#' `mfp2()` returns an object of class inheriting from `glm` or `copxh`, 
-#' depending on the `family` parameter. 
-#' 
-#' The function `summary()` (i.e. \code{summary.mfp2()}) can be used to obtain or
-#' print a summary of the results.  
-#' The generic accessor function `coef()` can be used to extract the vector of 
-#' coefficients from the fitted model object. 
-#' The generic `predict()` can be used to obtain predictions from the fitted 
-#' model object.
-#' 
-#' An object of class `mfp2` is a list containing all entries as for `glm`
-#' or `coxph`, and in addition the following entries:  
-#' \itemize{
-#' \item convergence_mfp: logical value indicating convergence of mfp algorithm.
-#' \item fp_terms: a data.frame with information on fractional polynomial 
-#' terms.
-#' \item transformations: a data.frame with information on shifting, scaling
-#' and centering for all variables.  
-#' \item fp_powers: a list with all powers of fractional polynomial terms. 
-#' Each entry of the list is named according to the transformation of the 
-#' variable.
-#' \item acd: a vector with information for which variables the acd 
-#' transformation was applied.
-#' \item x_original: the scaled and shifted input matrix but without
-#' transformations.
-#' \item y: the original outcome variable.
-#' \item x: the final transformed input matrix used to fit the final model.
-#' \item call_mfp: the call to the `mfp2()` function.
-#' \item family: the family stored as either character string or function.
-#' \item family_string: the family stored as character string.
-#' \item zero: named logical vector indicating, for each variable, whether only
-#'  positive values were transformed.  
-#' \item catzero: named logical vector indicating which columns in `x` treated 
-#' nonpositive values as zero and included an additional binary indicator in 
-#' the model.  
-#' \item catzero_list: A list of binary variables created when `catzero` is set to
-#' TRUE. Returns `NULL` if `catzero` is FALSE.
-#' \item spike_decision: named numeric vector with values 1, 2, or 3 specifying 
-#' spike-at-zero handling for each variable. Value 1 includes both the 
-#' transformed variable and a binary indicator, 2 disables the spike and binary 
-#' indicator, and 3 retains only the binary indicator. 
+#' fit_formula <- mfp2(
+#'   lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) +
+#'     fp(weight) + fp(bph) + fp(cp),
+#'   data = prostate,
+#'   verbose = FALSE
+#' )
+#'
+#' fit_formula
+#' summary(fit_formula)
+#' get_selected_variable_names(fit_formula)
+#'
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   plots <- plot(fit_formula)
+#'   print(plots[[1]])
 #' }
-#' The `mfp2` object may contain further information depending on family.
-#' 
+#'
+#' predict(fit_formula, newdata = prostate[1:5, ])
+#'
+#' # Matrix interface
+#' x <- as.matrix(prostate[, 2:8])
+#' y <- prostate$lpsa
+#' fit_matrix <- mfp2(x, y, verbose = FALSE)
+#' fit_matrix
+#'
+#' # Named partial settings apply only to the named columns. Here age is fixed,
+#' # while shifts and scales for every other matrix column remain automatic.
+#' fit_partial <- mfp2(
+#'   x,
+#'   y,
+#'   shift = c(age = 20),
+#'   scale = c(age = 10),
+#'   verbose = FALSE
+#' )
+#' fit_partial$transformations[c("age", "weight"), c("shift", "scale")]
+#'
+#' \donttest{
+#' # ACD modelling
+#' fit_acd_formula <- mfp2(
+#'   lpsa ~ fp(cavol, acd = TRUE) + fp(age) + svi,
+#'   data = prostate,
+#'   verbose = FALSE
+#' )
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   plot(fit_acd_formula, terms = "cavol")[[1]]
+#' }
+#'
+#' # Spike-at-zero modelling
+#' set.seed(1)
+#' n <- 200
+#' exposure <- numeric(n)
+#' zero_rows <- sample(seq_len(n), size = round(0.25 * n))
+#' exposure[-zero_rows] <- rgamma(
+#'   n - length(zero_rows),
+#'   shape = 2,
+#'   rate = 0.5
+#' )
+#' age <- runif(n, 20, 80)
+#' outcome <- 1.5 * (exposure == 0) +
+#'   2 * log(ifelse(exposure > 0, exposure, 1)) +
+#'   0.02 * age + rnorm(n)
+#'
+#' d_spike <- data.frame(outcome, exposure, age)
+#'
+#' # Formula interface
+#' fit_spike_formula <- mfp2(
+#'   outcome ~ fp(exposure, spike = TRUE) + fp(age),
+#'   data = d_spike,
+#'   verbose = FALSE
+#' )
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   plot(fit_spike_formula, terms = "exposure")[[1]]
+#' }
+#'
+#' # Matrix interface
+#' x_spike <- as.matrix(d_spike[, c("exposure", "age")])
+#' fit_spike_matrix <- mfp2(
+#'   x_spike,
+#'   d_spike$outcome,
+#'   spike_vars = "exposure",
+#'   verbose = FALSE
+#' )
+#'
+#' # Unordered factor: all treatment-contrast columns are selected jointly
+#' set.seed(42)
+#' d_factor <- data.frame(
+#'   y = rnorm(60),
+#'   age = runif(60, 20, 80),
+#'   group = factor(rep(c("A", "B", "C"), each = 20))
+#' )
+#' fit_factor <- mfp2(
+#'   y ~ age + group,
+#'   data = d_factor,
+#'   keep = "group",
+#'   verbose = FALSE
+#' )
+#' predict(fit_factor, newdata = d_factor[1:4, ])
+#'
+#' # Ordered factor: the default polynomial contrasts form one joint term
+#' d_factor$severity <- ordered(
+#'   rep(c("mild", "moderate", "severe"), length.out = nrow(d_factor)),
+#'   levels = c("mild", "moderate", "severe")
+#' )
+#' fit_ordered <- mfp2(
+#'   y ~ age + severity,
+#'   data = d_factor,
+#'   keep = "severity",
+#'   verbose = FALSE
+#' )
+#' predict(
+#'   fit_ordered,
+#'   newdata = data.frame(
+#'     age = c(40, 40),
+#'     severity = ordered(
+#'       c("mild", "severe"),
+#'       levels = levels(d_factor$severity)
+#'     )
+#'   )
+#' )
+#'
+#' # Matrix interface: manually created dummy columns can be grouped as one term
+#' x_grouped <- cbind(
+#'   age = d_factor$age,
+#'   groupB = as.integer(d_factor$group == "B"),
+#'   groupC = as.integer(d_factor$group == "C")
+#' )
+#' fit_grouped <- mfp2(
+#'   x_grouped,
+#'   d_factor$y,
+#'   term_groups = list(group = c("groupB", "groupC")),
+#'   keep = "group",
+#'   verbose = FALSE
+#' )
+#'
+#' # Examples for every supported model family -----------------------------
+#' set.seed(2026)
+#' n_family <- 120
+#' family_data <- data.frame(
+#'   x1 = runif(n_family, 0.5, 3),
+#'   x2 = rnorm(n_family)
+#' )
+#' eta <- with(family_data, 0.2 + 0.3 * x1 - 0.2 * x2)
+#' mu <- exp(eta)
+#' simulate_inverse_gaussian <- function(mu, shape) {
+#'   squared_normal <- stats::rnorm(length(mu))^2
+#'   candidate <- mu + (mu^2 * squared_normal) / (2 * shape) -
+#'     (mu / (2 * shape)) * sqrt(
+#'       4 * mu * shape * squared_normal + mu^2 * squared_normal^2
+#'     )
+#'   choose_candidate <- stats::runif(length(mu)) <= mu / (mu + candidate)
+#'   ifelse(choose_candidate, candidate, mu^2 / candidate)
+#' }
+#' family_data$y_gaussian <- eta + rnorm(n_family)
+#' family_data$y_binomial <- rbinom(n_family, 1, plogis(eta - 1))
+#' family_data$y_poisson <- rpois(n_family, mu)
+#' family_data$y_gamma <- rgamma(n_family, shape = 5, scale = mu / 5)
+#' family_data$y_inverse_gaussian <- simulate_inverse_gaussian(mu, shape = 8)
+#' family_data$y_negbin <- rnbinom(n_family, mu = mu, size = 2)
+#' family_data$y_multinomial <- sample.int(
+#'   3L, n_family, replace = TRUE, prob = c(0.45, 0.35, 0.20)
+#' )
+#' family_data$y_ordinal <- ordered(
+#'   cut(
+#'     eta + stats::rlogis(n_family),
+#'     breaks = c(-Inf, -0.5, 0.5, 1.5, Inf),
+#'     labels = c("low", "medium", "high", "very high")
+#'   )
+#' )
+#'
+#' fit_gaussian <- mfp2(
+#'   y_gaussian ~ x1 + x2, data = family_data, family = "gaussian",
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#' fit_binomial <- mfp2(
+#'   y_binomial ~ x1 + x2, data = family_data, family = "binomial",
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#' fit_poisson <- mfp2(
+#'   y_poisson ~ x1 + x2, data = family_data, family = "poisson",
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#' fit_gamma <- mfp2(
+#'   y_gamma ~ x1 + x2, data = family_data,
+#'   family = stats::Gamma(link = "log"),
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#' fit_inverse_gaussian <- mfp2(
+#'   y_inverse_gaussian ~ x1 + x2, data = family_data,
+#'   family = stats::inverse.gaussian(link = "log"),
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#'
+#' # Negative binomial uses the optional fastglm backend. `"negbin"` is
+#' # shorthand for negbin_family(link = "log"); see ?negbin_family for the
+#' # square-root and identity links.
+#' if (requireNamespace("fastglm", quietly = TRUE)) {
+#'   fit_negbin <- mfp2(
+#'     y_negbin ~ x1 + x2, data = family_data,
+#'     family = "negbin",
+#'     df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#'   )
+#' }
+#'
+#' # Integer class labels are converted to a multinomial factor response.
+#' fit_multinomial <- mfp2(
+#'   y_multinomial ~ x1 + x2, data = family_data,
+#'   family = multinomial_family(),
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#'
+#' # Ordinal regression uses the optional rms package.
+#' if (requireNamespace("rms", quietly = TRUE) &&
+#'     utils::packageVersion("rms") >= "7.0-0") {
+#'   fit_ordinal <- mfp2(
+#'     y_ordinal ~ x1 + x2, data = family_data,
+#'     family = ordinal_family(),
+#'     df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#'   )
+#' }
+#'
+#' # Cox proportional hazards and parametric survival models.
+#' event_time <- rexp(n_family, rate = exp(eta - 2))
+#' censor_time <- rexp(n_family, rate = 0.15)
+#' survival_data <- transform(
+#'   family_data,
+#'   time = pmin(event_time, censor_time),
+#'   status = as.integer(event_time <= censor_time)
+#' )
+#' fit_cox <- mfp2(
+#'   survival::Surv(time, status) ~ x1 + x2,
+#'   data = survival_data, family = "cox",
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#' fit_survreg <- mfp2(
+#'   survival::Surv(time, status) ~ x1 + x2,
+#'   data = survival_data, family = survreg_family(dist = "weibull"),
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#'
+#' # Fine--Gray subdistribution hazards for a competing-risks response.
+#' finegray_data <- transform(
+#'   family_data,
+#'   ftime = rexp(n_family, rate = 0.12),
+#'   event = factor(
+#'     sample(
+#'       c("censor", "cause1", "cause2"), n_family, replace = TRUE,
+#'       prob = c(0.35, 0.40, 0.25)
+#'     ),
+#'     levels = c("censor", "cause1", "cause2")
+#'   )
+#' )
+#' fit_finegray <- mfp2(
+#'   survival::Surv(ftime, event) ~ x1 + x2,
+#'   data = finegray_data, family = finegray_family(etype = "cause1"),
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#' }
+#'
+#' @return
+#' An object of class `mfp2`, built from the final fitted model and extended
+#' with MFP selection and transformation information. Depending on the model
+#' family, it also inherits from:
+#'
+#' \itemize{
+#'   \item `glm` for Gaussian, binomial, Poisson, Gamma, and inverse-Gaussian models;
+#'   \item `fastglm_nb` and `fastglm` for negative-binomial models;
+#'   \item `geeglm` for GEE models;
+#'   \item `multinom` and `nnet` for multinomial logistic models;
+#'   \item `orm` for ordinal regression models;
+#'   \item `coxph` for Cox and Fine--Gray models;
+#'   \item `survreg` for parametric survival models.
+#' }
+#'
+#' Standard fitted-model components, such as coefficients, residuals, fitted
+#' values, and the model call, remain available. `mfp2()` adds the following
+#' components to describe its selection results:
+#'
+#' \describe{
+#'   \item{convergence_mfp}{
+#'     Logical value indicating whether the MFP selection algorithm converged.
+#'   }
+#'
+#'   \item{fp_terms}{
+#'     A data frame with one row per model term. It records the MFP complexity
+#'     setting (`df_setting`) separately from the initial and final model degrees
+#'     of freedom (`df_initial` and `df_final`), together with selection settings,
+#'     selected status, searched-FP identity (`searched_fp`),
+#'     fractional-polynomial powers, the ACD, zero, catzero, and spike settings
+#'     actually applied after validation and eligibility checks, and `prop_zero`
+#'     for retained spike-at-zero terms.
+#'   }
+#'
+#'   \item{fp_powers}{
+#'     A named list containing the selected fractional-polynomial powers for
+#'     each model term. Terms excluded from the final model contain missing
+#'     powers.
+#'   }
+#'
+#'   \item{transformations}{
+#'     A data frame describing the shift, scale, and centering setting of each
+#'     model term. The shift and centering apply to the final fitted basis;
+#'     the scale is used only during FP selection, so the final basis and its
+#'     coefficients use shifted, unscaled values (see **Shifting, scaling, and
+#'     centering**).
+#'   }
+#'
+#'   \item{acd}{
+#'     A named logical vector indicating which terms were assessed with the ACD
+#'     extension. The selected powers identify whether the final representation
+#'     retained an ACD component.
+#'   }
+#'
+#'   \item{zero}{
+#'     A named logical vector indicating which continuous terms were
+#'     transformed using only their positive values.
+#'   }
+#'
+#'   \item{catzero}{
+#'     A named logical vector indicating which terms include a separate
+#'     indicator for exact-zero values.
+#'   }
+#'
+#'   \item{spike_dec}{
+#'     A named numeric vector containing the final spike-at-zero decision for
+#'     each term. A value of `1` retains both the zero indicator and continuous
+#'     component, `2` retains the continuous component only, and `3` retains
+#'     the zero indicator only. Non-spike terms use the standard value `2`.
+#'   }
+#'
+#'   \item{call_mfp}{
+#'     The call used to fit the model.
+#'   }
+#' }
+#'
+#' Use `print()`, `summary()`, `coef()`, `predict()`, and `plot()` for the main
+#' model operations. Use [get_selected_variable_names()] to obtain the names of
+#' terms retained in the selected model.
+#'
+#' Only documented components form part of the stable public interface. Other
+#' components may change between package versions.
+#'
 #' @references
-#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
-#' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
+#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
+#' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
-#' 
-#' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 
-#' \emph{Multivariable regression model building by using fractional 
-#' polynomials: Description of SAS, STATA and R programs. 
+#'
+#' Liang, K.-Y. and Zeger, S. L., 1986. \emph{Longitudinal data analysis using
+#' generalized linear models. Biometrika, 73(1): 13--22.}\cr
+#'
+#' Pan, W., 2001. \emph{Akaike's information criterion in generalized
+#' estimating equations. Biometrics, 57(1): 120--125.}\cr
+#'
+#' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.
+#' \emph{Multivariable regression model building by using fractional
+#' polynomials: Description of SAS, STATA and R programs.
 #' Comput Stat Data Anal, 50(12): 3464-85.}\cr
-#' 
+#'
 #' Royston, P. 2014. \emph{A smooth covariate rank transformation for use in
-#' regression models with a sigmoid dose-response function. 
+#' regression models with a sigmoid dose-response function.
 #' Stata Journal 14(2): 329-341.}\cr
-#' 
+#'
 #' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
-#' ACD covariate transformation for enhanced parametric multivariable modeling. 
+#' ACD covariate transformation for enhanced parametric multivariable modeling.
 #' The Stata Journal, 16(1), pp.72-87.}\cr
-#' 
-#' Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic 
-#' and diagnostic models: transformation of the predictors by using fractional 
+#'
+#' Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic
+#' and diagnostic models: transformation of the predictors by using fractional
 #' polynomials. J Roy Stat Soc a Sta, 162:71-94.}\cr
-#' 
-#' Sauerbrei, W., Kipruto, E. and Balmford, J., 2023. \emph{Effects of influential 
-#' points and sample size on the selection and replicability of multivariable 
+#'
+#' Sauerbrei, W., Kipruto, E. and Balmford, J., 2023. \emph{Effects of influential
+#' points and sample size on the selection and replicability of multivariable
 #' fractional polynomial models. Diagnostic and Prognostic Research, 7(1), p.7.}\cr
-#' 
-#' Becher, H., Lorenz, E., Royston, P. and Sauerbrei, W., 2012. \emph{Analysing 
+#'
+#' Becher, H., Lorenz, E., Royston, P. and Sauerbrei, W., 2012. \emph{Analysing
 #' covariates with spike at zero: a modified FP procedure and conceptual issues.
 #' Biometrical journal, 54(5), pp.686-700.}\cr
-#' 
-#' Lorenz, E., Jenkner, C., Sauerbrei, W. and Becher, H., 2019. \emph{Modeling exposures 
-#' with a spike at zero: simulation study and practical application to survival data. 
+#'
+#' Lorenz, E., Jenkner, C., Sauerbrei, W. and Becher, H., 2019. \emph{Modeling exposures
+#' with a spike at zero: simulation study and practical application to survival data.
 #' Biostatistics & Epidemiology, 3(1), pp.23-37.}
-#' 
-#' @seealso 
-#' \code{summary.mfp2()}, \code{coef.mfp2()}, \code{predict.mfp2()}, \code{fp()}
-#' \code{\link[stats]{model.matrix}}, \code{\link[stats]{contr.treatment}},
-#' \code{\link[stats]{contr.poly}}
-#' 
+#'
+#' @seealso
+#' [fp()], [fp2()], [summary.mfp2()], [coef.mfp2()], [predict.mfp2()],
+#' [plot.mfp2()], [get_selected_variable_names()], [transform_vector_fp()],
+#' [gee_family()], [multinomial_family()], [ordinal_family()],
+#' [survreg_family()], [finegray_family()]
+#'
 #' @export
-mfp2 <- function(x, ...){
+mfp2 <- function(x, ...) {
   UseMethod("mfp2", x)
 }
 
-#' @describeIn mfp2 Default method using input matrix `x` and outcome vector `y`.
+#' Identify Formula Terms Containing Factors
+#'
+#' Uses the terms-object factor incidence matrix and the evaluated model frame to
+#' identify formula terms that contain at least one unordered or ordered factor.
+#' The returned names are original formula term labels. Callers may map simple
+#' factor wrappers to source-variable conceptual names before constructing the
+#' term-to-column lookup.
+#'
+#' @param terms_object A terms object used to build the predictor model matrix.
+#' @param model_frame The evaluated model frame.
+#'
+#' @return Character vector of factor-containing formula term labels.
+#'
+#' @keywords internal
+#' @noRd
+identify_formula_factor_terms <- function(terms_object, model_frame) {
+  incidence <- attr(terms_object, "factors")
+
+  if (is.null(incidence) || nrow(incidence) == 0L || ncol(incidence) == 0L) {
+    return(character(0L))
+  }
+
+  variable_labels <- rownames(incidence)
+  is_factor_variable <- vapply(
+    variable_labels,
+    function(variable) {
+      variable %in% names(model_frame) && is.factor(model_frame[[variable]])
+    },
+    logical(1L)
+  )
+
+  if (!any(is_factor_variable)) {
+    return(character(0L))
+  }
+
+  factor_incidence <- incidence[is_factor_variable, , drop = FALSE]
+  colnames(incidence)[colSums(factor_incidence != 0) > 0L]
+}
+
+
+#' Extract the Source Variable from a Simple Factor Formula Term
+#'
+#' Recognises a bare variable or a direct call to factor(), ordered(),
+#' as.factor(), or as.ordered() whose first argument is a single variable. The
+#' returned source name is used as the conceptual MFP term name, while the
+#' original formula expression remains available through the fitted terms
+#' object for model-matrix reconstruction.
+#'
+#' @param term_label Character scalar containing a formula term label.
+#'
+#' @return Character scalar source-variable name, or NULL for terms that cannot
+#'   be reduced safely to one source variable.
+#'
+#' @keywords internal
+#' @noRd
+formula_factor_source_name <- function(term_label) {
+  expr <- tryCatch(str2lang(term_label), error = function(e) NULL)
+
+  if (is.null(expr)) {
+    return(NULL)
+  }
+
+  if (is.symbol(expr)) {
+    return(as.character(expr))
+  }
+
+  if (!is.call(expr) || length(expr) < 2L) {
+    return(NULL)
+  }
+
+  call_head <- expr[[1L]]
+  function_name <- if (is.symbol(call_head)) {
+    as.character(call_head)
+  } else if (
+    is.call(call_head) && length(call_head) == 3L &&
+    as.character(call_head[[1L]]) %in% c("::", ":::") &&
+    is.symbol(call_head[[3L]])
+  ) {
+    as.character(call_head[[3L]])
+  } else {
+    NULL
+  }
+
+  if (is.null(function_name) ||
+      !function_name %in% c("factor", "ordered", "as.factor", "as.ordered") ||
+      !is.symbol(expr[[2L]])) {
+    return(NULL)
+  }
+
+  as.character(expr[[2L]])
+}
+
+
+#' Resolve a Simple fp()/fp2() Formula Term to Its Source Variable
+#'
+#' @param term_label Original formula term label.
+#'
+#' @return Source variable name for a simple fp()/fp2() wrapper, otherwise
+#'   `NULL`.
+#'
+#' @keywords internal
+#' @noRd
+formula_fp_source_name <- function(term_label) {
+  expr <- tryCatch(str2lang(term_label), error = function(e) NULL)
+  if (is.null(expr) || !is.call(expr) || length(expr) < 2L) {
+    return(NULL)
+  }
+
+  call_head <- expr[[1L]]
+  function_name <- if (is.symbol(call_head)) {
+    as.character(call_head)
+  } else if (
+    is.call(call_head) && length(call_head) == 3L &&
+    as.character(call_head[[1L]]) %in% c("::", ":::") &&
+    is.symbol(call_head[[3L]])
+  ) {
+    as.character(call_head[[3L]])
+  } else {
+    NULL
+  }
+
+  if (is.null(function_name) || !function_name %in% c("fp", "fp2") ||
+      !is.symbol(expr[[2L]])) {
+    return(NULL)
+  }
+
+  as.character(expr[[2L]])
+}
+
+
+#' Resolve User-Facing Conceptual Names for Formula Terms
+#'
+#' Formula term labels are retained for model.frame()/model.matrix()
+#' reconstruction, but simple factor wrappers are represented to the MFP engine
+#' by their source variable name. For example, factor(x9) is represented by the
+#' conceptual term x9 while its design columns remain factor(x9)2 and
+#' factor(x9)3.
+#'
+#' @param terms_object Predictor terms object.
+#' @param model_frame Evaluated model frame.
+#'
+#' @return Named character vector mapping original formula labels to conceptual
+#'   term names.
+#'
+#' @keywords internal
+#' @noRd
+formula_conceptual_term_names <- function(terms_object, model_frame) {
+  term_labels <- attr(terms_object, "term.labels")
+  out <- stats::setNames(term_labels, term_labels)
+  factor_labels <- identify_formula_factor_terms(terms_object, model_frame)
+
+  for (label in term_labels) {
+    source_name <- if (label %in% factor_labels) {
+      formula_factor_source_name(label)
+    } else {
+      formula_fp_source_name(label)
+    }
+    if (!is.null(source_name)) {
+      out[[label]] <- source_name
+    }
+  }
+
+  duplicated_names <- unique(unname(out)[
+    duplicated(unname(out)) | duplicated(unname(out), fromLast = TRUE)
+  ])
+
+  if (length(duplicated_names) > 0L) {
+    details <- vapply(
+      duplicated_names,
+      function(name) {
+        labels <- names(out)[unname(out) == name]
+        paste0(name, " <- ", paste(labels, collapse = ", "))
+      },
+      character(1L)
+    )
+    stop(
+      "! Multiple formula terms resolve to the same conceptual variable: ",
+      paste(details, collapse = "; "), ".\n",
+      "i Use each source variable only once in the model formula.",
+      call. = FALSE
+    )
+  }
+
+  out
+}
+
+
+#' Build a Formula Term-to-Column Lookup
+#'
+#' @param x_columns Design-matrix column names after intercept removal.
+#' @param assign Model-matrix assign vector aligned with x_columns.
+#' @param term_labels Original formula term labels.
+#' @param conceptual_names Named mapping from formula labels to conceptual names.
+#'
+#' @return Named list mapping conceptual terms to their design columns in formula
+#'   order.
+#'
+#' @keywords internal
+#' @noRd
+build_formula_term_to_columns <- function(x_columns,
+                                          assign,
+                                          term_labels,
+                                          conceptual_names) {
+  out <- lapply(
+    seq_along(term_labels),
+    function(index) x_columns[assign == index]
+  )
+  names(out) <- unname(conceptual_names[term_labels])
+  out[lengths(out) > 0L]
+}
+
+
+#' Test Whether a Conceptual Term Uses an Explicit Column Mapping
+#'
+#' A mapped term either spans multiple raw columns or maps to one raw column
+#' whose name differs from the conceptual term. The latter is the usual design
+#' for a two-level factor such as treatment -> treatmentB.
+#'
+#' @param term Conceptual term name.
+#' @param columns Character vector of raw columns.
+#'
+#' @return Logical scalar.
+#'
+#' @keywords internal
+#' @noRd
+term_uses_column_mapping <- function(term, columns) {
+  length(columns) != 1L || !identical(columns[[1L]], term)
+}
+
+
+#' Identify Explicitly Mapped Conceptual Terms
+#'
+#' @param term_to_columns Complete conceptual-term lookup.
+#'
+#' @return Named logical vector aligned with term_to_columns.
+#'
+#' @keywords internal
+#' @noRd
+mapped_term_flags <- function(term_to_columns) {
+  vapply(
+    names(term_to_columns),
+    function(term) term_uses_column_mapping(term, term_to_columns[[term]]),
+    logical(1L)
+  )
+}
+
+
+#' Expand a Scalar df Default for Explicitly Mapped Terms
+#'
+#' A scalar `df` is the default complexity for ordinary continuous predictors.
+#' Explicitly mapped terms, including multi-column categorical contrasts and
+#' one-column binary-factor mappings, are supplied fixed linear design blocks
+#' and therefore receive `df = 1` before cardinality-based df assignment.
+#'
+#' Per-column df vectors are intentionally returned unchanged so that the
+#' existing grouped-term validation can reject explicit nonlinear settings.
+#'
+#' @param df Numeric scalar or per-column vector.
+#' @param vnames Raw design-matrix column names.
+#' @param term_to_columns Complete conceptual-term lookup.
+#'
+#' @return `df` unchanged when it is already per-column; otherwise a named
+#'   per-column vector with explicitly mapped columns set to 1.
+#' @keywords internal
+#' @noRd
+expand_scalar_df_for_mapped_terms <- function(df, vnames, term_to_columns) {
+  if (length(df) != 1L) {
+    return(df)
+  }
+
+  df_default <- stats::setNames(rep(df, length(vnames)), vnames)
+  mapped_terms <- names(term_to_columns)[mapped_term_flags(term_to_columns)]
+
+  if (length(mapped_terms) > 0L) {
+    mapped_columns <- unlist(
+      term_to_columns[mapped_terms],
+      use.names = FALSE
+    )
+    df_default[mapped_columns] <- 1L
+  }
+
+  df_default
+}
+
+
+#' Apply Automatic Scale Defaults to Explicitly Mapped Terms
+#'
+#' Explicitly mapped terms, including multi-column categorical contrasts and
+#' one-column binary-factor mappings, are supplied fixed model-matrix blocks.
+#' Columns whose scale remains automatic therefore receive `scale = 1`; any
+#' explicit scalar or named per-column setting remains authoritative.
+#'
+#' @param scale A normalized named per-column numeric vector.
+#' @param vnames Raw design-matrix column names.
+#' @param term_to_columns Complete conceptual-term lookup.
+#' @param automatic Logical scalar or per-column logical vector indicating
+#'   which scale values remain automatic. Named vectors are aligned to `vnames`.
+#'
+#' @return `scale`, with automatic explicitly mapped columns set to 1.
+#' @keywords internal
+#' @noRd
+expand_scale_for_mapped_terms <- function(scale,
+                                          vnames,
+                                          term_to_columns,
+                                          automatic = FALSE) {
+  scale_default <- scale[vnames]
+
+  if (length(automatic) == 1L) {
+    if (!is.logical(automatic) || anyNA(automatic)) {
+      stop("Internal scale-automatic metadata is malformed.", call. = FALSE)
+    }
+    automatic <- stats::setNames(rep(automatic, length(vnames)), vnames)
+  } else {
+    if (!is.logical(automatic) || length(automatic) != length(vnames) ||
+        anyNA(automatic)) {
+      stop("Internal scale-automatic metadata is malformed.", call. = FALSE)
+    }
+    if (!is.null(names(automatic))) {
+      if (anyNA(names(automatic)) || any(!nzchar(names(automatic))) ||
+          anyDuplicated(names(automatic)) ||
+          !setequal(names(automatic), vnames)) {
+        stop("Internal scale-automatic metadata is malformed.", call. = FALSE)
+      }
+      automatic <- automatic[vnames]
+    } else {
+      names(automatic) <- vnames
+    }
+  }
+
+  mapped_terms <- names(term_to_columns)[mapped_term_flags(term_to_columns)]
+
+  if (length(mapped_terms) > 0L) {
+    mapped_columns <- unlist(
+      term_to_columns[mapped_terms],
+      use.names = FALSE
+    )
+    automatic_mapped <- mapped_columns[automatic[mapped_columns]]
+    scale_default[automatic_mapped] <- 1
+  }
+
+  scale_default
+}
+
+
+#' Expand Conceptual-Term Metadata to Raw Design Columns
+#'
+#' Grouped terms store one set of selection and transformation settings for a
+#' conceptual term, while model fitting and prediction operate on the raw
+#' columns in its design block. This helper performs that expansion in one
+#' place. Explicitly mapped terms are always represented as ordinary linear
+#' columns and cannot inherit continuous-only transformations.
+#'
+#' @param term_to_columns Named list mapping conceptual terms to raw columns.
+#' @param powers Named list of selected powers by conceptual term.
+#' @param raw_columns Raw columns to return, in the required output order.
+#' @param center,acdx,zero,catzero,spike Optional named term-level settings.
+#' @param spike_decision Optional named integer decision codes by term.
+#' @param acd_parameter Optional named list of fitted ACD parameters by term.
+#'
+#' @return Named list of metadata aligned with \code{raw_columns}.
+#'
+#' @keywords internal
+#' @noRd
+expand_term_metadata_to_columns <- function(
+    term_to_columns,
+    powers,
+    raw_columns = unlist(term_to_columns, use.names = FALSE),
+    center = NULL,
+    acdx = NULL,
+    zero = NULL,
+    catzero = NULL,
+    spike = NULL,
+    spike_decision = NULL,
+    acd_parameter = NULL) {
+  if (!is.list(term_to_columns) || is.null(names(term_to_columns)) ||
+      anyDuplicated(names(term_to_columns))) {
+    stop("The conceptual-term column lookup is malformed.", call. = FALSE)
+  }
+
+  invalid_terms <- vapply(
+    term_to_columns,
+    function(columns) {
+      !is.character(columns) || length(columns) == 0L || anyNA(columns) ||
+        any(!nzchar(columns))
+    },
+    logical(1L)
+  )
+  all_columns <- unlist(term_to_columns, use.names = FALSE)
+  if (any(invalid_terms) || anyDuplicated(all_columns)) {
+    stop("The conceptual-term column lookup contains invalid raw columns.",
+         call. = FALSE)
+  }
+
+  raw_columns <- as.character(raw_columns)
+  unknown <- setdiff(raw_columns, all_columns)
+  if (length(unknown) > 0L) {
+    stop(
+      "Unknown raw column(s): ",
+      paste(unknown, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  column_to_term <- stats::setNames(
+    rep(names(term_to_columns), lengths(term_to_columns)),
+    all_columns
+  )
+  raw_terms <- unname(column_to_term[raw_columns])
+  grouped_by_term <- mapped_term_flags(term_to_columns)
+  grouped <- unname(grouped_by_term[raw_terms])
+
+  term_value <- function(values, term, default) {
+    if (is.null(values) || is.null(names(values)) ||
+        !term %in% names(values)) {
+      return(default)
+    }
+    values[[term]]
+  }
+
+  powers_columns <- lapply(seq_along(raw_columns), function(index) {
+    term <- raw_terms[[index]]
+    term_powers <- term_value(powers, term, NA_real_)
+
+    if (grouped[[index]]) {
+      if (length(term_powers) == 0L || all(is.na(term_powers))) {
+        NA_real_
+      } else {
+        1
+      }
+    } else {
+      term_powers
+    }
+  })
+  names(powers_columns) <- raw_columns
+
+  center_columns <- acdx_columns <- zero_columns <- catzero_columns <-
+    spike_columns <- logical(length(raw_columns))
+  spike_decision_columns <- integer(length(raw_columns))
+  acd_parameter_columns <- vector("list", length(raw_columns))
+
+  for (index in seq_along(raw_columns)) {
+    term <- raw_terms[[index]]
+
+    center_columns[[index]] <- isTRUE(term_value(center, term, FALSE))
+    if (grouped[[index]]) {
+      acdx_columns[[index]] <- FALSE
+      zero_columns[[index]] <- FALSE
+      catzero_columns[[index]] <- FALSE
+      spike_columns[[index]] <- FALSE
+      spike_decision_columns[[index]] <-
+        saz_decision_codes[["continuous_only"]]
+      acd_parameter_columns[index] <- list(NULL)
+    } else {
+      acdx_columns[[index]] <- isTRUE(term_value(acdx, term, FALSE))
+      zero_columns[[index]] <- isTRUE(term_value(zero, term, FALSE))
+      catzero_columns[[index]] <- isTRUE(term_value(catzero, term, FALSE))
+      spike_columns[[index]] <- isTRUE(term_value(spike, term, FALSE))
+      spike_decision_columns[[index]] <- as.integer(term_value(
+        spike_decision,
+        term,
+        saz_decision_codes[["continuous_only"]]
+      ))
+      acd_parameter_columns[index] <- list(
+        term_value(acd_parameter, term, NULL)
+      )
+    }
+  }
+
+  names(center_columns) <- names(acdx_columns) <- names(zero_columns) <-
+    names(catzero_columns) <- names(spike_columns) <-
+    names(spike_decision_columns) <- names(acd_parameter_columns) <-
+    raw_columns
+
+  list(
+    terms = stats::setNames(raw_terms, raw_columns),
+    powers = powers_columns,
+    center = center_columns,
+    acdx = acdx_columns,
+    zero = zero_columns,
+    catzero = catzero_columns,
+    spike = spike_columns,
+    spike_decision = spike_decision_columns,
+    acd_parameter = acd_parameter_columns
+  )
+}
+
+
+#' Build Formula Factor Prediction Metadata
+#'
+#' Stores the exact fitted design row associated with each observed level of a
+#' simple factor main effect. Metadata are keyed by the conceptual source
+#' variable name, while the raw design-column names remain unchanged.
+#'
+#' @param factor_terms Character vector of original factor-containing formula
+#'   labels returned by identify_formula_factor_terms().
+#' @param terms_object The predictor terms object.
+#' @param model_frame The evaluated model frame.
+#' @param term_name_map Named mapping from original formula labels to conceptual
+#'   term names.
+#' @param term_to_columns Conceptual term-to-design-column lookup.
+#' @param x Numeric design matrix after any fp() column renaming.
+#'
+#' @return Named list of metadata for simple factor main effects. Each entry
+#'   records the source factor variable, its levels and ordering, the fitted raw
+#'   design columns, and the exact design row for every observed level. More
+#'   complex factor-containing terms, such as interactions, are omitted because
+#'   their design rows also depend on the interacting variables.
+#'
+#' @keywords internal
+#' @noRd
+build_formula_factor_info <- function(factor_terms,
+                                      terms_object,
+                                      model_frame,
+                                      term_name_map,
+                                      term_to_columns,
+                                      x) {
+  incidence <- attr(terms_object, "factors")
+
+  if (length(factor_terms) == 0L || is.null(incidence)) {
+    return(list())
+  }
+
+  out <- list()
+
+  for (formula_term in intersect(factor_terms, colnames(incidence))) {
+    participating <- rownames(incidence)[incidence[, formula_term] != 0]
+    factor_variables <- participating[
+      vapply(
+        participating,
+        function(variable) {
+          variable %in% names(model_frame) && is.factor(model_frame[[variable]])
+        },
+        logical(1L)
+      )
+    ]
+
+    conceptual_term <- unname(term_name_map[[formula_term]])
+    if (length(participating) != 1L || length(factor_variables) != 1L ||
+        is.null(conceptual_term) || !conceptual_term %in% names(term_to_columns)) {
+      next
+    }
+
+    frame_variable <- factor_variables[[1L]]
+    values <- model_frame[[frame_variable]]
+    columns <- term_to_columns[[conceptual_term]]
+    level_names <- levels(values)
+
+    design_by_level <- matrix(
+      NA_real_,
+      nrow = length(level_names),
+      ncol = length(columns),
+      dimnames = list(level_names, columns)
+    )
+
+    for (level in level_names) {
+      row_index <- which(as.character(values) == level)[1L]
+      if (!is.na(row_index)) {
+        design_by_level[level, ] <- x[row_index, columns, drop = TRUE]
+      }
+    }
+
+    out[[conceptual_term]] <- list(
+      variable = frame_variable,
+      levels = level_names,
+      ordered = is.ordered(values),
+      columns = columns,
+      design_by_level = design_by_level
+    )
+  }
+
+  out
+}
+
+
+#' Determine Centering Methods for Formula-Generated Factor Columns
+#'
+#' Formula processing knows which numeric design columns came from categorical
+#' terms, information that is unavailable once only a numeric matrix remains.
+#' Treatment-style 0/1 columns retain minimum centering, while other contrast
+#' columns use their fitted-sample means even when a particular contrast happens
+#' to contain only two distinct numeric values.
+#'
+#' @param factor_terms Character vector of conceptual factor-term names.
+#' @param term_to_columns Conceptual term-to-design-column lookup.
+#' @param x Numeric fitting design matrix after intercept removal and any
+#'   \code{fp()} column renaming.
+#'
+#' @return A named character vector containing \code{"mean"} or
+#'   \code{"minimum"} for factor-generated columns. Returns \code{NULL} when
+#'   the formula contains no factor design columns.
+#' @keywords internal
+#' @noRd
+formula_factor_center_methods <- function(factor_terms, term_to_columns, x) {
+  factor_columns <- unique(unname(unlist(
+    term_to_columns[intersect(factor_terms, names(term_to_columns))],
+    use.names = FALSE
+  )))
+  factor_columns <- intersect(factor_columns, colnames(x))
+
+  if (length(factor_columns) == 0L) {
+    return(NULL)
+  }
+
+  methods <- vapply(factor_columns, function(column) {
+    values <- unique(x[, column])
+    is_indicator <- length(values) <= 2L && all(values %in% c(0, 1))
+
+    if (is_indicator) "minimum" else "mean"
+  }, character(1L))
+
+  stats::setNames(unname(methods), factor_columns)
+}
+
+
+#' Normalize Design-Matrix Columns into Conceptual Terms
+#'
+#' Validates an optional grouped-term specification and returns a complete map
+#' from conceptual term names to raw design-matrix columns. Unmentioned columns
+#' are represented as singleton terms. Term order follows the first occurrence
+#' of each term in the original design-matrix column order.
+#'
+#' @param x_columns Character vector of design-matrix column names.
+#' @param term_groups Optional named list mapping conceptual terms to raw column
+#'   names.
+#'
+#' @return A named list mapping every conceptual term to one or more raw columns.
+#' @keywords internal
+#' @noRd
+normalize_term_groups <- function(x_columns, term_groups = NULL) {
+  if (is.null(term_groups)) {
+    return(stats::setNames(as.list(x_columns), x_columns))
+  }
+
+  if (!is.list(term_groups)) {
+    stop("! `term_groups` must be NULL or a named list.", call. = FALSE)
+  }
+
+  group_names <- names(term_groups)
+  if (is.null(group_names) || length(group_names) != length(term_groups) ||
+      anyNA(group_names) || any(!nzchar(group_names))) {
+    stop("! `term_groups` must have one non-empty name per list element.",
+         call. = FALSE)
+  }
+
+  if (anyDuplicated(group_names)) {
+    duplicated_names <- unique(group_names[duplicated(group_names)])
+    stop(
+      sprintf(
+        "! `term_groups` contains duplicated term name(s): %s.",
+        paste(duplicated_names, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  invalid_element <- vapply(
+    term_groups,
+    function(cols) {
+      !is.character(cols) || length(cols) < 1L || anyNA(cols) ||
+        any(!nzchar(cols))
+    },
+    logical(1L)
+  )
+  if (any(invalid_element)) {
+    stop(
+      sprintf(
+        "! Every `term_groups` element must contain at least one non-missing, non-empty column name. Omit identity singleton mappings; they are added automatically. Invalid term(s): %s.",
+        paste(names(term_groups)[invalid_element], collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  referenced_columns <- unlist(term_groups, use.names = FALSE)
+  missing_columns <- setdiff(referenced_columns, x_columns)
+  if (length(missing_columns) > 0L) {
+    stop(
+      sprintf(
+        "! `term_groups` references unknown column(s) in `x`: %s.",
+        paste(missing_columns, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  duplicated_columns <- unique(referenced_columns[duplicated(referenced_columns)])
+  if (length(duplicated_columns) > 0L) {
+    stop(
+      sprintf(
+        "! A column may appear in only one `term_groups` entry. Duplicated column(s): %s.",
+        paste(duplicated_columns, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  colliding_names <- intersect(group_names, x_columns)
+  invalid_collisions <- colliding_names[!vapply(
+    colliding_names,
+    function(term) term %in% term_groups[[term]],
+    logical(1L)
+  )]
+  if (length(invalid_collisions) > 0L) {
+    stop(
+      sprintf(
+        "! A grouped term name may match a column name only when that column is a member of the same group. Invalid collision(s): %s.",
+        paste(invalid_collisions, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  column_to_term <- stats::setNames(x_columns, x_columns)
+  for (term in group_names) {
+    column_to_term[term_groups[[term]]] <- term
+  }
+
+  term_names <- unique(unname(column_to_term[x_columns]))
+  out <- lapply(
+    term_names,
+    function(term) x_columns[unname(column_to_term[x_columns]) == term]
+  )
+  names(out) <- term_names
+  out
+}
+
+#' Validate a Setting for Explicitly Mapped Terms
+#'
+#' Checks a per-column setting for every explicitly mapped term, including a
+#' binary factor represented by one non-identity dummy column, and reports the
+#' first offending term with the setting name.
+#'
+#' @param term_to_columns Complete conceptual-term lookup.
+#' @param values Named vector indexed by raw design-matrix columns.
+#' @param setting Character setting name used in the error message.
+#' @param predicate Function returning a logical vector of valid values.
+#' @param requirement Character description of the required value.
+#' @param reason Optional explanation appended to the error. When omitted, a
+#'   setting-specific explanation is supplied for continuous-only options and
+#'   fractional-polynomial search controls.
+#'
+#' @return Invisibly returns \code{TRUE}.
+#' @keywords internal
+#' @noRd
+validate_grouped_term_setting <- function(term_to_columns,
+                                          values,
+                                          setting,
+                                          predicate,
+                                          requirement,
+                                          reason = NULL) {
+  if (is.null(reason)) {
+    if (setting %in% c(
+      "acdx", "acd_vars", "zero_vars", "catzero_vars", "spike_vars"
+    )) {
+      reason <- paste(
+        "Grouped terms are fixed categorical design blocks;",
+        "continuous-variable transformations and structural-zero options",
+        "apply only to singleton continuous predictors."
+      )
+    } else if (setting %in% c("df", "force_max_fp_vars")) {
+      reason <- paste(
+        "Grouped terms are fixed linear design blocks and cannot enter the",
+        "fractional-polynomial transformation search."
+      )
+    }
+  }
+
+  reason_suffix <- if (
+    is.character(reason) && length(reason) == 1L && !is.na(reason) &&
+    nzchar(reason)
+  ) {
+    paste0(" ", reason)
+  } else {
+    ""
+  }
+
+  grouped_terms <- names(term_to_columns)[mapped_term_flags(term_to_columns)]
+  for (term in grouped_terms) {
+    cols <- term_to_columns[[term]]
+    valid <- predicate(values[cols])
+    if (length(valid) != length(cols) || anyNA(valid) || !all(valid)) {
+      stop(
+        sprintf(
+          paste0(
+            "! Grouped term '%s' requires `%s` to be %s for every member ",
+            "column: %s.%s"
+          ),
+          term,
+          setting,
+          requirement,
+          paste(cols, collapse = ", "),
+          reason_suffix
+        ),
+        call. = FALSE
+      )
+    }
+  }
+  invisible(TRUE)
+}
+
+#' Collapse a Per-Column Option to One Value per Conceptual Term
+#'
+#' For one-column terms the corresponding column value is returned. For
+#' multi-column terms all member-column values must be identical because the
+#' selection engine has one setting per conceptual term.
+#'
+#' @param values Named atomic vector or list indexed by raw columns.
+#' @param term_to_columns Complete conceptual-term lookup.
+#' @param setting Character setting name used in error messages.
+#'
+#' @return An object of the same broad type as \code{values}, named by term.
+#' @keywords internal
+#' @noRd
+collapse_option_to_terms <- function(values, term_to_columns, setting) {
+  is_list <- is.list(values)
+  collapsed <- lapply(names(term_to_columns), function(term) {
+    cols <- term_to_columns[[term]]
+    vals <- values[cols]
+    if (length(cols) > 1L) {
+      reference <- unname(vals[[1L]])
+      same <- vapply(
+        vals[-1L],
+        function(value) identical(unname(value), reference),
+        logical(1L)
+      )
+      if (length(same) > 0L && !all(same)) {
+        stop(
+          sprintf(
+            "! Grouped term '%s' must use the same `%s` value for all member columns: %s.",
+            term, setting, paste(cols, collapse = ", ")
+          ),
+          call. = FALSE
+        )
+      }
+    }
+    vals[[1L]]
+  })
+  names(collapsed) <- names(term_to_columns)
+
+  if (is_list) {
+    return(collapsed)
+  }
+
+  out <- unlist(collapsed, use.names = FALSE)
+  names(out) <- names(term_to_columns)
+  out
+}
+
+#' @describeIn mfp2 Matrix interface: accepts a numeric predictor matrix `x`
+#' and response vector `y`. Categorical predictors must be pre-coded as
+#' numeric columns; group related columns with `term_groups`.
 #' @export
-mfp2.default <- function(x, 
-                         y, 
-                         weights = NULL, 
-                         offset = NULL, 
+mfp2.default <- function(x,
+                         y,
+                         weights = NULL,
+                         offset = NULL,
                          cycles = 5,
-                         scale = NULL, 
-                         shift = NULL, 
-                         df = 4, 
+                         scale = NULL,
+                         shift = NULL,
+                         df = 4,
                          center = TRUE,
                          subset = NULL,
-                         family = "gaussian",
-                         criterion = c("pvalue", "aic", "bic"),
-                         select = 0.05, 
+                         family = gaussian(),
+                         criterion = NULL,
+                         select = 0.05,
                          alpha = 0.05,
                          keep = NULL,
                          xorder = c("ascending", "descending", "original"),
                          powers = NULL,
-                         ties = c("breslow", "efron", "exact"),
+                         ties = c("efron", "breslow"),
                          strata = NULL,
-                         nocenter = NULL,
-                         acdx = NULL,
+                         nocenter = c(-1, 0, 1),
+                         acd_vars = NULL,
                          ftest = FALSE,
-                         control = NULL, 
-                         zero = NULL,
-                         catzero = NULL,
-                         spike = NULL,
-                         min_prop = 0.05,
-                         max_prop = 0.95,
+                         control = NULL,
+                         zero_vars = NULL,
+                         catzero_vars = NULL,
+                         spike_vars = NULL,
+                         min_saz_prop = 0.10,
+                         force_max_fp_vars = NULL,
+                         term_groups = NULL,
                          verbose = TRUE,
-                         ...) {
-  
-  # this function prepares everything for fitting the actual mfp2 model
-  
+                         fitter = c("base", "fastglm"),
+                         id = NULL,
+                         waves = NULL,
+                         acdx = NULL,
+                         ...
+) {
+
+  # mfp2.default() does not fit the model itself. It validates and normalizes
+  # every argument, derives shift/scale/df settings and zero/catzero/spike/acd
+  # flags for each predictor, transforms `x` accordingly, and then delegates
+  # the actual multivariable FP selection and fitting to fit_mfp().
+
+  # Step 1: Capture the call and rename public-facing arguments -----------------
   cl <- match.call()
-  
-  # match arguments ------------------------------------------------------------
-  criterion <- match.arg(criterion)
-  xorder <- match.arg(xorder)
-  #family <- match.arg(family)
-  ties <- match.arg(ties)
-  
-  # assertions -----------------------------------------------------------------
-  # ----Family
-  # Allowed families
-  allowed_families <- c("gaussian", "binomial", "poisson", "cox")
-  
-  # TODO: Extend to Gamma and inverse.gaussian families that glm.fit allow 
-  # computation of AIC. Standard families (gaussian, binomial, poisson, Gamma,
-  # inverse.gaussian) have aic methods, so AIC is defined. Quasi-families 
-  # (quasi, quasibinomial, quasipoisson) do not have a true likelihood, so 
-  # glm can't compute AIC meaningfully. Attempting AIC(fit_quasi) will return 
-  # NA or a warning.
-  
-  if (is.character(family)) {
-    if (!family %in% allowed_families) {
-      stop(
-        sprintf("! Invalid family: '%s'. Allowed families are: %s",
-                family, paste(allowed_families, collapse = ", ")),
-        call. = FALSE
-      )
-    }
-    
-    family_string <- family
-    
-    if (family != "cox") {
-      # Convert to GLM family object
-      family <- tryCatch(
-        get(family, mode = "function", envir = parent.frame())(),
-        error = function(e) {
-          stop(
-            sprintf("! Cannot construct family object from character '%s'. %s", 
-                    family, conditionMessage(e)),
-            call. = FALSE
-          )
-        }
-      )
-    }
-    
-  } else if (is.function(family)) {
-    # Get the function name for better error messages
-    family_name <- deparse(substitute(family))
-    
-    # Try to call the function to get family object
-    family_obj <- tryCatch(
-      family(), 
-      error = function(e) {
-        stop(
-          sprintf("! Could not create a family object from the provided function '%s'. Error: %s", 
-                  family_name, conditionMessage(e)),
-          call. = FALSE
-        )
-      }
+
+  # Arguments that match no formal argument are not used. Warn so that a
+  # misspelled argument name (for example `selct = 1`) is not silently ignored.
+  mfp2_warn_unused_dots(list(...), "mfp2()")
+
+
+  # Display the public generic name rather than the S3 method name.
+  cl[[1L]] <- quote(mfp2)
+
+  # Normalize the deprecated public spelling at the API boundary. Internal
+  # ACD code continues to use `acdx` as its named logical-vector representation.
+  acd_vars_supplied <- !missing(acd_vars)
+  acdx_supplied <- !missing(acdx)
+
+  if (acd_vars_supplied && acdx_supplied) {
+    stop(
+      "`acd_vars` and its deprecated alias `acdx` cannot both be supplied.",
+      call. = FALSE
     )
-    
-    if (!inherits(family_obj, "family")) {
-      stop(
-        sprintf("! The provided function '%s' did not return a valid GLM family object.", 
-                family_name),
-        call. = FALSE
-      )
-    }
-    
-    family <- family_obj
-    family_string <- family$family
-    
-    if (family_string == "cox") {
-      stop("! 'cox' must be specified as a character string, not as a function.", 
-           call. = FALSE)
-    }
-    
-    # Check if family is allowed (for function input)
-    if (!family_string %in% allowed_families) {
-      stop(
-        sprintf("! Invalid family: '%s'. Allowed families are: %s",
-                family_string, paste(allowed_families, collapse = ", ")), 
-        call. = FALSE
-      )
-    }
-    
-  } else if (inherits(family, "family")) {
-    # Family object directly
-    family_string <- family$family
-    
-    if (family_string == "cox") {
-      stop("! 'cox' must be specified as a character string, not as a family object.", 
-           call. = FALSE)
-    }
-    
-    # Check if family is allowed (for family object input)
-    if (!family_string %in% allowed_families) {
-      stop(
-        sprintf("! Invalid family: '%s'. Allowed families are: %s",
-                family_string, paste(allowed_families, collapse = ", ")), 
-        call. = FALSE
-      )
-    }
-    
-  } else {
-    stop("! The 'family' argument must be a character string, a function, or a GLM family object.", 
-         call. = FALSE)
   }
-  
-  # assert that x is a matrix
+
+  if (acdx_supplied) {
+    .Deprecated(
+      new = "acd_vars",
+      package = "mfp2",
+      old = "acdx",
+      msg = "`acdx` is deprecated; use `acd_vars` instead."
+    )
+    acd_vars <- acdx
+  }
+
+  acdx <- acd_vars
+
+  # Public interface:
+  # zero_vars, catzero_vars, spike_vars and force_max_fp_vars are character
+  # vectors of variable names.
+  #
+  # Internal representation:
+  # The existing internal names are retained because they are converted below
+  # to named logical vectors over the columns of x.
+  zero <- zero_vars
+  catzero <- catzero_vars
+  spike <- spike_vars
+  force_max_fp <- force_max_fp_vars
+
+  # Step 2: Resolve multiple-choice arguments to their single selected value ----
+  xorder    <- match.arg(xorder)
+  ties      <- resolve_mfp_ties(ties)
+  fitter <- match.arg(fitter)
+
+  # Step 3: Validate family and the input matrix `x` ----------------------------
+  family_info <- normalize_family_argument(
+    family,
+    family_arg = deparse(substitute(family))
+  )
+
+  family        <- family_info$family
+  family_string <- family_info$family_string
+  fitter <- resolve_fitter(fitter, family_string)
+
+  # The default criterion depends on the family: AIC (QICu) for GEE models and
+  # p-value selection otherwise. An explicitly supplied criterion always wins.
+  criterion <- resolve_mfp_criterion(criterion, family_string)
+
+  # `x` must be a plain numeric matrix: mfp2.default() does not expand factors,
+  # so any categorical predictors must already be coded as dummy columns.
   if (!is.matrix(x)) {
     stop("! x must be a matrix", call. = FALSE)
   }
-  
-  # assert that x must not contain character values
+
+  # character values would silently coerce during FP transformation, so reject
+  # them explicitly and point the user to dummy-coding instead.
   if (any(is.character(x))) {
     stop("! x contains characters values.\n",
-         "i Please convert categorical variables to dummy variables.", 
+         "i Please convert categorical variables to dummy variables.",
          call. = FALSE)
   }
-  
-  # check dimension of x
+
+  # Formula dispatch can attach a private, full-row preprocessing matrix to
+  # the subset-specific fitting design. Extract it immediately and work with
+  # two explicit matrices thereafter:
+  #   * x: the design used for validation, selection, and fitting;
+  #   * preprocess_x: the source for automatic full-data preprocessing choices.
+  # Direct matrix calls carry no attribute, so both names refer to the same x.
+  formula_generated_settings <- !is.null(
+    attr(x, "mfp2_preprocess_x", exact = TRUE)
+  )
+  center_method <- attr(x, "mfp2_center_method", exact = TRUE)
+  attr(x, "mfp2_center_method") <- NULL
+  preprocessing <- extract_preprocess_matrix(x)
+  x <- preprocessing$x
+  preprocess_x <- preprocessing$preprocess_x
+  x_input <- x
+
+  # nobs = number of observations (rows), nvars = number of predictors (columns).
+  # These two counts are used throughout the rest of the function to validate
+  # the length of vector arguments such as df, select, alpha, shift, scale.
   np <- dim(x)
   nobs <- as.integer(np[1])
   nvars <- as.integer(np[2])
-  
-  # assert that x is a matrix
+
+  # dim() returns NULL for objects without dimensions (e.g. a plain vector),
+  # which would otherwise make nobs/nvars silently become NA above.
   if (is.null(np)) {
-      stop("! The dimensions of x must not be missing.\n",
-           "i Please make sure that x is a matrix with at least one row and column.", 
-           call. = FALSE)
-  }
-  
-  # assert that x must have column names
-  vnames <- colnames(x)
-  if (is.null(vnames)) {
-    stop("! The column names of x must not be missing.\n",
-         "i Please set column names for x.",
+    stop("! The dimensions of x must not be missing.\n",
+         "i Please make sure that x is a matrix with at least one row and column.",
          call. = FALSE)
   }
-  
-  # assert that x has no missing data
+
+  # Predictor names are used throughout MFP to match variable-specific
+  # settings and to construct the single final formula-based refit. Validate
+  # them once here, outside every candidate-fitting loop. Backticks are rejected
+  # because the existing formula builder uses backticks to quote non-syntactic
+  # user names; spaces, hyphens, and other non-syntactic names remain valid.
+  vnames <- colnames(x)
+  validate_predictor_names(vnames, object = "`x`")
+  center_method <- normalize_center_method(center_method, vnames)
+
+  # Build the complete conceptual-term lookup once. This is a singleton map
+  # when term_groups = NULL, preserving the historical one-column-per-variable
+  # behavior exactly.
+  term_to_columns <- normalize_term_groups(vnames, term_groups)
+  column_to_term <- stats::setNames(
+    rep(names(term_to_columns), lengths(term_to_columns)),
+    unlist(term_to_columns, use.names = FALSE)
+  )
+
+  if (!is.numeric(x)) {
+    stop(
+      "! `x` must be a numeric matrix.\n",
+      sprintf("i Current storage mode is: %s.", typeof(x)),
+      call. = FALSE
+    )
+  }
+
+  # missing data is not supported: FP transformations and the backfitting
+  # algorithm assume a complete design matrix. Users must remove/impute NAs
+  # beforehand rather than relying on implicit row deletion.
   if (anyNA(x)) {
-    stop("! x must not contain any NA (missing data).\n",   
-         "i Please remove any missing data before passing x to this function.")
+    stop("! x must not contain any NA (missing data).\n",
+         "i Please remove any missing data before passing x to this function.",
+         call. = FALSE)
   }
-  
- # assert that subset must be a vector and does not contain negative values
+
+  # Inf/-Inf would silently break shift/scale estimation and FP power fitting.
+  if (any(!is.finite(x))) {
+    stop(
+      "! `x` must contain only finite, non-missing numeric values.",
+      call. = FALSE
+    )
+  }
+
+  # Step 4: Validate and normalize `subset` --------------------------------------
+  # `subset` may be supplied as either a logical mask (one value per row of x)
+  # or a vector of row indices; both forms are normalized to integer indices.
+  # Note: subsetting is applied later, after shift/scale estimation (see the
+  # "Details on subset" documentation section), not at this validation step.
   if (!is.null(subset)) {
-    if (!is.vector(subset))
-      stop(sprintf("! Subset must not be of class %s.\n", 
-                   paste0(class(subset), collapse = ", ")), 
-           "i Please convert subset to a vector.", 
-           call. = FALSE)
-    
-    if (any(subset < 0))
-      stop("! Subset must not contain negative values.", call. = FALSE)
-  }  
-  
-  # assert that weights are positive and of appropriate dimensions
-  if (!is.null(weights)) {
-    if (any(weights < 0)) {
-        stop("! Weights must not be negative.", call. = FALSE)
+    if (is.logical(subset)) {
+      if (length(subset) != nobs || anyNA(subset)) {
+        stop(
+          "! Logical subset must have length equal to the number of observations in x and contain no NA.",
+          call. = FALSE
+        )
+      }
+      subset <- which(subset)
+    } else if (is.numeric(subset)) {
+      if (
+        anyNA(subset) ||
+        any(!is.finite(subset)) ||
+        any(subset != as.integer(subset)) ||
+        any(subset < 1L) ||
+        any(subset > nobs)
+      ) {
+        stop(
+          "! Numeric subset must contain valid positive row indices within the range of x.",
+          call. = FALSE
+        )
+      }
+      subset <- as.integer(subset)
+    } else {
+      stop(
+        "! subset must be either a logical vector or a numeric/integer vector of row indices.",
+        call. = FALSE
+      )
     }
-    if (length(weights) != nobs) {
-      stop("! The number of observations (rows in x) and weights must match.\n", 
-           sprintf("i The number of rows in x is %d, but the number of elements in weights is %d.", 
-                   nobs, length(weights)), 
-           call. = FALSE)
+
+    if (anyDuplicated(subset)) {
+      stop(
+        "! `subset` must not contain duplicated row indices.",
+        call. = FALSE
+      )
+    }
+
+    if (length(subset) == 0L) {
+      stop("! `subset` selects no observations.", call. = FALSE)
     }
   }
-  
-  # assert that the length of offset must be equal to the number of observations
+
+  # Step 5: Validate `weights` and `offset` --------------------------------------
+  # Use one strict observation-weight contract for every family. Zero weights
+  # are rejected even if a fitter would otherwise accept them because they can
+  # make likelihood-based MFP comparisons undefined (for example, Gaussian
+  # glm() can return an infinite AIC/log-likelihood with zero prior weights).
+  validate_model_weights(
+    weights = weights,
+    nobs = nobs
+  )
+
+  # Ordinary families use one offset per row. Multinomial models accept an
+  # n x C class-offset matrix or n x (C - 1) reference-logit matrix.
   if (!is.null(offset)) {
-      if (length(offset) != nobs) {
-          stop("! The number of observations (rows in x) and offset must match.\n", 
-               sprintf("i The number of rows in x is %d, but the number of elements in offset is %d.", 
-                       nobs, length(offset)), call. = FALSE)
-      }
-  }
-  
-  # assert that alpha must be between 0 and 1
-  if (any(alpha > 1) || any(alpha < 0)) {
-      stop("! alpha must not be < 0 or > 1.", call. = FALSE)
-  }
-  
-  # assert length of alpha 
-  if (length(alpha) != 1 && length(alpha) != nvars) {
-      stop("! alpha must be a single number, or the number of variables (columns in x) and alpha must match.\n", 
-           sprintf("i The number of variables in x is %d, but the number of elements in alpha is %d.", 
-                   nvars, length(alpha)), call. = FALSE)
-  }
-  
-  # assert that select must be between 0 and 1
-  if (any(select > 1) || any(select < 0)) {
-      stop("! select must not be < 0 or > 1.", call. = FALSE)
-  }
-  
-  # assert length of select 
-  if (length(select) != 1 && length(select) != nvars) {
-      stop("! select must be a single number, or the number of variables (columns in x) and select must match.\n", 
-           sprintf("i The number of variables in x is %d, but the number of elements in select is %d.", 
-                   nvars, length(select)), call. = FALSE)
-  }
-  
-  # assert that keep is a subset of x
-  if (!is.null(keep)) {
-      if (!all(keep %in% vnames)) {
-          warning("i The set of variables named in keep is not a subset of the variables in x.\n", 
-                  "i mfp2() continues with the intersection of keep and colnames(x).", 
-                  call. = FALSE)
-      }
-  }
-  
-  # assert that zero is a subset of x
-  if (!is.null(zero)) {
-    if (!all(zero %in% vnames)) {
-      warning("i The set of variables named in 'zero' is not a subset of the variables in x.\n", 
-              "i mfp2() continues with the intersection of zero and colnames(x).", 
-              call. = FALSE)
+    if (!is.numeric(offset)) {
+      stop(
+        "! `offset` must be numeric.\n",
+        sprintf("i Current type is: %s.", typeof(offset)),
+        call. = FALSE
+      )
     }
-  }
-  
-  # assert that catzero is a subset of x
-  if (!is.null(catzero)) {
-    if (!all(catzero %in% vnames)) {
-      warning("i The set of variables named in 'catzero' is not a subset of the variables in x.\n", 
-              "i mfp2() continues with the intersection of catzero and colnames(x).", 
-              call. = FALSE)
+
+    offset_rows <- if (is.matrix(offset)) nrow(offset) else length(offset)
+    if (offset_rows != nobs) {
+      stop(
+        "! The number of observations in x and offset must match.\n",
+        sprintf(
+          "i The number of rows in x is %d, but the offset has %d observation rows.",
+          nobs, offset_rows
+        ),
+        call. = FALSE
+      )
     }
-  }
-  
-  # Check for intersection between zero and catzero variables
-  if (!is.null(zero) && !is.null(catzero)) {
-    overlap <- intersect(zero, catzero)
-    if (length(overlap) > 0) {
-      stop(sprintf("The following variable(s) are specified in both `zero` and `catzero`: %s. Please use only one of the two options per variable.", 
-                   paste(overlap, collapse = ", ")))
+
+    if (identical(family_string, "multinomial")) {
+      c_classes <- mfp2_multinomial_n_classes(y)
+      if (!is.matrix(offset) || !ncol(offset) %in% c(c_classes - 1L, c_classes)) {
+        stop(
+          "! Multinomial `offset` must be an n x C class matrix or an n x (C - 1) reference-logit matrix.",
+          call. = FALSE
+        )
+      }
+    } else if (is.matrix(offset)) {
+      stop("! `offset` must be a numeric vector for this family.", call. = FALSE)
     }
-  }
-  
-  # assert shift vector is of correct dimension
-  if (!is.null(shift)) {
-      if (length(shift) != 1 && length(shift) != nvars) {
-          stop("! shift must either be NULL, a single number, or the number of variables (columns in x) and shift must match.\n", 
-               sprintf("i The number of variables in x is %d, but the number of elements in shift is %d.", 
-                       nvars, length(shift)), call. = FALSE)
-      }
-  }
-  
-  # assert scale vector is of correct dimension
-  if (!is.null(scale)) {
-      if (length(scale) != 1 && length(scale) != nvars) {
-          stop("! scale must either be NULL, a single number, or the number of variables (columns in x) and scale must match.\n", 
-               sprintf("i The number of variables in x is %d, but the number of elements in shift is %d.", 
-                       nvars, length(scale)), call. = FALSE)
-      }
-  }
-  
-  # assert center vector is of correct dimension
-  if (length(center) != 1) {
-      if (length(center) != nvars) {
-          stop("! center must either be of length 1, or the number of variables (columns in x) and center must match.\n", 
-               sprintf("i The number of variables in x is %d, but the number of elements in center is %d.", 
-                       nvars, length(center)), call. = FALSE)
-      }
-  }
-  
-  # assert acdx is a subset of x
-  if (!is.null(acdx)) {
-      if (!all(acdx %in% vnames)) {
-          warning("i The set of variables named in acdx is not a subset of the variables in x.\n", 
-                  "i mfp2() continues with the intersection of acdx and colnames(x).", 
-                  call. = FALSE
-                  )
-      }
-  }
-  
-  # assert spike is a subset of x
-  if (!is.null(spike)) {
-    if (!all(spike %in% vnames)) {
-      warning("i The set of variables named in 'spike' is not a subset of the variables in x.\n", 
-              "i mfp2() continues with the intersection of spike and colnames(x).", 
-              call. = FALSE
+
+    if (anyNA(offset) || any(!is.finite(offset))) {
+      stop(
+        "! `offset` must contain only finite, non-missing values.",
+        call. = FALSE
       )
     }
   }
-  
-  # assert df is positive
-  if (any(df <= 0)) {
-      stop("! df must not be 0 or negative.\n", 
-           "i All df must be either 1 (linear) or 2m, where m is the degree of FP.", call. = FALSE)
-  }
-  
-  if (length(df) == 1) {
-      # assert df is 1 or even 
-      if (df != 1 && df %% 2 != 0) {
-          stop("! Any df > 1 must not be odd.\n", 
-               sprintf("i df = %d was passed, but df must be either 1 (linear) or 2m, where m is the degree of FP.", 
-                       df), call. = FALSE)
-      } 
-  } else {
-      # assert length of df
-      if (length(df) != nvars) {
-          stop("! df must be a single number, or the number of variables (columns in x) and df must match.\n", 
-               sprintf("i The number of variables in x is %d, but the number of elements in df is %d.", 
-                       nvars, length(df)), call. = FALSE)
-      }
-      # assert all df are 1 or even 
-      if (any(df != 1 & df %% 2 != 0)) {
-          stop("! Any df > 1 must not be odd.\n", 
-               sprintf("i All df must be either 1 (linear) or 2m, where m is the degree of FP.", 
-                       df))
-      }
-  }
-  
-  # assert ftest and family are compatible
-  if (ftest && family_string != "gaussian") {
-      warning(sprintf("i F-test not suitable for family = %s.\n", family_string),
-              "i mfp2() reverts to use Chi-square instead.")
-  }
-  
-  if (family_string == "cox") {
-      # assert y is a Surv object
-      if (!survival::is.Surv(y)) {
-          stop("! Response y must be a survival::Surv object.")
-      }
-      
-      # assert dimensions of y 
-      if (nrow(y) != nobs) {
-          stop("! Number of observations in y and x must match.", 
-               sprintf("i The number of observations in y is %d, but the number of observations in x is %d.", 
-                       nrow(y), nobs))
-      }
-      
-      # assert right censoring (other censoring types are not implemented yet)
-      type <- attr(y, "type")
-      if (type != "right") {
-          stop(sprintf("! Type of censoring must not be %s.", type), 
-               "i Currently only right censoring is supported by mfp2().")
-      }
-      
-      # convert factor to numeric
-      if (!is.null(strata) && is.factor(strata)) {
-        strata <- as.numeric(strata)
-      }
-      
-      if (!is.null(strata)) {
-          # assert stratification factors are of correct length
-        strata_len <- ifelse(is.vector(strata), length(strata), nrow(strata))
-        
-          if (strata_len != nrow(x)) {
-              stop("! The length of stratification factor(s) and the number of observations in x must match.\n")
-          }
-      }
-  } else {
-      # assert type of y
-      if (is.matrix(y) || is.data.frame(y)) {
-          stop(sprintf("! Outcome y must not be of class %s.", 
-                       paste0(class(y), collapse = ", ")), 
-               "i Please convert y to a vector.", call. = FALSE)
-      }
-      if (length(y) != nobs) {
-          stop("! Number of observations in y and x must match.", 
-               sprintf("i The number of observations in y is %d, but the number of observations in x is %d.", 
-                       length(y), nobs))
-      }
-  }
-  
-  # validate spike proportions
-  if (!is.numeric(min_prop) || length(min_prop) != 1 || min_prop < 0 || min_prop > 1) {
-    stop("! min_prop must be a single numeric value between 0 and 1.", call. = FALSE)
-  }
-  
-  if (!is.numeric(max_prop) || length(max_prop) != 1 || max_prop < 0 || max_prop > 1) {
-    stop("! max_prop must be a single numeric value between 0 and 1.", call. = FALSE)
-  }
-  
-  if (min_prop > max_prop) {
-    stop("! min_prop cannot be greater than max_prop.", call. = FALSE)
-  }
-  
-  # set defaults ---------------------------------------------------------------
-  # Assert that powers must be NULL or list when provided
-  if (!is.null(powers) && !is.list(powers)) {
-    stop("Powers must be a list", call. = FALSE)
-  }
-  
-  # set defaults ---------------------------------------------------------------
-    # default FP powers proposed by Royston and Altman (1994)
-    powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
-    power_list <- setNames(replicate(nvars, powx, simplify = FALSE), vnames)
-    
-    # deal with user supplied powers
-    if (!is.null(powers)) {
-      if (length(powers) != sum(names(powers) != "", na.rm = TRUE))
-         stop(" All the powers supplied in the argument must have names",
+
+  # Step 6: Validate scalar and per-predictor vector options --------------------
+
+  # cycles controls the maximum number of MFP backfitting cycles.
+  # It must be a positive integer-like scalar.
+  validate_positive_integer_scalar(cycles, "cycles")
+  cycles <- as.integer(cycles)
+
+  # These switches are scalar logical flags.
+  validate_logical_vector(verbose, "verbose", allowed_lengths = 1L)
+  validate_logical_vector(ftest, "ftest", allowed_lengths = 1L)
+
+  # alpha and select accept an unnamed global scalar or named partial
+  # overrides. Omitted named entries use the public defaults and all matching is
+  # by column name rather than by position.
+  alpha_setting <- normalize_named_override_setting(
+    value = alpha,
+    column_names = vnames,
+    default = 0.05,
+    argument_name = "alpha"
+  )
+  alpha <- alpha_setting$value
+
+  select_setting <- normalize_named_override_setting(
+    value = select,
+    column_names = vnames,
+    default = 0.05,
+    argument_name = "select"
+  )
+  select <- select_setting$value
+
+  validate_probability_vector(alpha, "alpha", nvars)
+  validate_probability_vector(select, "select", nvars)
+
+  # center follows the same matrix-interface convention as df/select/alpha:
+  # an unnamed scalar is global, while named partial vectors are matched to
+  # colnames(x) and omitted columns retain the public default (TRUE).
+  center <- normalize_named_logical_setting(
+    value = center,
+    column_names = vnames,
+    default = TRUE,
+    argument_name = "center"
+  )
+
+  # Direct matrix users may supply NULL, an unnamed global scalar, or named
+  # per-column settings. Named shift and scale vectors may be partial;
+  # unspecified entries remain NA so the existing preprocessing step estimates
+  # them automatically. Formula methods may also use NA in internally
+  # constructed setting vectors.
+  shift <- normalize_named_numeric_setting(
+    value = shift,
+    column_names = vnames,
+    argument_name = "shift",
+    allow_null = TRUE,
+    scalar_recycle = TRUE,
+    strictly_positive = FALSE,
+    allow_na = formula_generated_settings,
+    allow_partial_named = TRUE
+  )
+  scale <- normalize_named_numeric_setting(
+    value = scale,
+    column_names = vnames,
+    argument_name = "scale",
+    allow_null = TRUE,
+    scalar_recycle = TRUE,
+    strictly_positive = TRUE,
+    allow_na = formula_generated_settings,
+    allow_partial_named = TRUE
+  )
+  scale <- expand_scale_for_mapped_terms(
+    scale = scale,
+    vnames = vnames,
+    term_to_columns = term_to_columns,
+    automatic = is.na(scale)
+  )
+
+  # Step 7: Validate variable-name arguments --------------------------------------
+  # These arguments define the model specification. Unknown names are treated as
+  # errors because silently dropping them can hide spelling mistakes, e.g.
+  # zero_vars = "expsoure" instead of "exposure".
+
+  if (!is.null(keep)) {
+    if (!is.character(keep) || anyNA(keep) || any(!nzchar(keep))) {
+      stop("! `keep` must be a character vector without missing or empty names.",
            call. = FALSE)
-    
-    # check the names of supplied powers
-    dd <- which(!names(powers) %in% vnames)
-    if (length(dd) != 0)
-      stop(" The names of all powers must be in the column names of x.\n",
-           sprintf("i This applies to the following powers: %s.", 
-                   paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
-    
-    if (!all(sapply(powers, is.numeric)))
-      stop("All elements of powers must be numeric", call. = FALSE)
-    
-    # sort powers
-    powers <- lapply(powers, function(v) sort(v))
-    
-    # assert that the number of powers should be at least 2
-    pow_length <- sapply(powers, function(v) length(v))
-    pow_length_one <- which(pow_length == 1)
-    if (length(pow_length_one) != 0)
-      stop(" The number of powers for each variable must be at least two.\n",
-           sprintf("i This applies to the following variables: %s.", 
-                   paste0(names(pow_length_one), collapse = ", ")), call. = FALSE)
-    
-    
-    # modify the default powers, some variables assigned default powers
-    power_list <- modifyList(power_list, Filter(Negate(is.null), powers))
-    
+    }
+    unknown_keep <- setdiff(keep, unique(c(vnames, names(term_to_columns))))
+    if (length(unknown_keep) > 0L) {
+      stop(
+        sprintf("! Unknown variable(s) in keep: %s.",
+                paste(unknown_keep, collapse = ", ")),
+        call. = FALSE
+      )
+    }
   }
-  
-  # Default weights and offset
+
+  validate_variable_names(zero, "zero_vars", vnames)
+  validate_variable_names(catzero, "catzero_vars", vnames)
+  validate_variable_names(acdx, "acd_vars", vnames)
+  validate_variable_names(spike, "spike_vars", vnames)
+  validate_variable_names(force_max_fp,"force_max_fp_vars", vnames)
+
+  # Enforce the exact-zero domain on the original, unshifted preprocessing
+  # values before any option cascade, SAZ eligibility check, or shift/scale
+  # calculation. A variable requested through any of the three options must be
+  # nonnegative even if a later eligibility rule would otherwise reset it.
+  validate_zero_option_covariates(
+    x = preprocess_x,
+    variables = unique(c(zero, catzero, spike))
+  )
+
+  # Step 8: Validate `df` ---------------------------------------------------------
+  # df accepts an unnamed global scalar or named partial overrides. Ordinary
+  # omitted columns use df = 4; explicitly mapped design blocks use their
+  # structural linear default df = 1 unless the caller overrides them.
+  df_fallback <- expand_scalar_df_for_mapped_terms(
+    df = 4L,
+    vnames = vnames,
+    term_to_columns = term_to_columns
+  )
+  df_setting <- normalize_named_override_setting(
+    value = df,
+    column_names = vnames,
+    default = df_fallback,
+    argument_name = "df"
+  )
+  df <- df_setting$value
+  df_supplied <- df_setting$supplied
+  df_global_scalar <- df_setting$global_scalar
+  df_scalar_value <- if (df_global_scalar && length(df) > 0L) {
+    unname(df[[1L]])
+  } else {
+    NULL
+  }
+
+  # df must translate into a valid FP degree: 1 (linear) or an even positive
+  # integer (2*degree) 2, 4, 6, ... (representing FP1, FP2, FP3, ...).
+  if (anyNA(df) || any(!is.finite(df))) {
+    stop(
+      "! `df` must contain only finite, non-missing values.",
+      call. = FALSE
+    )
+  }
+
+  if (any(df != as.integer(df))) {
+    stop(
+      "! `df` must contain integer values.\n",
+      "i Valid values are 1 for linear terms, or even positive integers 2, 4, 6, ... for fractional polynomials.",
+      call. = FALSE
+    )
+  }
+
+  if (any(df <= 0)) {
+    stop(
+      "! `df` must contain only positive values.\n",
+      "i Valid values are 1 for linear terms, or even positive integers 2, 4, 6, ... for fractional polynomials.",
+      call. = FALSE
+    )
+  }
+
+  if (any(df != 1 & df %% 2 != 0)) {
+    stop(
+      "! Any `df` value greater than 1 must be even.\n",
+      "i Valid values are 1 for linear terms, or even positive integers 2, 4, 6, ... for fractional polynomials.",
+      call. = FALSE
+    )
+  }
+
+  # Step 9: Validate the response `y` and family-specific auxiliary inputs -------
+
+  # The F-test correction for small-sample normal error models only applies to
+  # Gaussian models; silently revert to the Chi-square test for other families.
+  if (ftest && family_string != "gaussian") {
+    warning(
+      sprintf("i F-test not suitable for family = %s.\n", family_string),
+      "i mfp2() reverts to use Chi-square instead.",
+      call. = FALSE
+    )
+    ftest <- FALSE
+  }
+
+  # Validate response y ----------------------------------------------------------
+  # Keep all family-specific response validation centralized in family.R.
+  # This avoids drift between mfp2.default(), mfpi.default(), and future methods.
+  # GEE validates the response against its inner GLM response family; every
+  # other family validates against its own canonical name.
+  validate_family_response(
+    y = y,
+    family_string = if (identical(family_string, "gee")) {
+      family$response_family$family
+    } else {
+      family_string
+    },
+    nobs = nobs
+  )
+
+  # Validate survival-model auxiliary inputs -----------------------------------
+  # validate_family_response() checks the response itself, but strata is an
+  # auxiliary argument and therefore still needs to be checked here. For Cox it
+  # defines baseline-hazard strata, for survreg it defines scale strata, and for
+  # Fine--Gray it defines censoring-distribution strata.
+  if (mfp2_family_is_survival(family_string) && !is.null(strata)) {
+    strata_len <- if (is.vector(strata) || is.factor(strata)) {
+      length(strata)
+    } else {
+      NROW(strata)
+    }
+
+    if (strata_len != nobs) {
+      stop(
+        "! The length of stratification factor(s) and the number of observations in x must match.\n",
+        sprintf(
+          "i The length of strata is %d, but the number of observations in x is %d.",
+          strata_len, nobs
+        ),
+        call. = FALSE
+      )
+    }
+
+    if (anyNA(strata)) {
+      stop(
+        "! `strata` must not contain missing values.",
+        call. = FALSE
+      )
+    }
+  }
+  # `id` is a finegray and GEE-only auxiliary parameter
+  if (!is.null(id)) {
+    if (!family_string %in% c("finegray", "gee")) {
+      stop(
+        "! `id` is only used with `family = finegray_family()` or `family = gee_family()`.",
+        call. = FALSE
+      )
+    }
+    if (!is.atomic(id) || length(id) != nobs || anyNA(id) ||
+        is.matrix(id) || !is.null(dim(id))) {
+      stop(
+        "! `id` must be an atomic vector or factor with one non-missing value per observation.",
+        call. = FALSE
+      )
+    }
+  } else if (identical(family_string, "gee")) {
+    stop(
+      "! `id` is required for `family = gee_family()`: supply a cluster ",
+      "identifier with one value per observation.",
+      call. = FALSE
+    )
+  }
+
+  # `waves` is a GEE-only auxiliary aligned per observation. Full structural
+  # validation (integer-like, unique within cluster) happens in
+  # prepare_gee_family(); here only the shape and family are checked.
+  if (!is.null(waves)) {
+    if (!identical(family_string, "gee")) {
+      stop("! `waves` is only used with `family = gee_family()`.", call. = FALSE)
+    }
+    if (!is.atomic(waves) || length(waves) != nobs || anyNA(waves) ||
+        is.matrix(waves) || !is.null(dim(waves))) {
+      stop(
+        "! `waves` must be an atomic vector with one non-missing value per observation.",
+        call. = FALSE
+      )
+    }
+  }
+
+  # Step 10: Validate spike-at-zero proportion and the candidate power list -----
+  # min_saz_prop is the minimum share of observations required in
+  # both the zero component and the positive component for a variable
+  # requested via spike_vars to remain SAZ-eligible (see resolve_saz_eligibility()
+  # below).
+  if (!is.numeric(min_saz_prop) ||
+      length(min_saz_prop) != 1L ||
+      anyNA(min_saz_prop) ||
+      !is.finite(min_saz_prop) ||
+      min_saz_prop <= 0 ||
+      min_saz_prop >= 0.5) {
+    stop(
+      "! `min_saz_prop` must be a single finite numeric value in the open interval (0, 0.5).",
+      call. = FALSE
+    )
+  }
+
+  # Validate and build powers list ----------------------------------------------
+  # validate_fp_power_list() should no longer make df-dependent decisions here.
+  # At this point, df may still later change because of:
+  # ACD forcing df = 4
+  # SAZ positive-component df capping
+  # low-cardinality df resets
+  power_list <- validate_fp_power_list(
+    powers = powers,
+    vnames = vnames,
+    arg_name = "powers"
+  )
+
+  # Step 11: Apply defaults and expand scalars to per-predictor vectors ---------
+
+  # Default weights (all observations equally weighted) and offset (no offset).
+  # has_offset is recorded before defaulting so the fitted object can report
+  # whether the user actually supplied an offset (see @return: has_offset).
   if (is.null(weights)) {
     weights <- rep.int(1, nobs)
   }
-  
+
+  has_offset <- !is.null(offset)
+
   if (is.null(offset)) {
-      offset <- rep.int(0, nobs)
+    offset <- rep.int(0, nobs)
   }
-  
-  # Default select and alpha
-  if (length(select) == 1) {
-      select <- rep(select, nvars)
-  } 
-    
-  if (length(alpha) == 1) {
-      alpha <- rep(alpha, nvars)
-  } 
-  
-  # Default shift and scale values
-  if (is.null(shift)) {
-      shift <- apply(x, 2, find_shift_factor)
-  } else {
-    if (length(shift) == 1) {
-      shift <- rep(shift, nvars)
-    }
+
+  # select and alpha were normalized above to complete named vectors.
+
+  # `shift` was normalized above. NA marks a variable for automatic shift
+  # estimation further below; supplied values are already aligned by name.
+
+  # center was normalized above to a complete named vector in colnames(x) order.
+
+  # Convert the public character-vector interface into the named logical vector
+  # expected by the internal MFP fitting functions.
+  force_max_fp <- setNames(
+    vnames %in% force_max_fp,
+    vnames
+  )
+
+  # Under p-value selection, forcing the maximum FP requires both retention of
+  # the variable and acceptance of the most complex permitted FP degree.
+  if (criterion == "pvalue" && any(force_max_fp)) {
+    select[force_max_fp] <- 1
+    alpha[force_max_fp] <- 1
   }
-    
-  if (is.null(scale)) {
-      scale <- apply(x, 2, find_scale_factor)
-  } else {
-    if (length(scale) == 1) {
-      scale <- rep(scale, nvars) 
-    }
-      if (any(scale <= 0 | is.na(scale))) {
-        stop("All scale values must be positive and non-missing.", call. = FALSE)
-      }
-  }
-  
-  # Default center
-  if (length(center) == 1) {
-      center <- rep(center, nvars)    
-  }
-  
-  # Revert to Chi-square when family is not Gaussian
-  if (ftest && family_string != "gaussian") {
-      ftest <- FALSE
-  }
-  
-  # Set default control parameters for model fitting if not provided
-  if (is.null(control)) {
-    if (family_string == "cox") {
-      control = survival::coxph.control()
-    } else {
-      control = stats::glm.control()
-    }
-  }
-  
-  # Retain only those variables in `keep` that are actually present in `x`
-  keep <- intersect(keep, vnames)
-  
-  #-------Deal with zero and catzero
-  ## Ensure that only variables present in x are considered for zero and catzero
-  zero <- intersect(zero, vnames)
-  catzero <- intersect(catzero, vnames)
-  
-  # convert zero and catzero to logical vector
+
+  # Resolve defaults, validate partial lists, and check fitter compatibility
+  # once before the repeated candidate-fit path begins.
+  control <- normalize_fit_control(
+    control = control,
+    family_string = family_string,
+    fitter = fitter
+  )
+
+  # Step 12: Resolve zero / catzero / acdx / spike flags for each predictor -----
+  # Convert the character-vector user interface (zero_vars, catzero_vars, ...)
+  # into named logical vectors over all columns of x, so downstream code can
+  # simply index by variable name.
   if (is.null(zero)) {
-    # If zero is NULL, initialize as all FALSE with variable names
     zero <- setNames(rep(FALSE, nvars), vnames)
   } else {
-    # Otherwise, mark only the specified variable names as TRUE
-    zero_vars <- zero  # character vector of variable names
+    zero_input_vars <- zero
     zero <- setNames(rep(FALSE, nvars), vnames)
-    zero[vnames %in% zero_vars] <- TRUE
+    zero[vnames %in% zero_input_vars] <- TRUE
   }
-  
+
   if (is.null(catzero)) {
-    # If catzero is NULL, initialize as all FALSE with variable names
     catzero <- setNames(rep(FALSE, nvars), vnames)
   } else {
-    # Otherwise, mark only the specified variable names as TRUE
-    catzero_vars <- catzero  # character vector of variable names
+    catzero_input_vars <- catzero
     catzero <- setNames(rep(FALSE, nvars), vnames)
-    catzero[vnames %in% catzero_vars] <- TRUE
+    catzero[vnames %in% catzero_input_vars] <- TRUE
   }
-  
-  # Only check variables where zero is TRUE
+
+  # zero_vars only makes sense for variables that actually contain exact-zero
+  # values; warn and reset the flag for any variable that is already all-positive.
   if (any(zero)) {
     vars_to_check <- vnames[zero]
-    
-    # Identify variables that contain only positive values
+
     bad_vars <- vars_to_check[
-      apply(x[, vars_to_check, drop = FALSE], 2, function(col) all(col > 0, na.rm = TRUE))
+      apply(preprocess_x[, vars_to_check, drop = FALSE], 2, function(col) {
+        all(col > 0, na.rm = TRUE)
+      })
     ]
-    
+
     if (length(bad_vars) > 0) {
       warning(
-        "The following variables were marked as 'zero = TRUE' but contain only positive values. ",
+        "The following variables were marked through 'zero_vars' but contain only positive values. ",
         "Setting 'zero' and 'catzero' to FALSE for: ",
         paste(bad_vars, collapse = ", ")
       )
-      
-      # Set zero and catzero to FALSE for these variables
+
       zero[bad_vars] <- FALSE
       catzero[bad_vars] <- FALSE
     }
   }
-  
-  #-------- Deal with acdx
-  # Convert acdx to a named logical vector
+
+  # Same rationale as above, applied to catzero_vars.
+  if (any(catzero)) {
+    vars_to_check_cz <- vnames[catzero]
+    bad_vars_cz <- vars_to_check_cz[
+      apply(preprocess_x[, vars_to_check_cz, drop = FALSE], 2, function(col) {
+        all(col > 0, na.rm = TRUE)
+      })
+    ]
+    if (length(bad_vars_cz) > 0) {
+      warning(
+        "The following variables were marked through 'catzero_vars' but contain ",
+        "only positive values. Setting 'catzero' to FALSE for: ",
+        paste(bad_vars_cz, collapse = ", ")
+      )
+      catzero[bad_vars_cz] <- FALSE
+    }
+  }
+
+  # acd_vars: character vector of variable names -> named logical vector over vnames.
   if (is.null(acdx)) {
     acdx <- setNames(rep(FALSE, nvars), vnames)
   } else {
-    # Remove duplicate names and keep only those present in x
     acdx <- unique(acdx)
-    acdx <- intersect(acdx, vnames)
-    # Create named logical vector, marking variables that undergo acd transformation
+
     acdx_vec <- setNames(rep(FALSE, nvars), vnames)
     acdx_vec[acdx] <- TRUE
     acdx <- acdx_vec
   }
 
-  #-------- Deal with spike
-  # Convert spike to a named logical vector
+  # spike_vars: character vector of variable names -> named logical vector over vnames.
   if (is.null(spike)) {
     spike <- setNames(rep(FALSE, nvars), vnames)
   } else {
-    # Remove duplicate names and keep only those present in x
     spike <- unique(spike)
-    spike <- intersect(spike, vnames)
-    # Create named logical vector, marking variables that undergo spike transformation
-    spike_vec <- setNames(rep(FALSE, nvars), vnames)
-    spike_vec[spike] <- TRUE
-    spike <- spike_vec
+
+    spike_input_vars <- spike
+    spike <- setNames(rep(FALSE, nvars), vnames)
+    spike[spike_input_vars] <- TRUE
   }
-  
-  # Ensure that all spike variables also have catzero = TRUE
-  catzero[spike] <- TRUE
-  
-  # Ensure that any variable marked as 'catzero' is also set to 'zero'
-  zero[catzero] <- TRUE
-  
-  # Identify binary columns (exactly two unique values)
-  binary_vars <- apply(x, 2, function(col) length(unique(col[!is.na(col)])) == 2)
+
+  # Explicitly mapped terms are categorical design blocks, including binary
+  # factors represented by one non-identity dummy column. They cannot use any
+  # continuous-variable extension or structural-zero representation.
+  validate_grouped_term_setting(
+    term_to_columns, acdx, "acd_vars", function(v) !v, "FALSE"
+  )
+  validate_grouped_term_setting(
+    term_to_columns, zero, "zero_vars", function(v) !v, "FALSE"
+  )
+  validate_grouped_term_setting(
+    term_to_columns, catzero, "catzero_vars", function(v) !v, "FALSE"
+  )
+  validate_grouped_term_setting(
+    term_to_columns, spike, "spike_vars", function(v) !v, "FALSE"
+  )
+  validate_grouped_term_setting(
+    term_to_columns, force_max_fp, "force_max_fp_vars", function(v) !v, "FALSE"
+  )
+
+  # Resolve ACD eligibility on the actual fitting rows before scale factors are
+  # chosen. Matrix-interface subsets are applied later so that automatic
+  # preprocessing can use the full data, but ACD eligibility itself must reflect
+  # the observations entering the model. Formula-interface calls already supply
+  # the subset-specific fitting matrix in `x`.
+  if (any(acdx)) {
+    acd_eligibility_x <- if (is.null(subset)) {
+      x
+    } else {
+      x[subset, , drop = FALSE]
+    }
+    acdx <- reset_acd(acd_eligibility_x, acdx)
+  }
+
+  # Identify binary columns, exactly two unique non-missing values.
+  # Binary variables are not eligible for zero/catzero/spike handling here:
+  #   - zero handling is unnecessary because the variable is already discrete;
+  #   - catzero would create a redundant indicator;
+  #   - spike implies catzero and would therefore create the same inconsistency.
+  binary_vars <- apply(preprocess_x, 2, function(col) length(unique(col[!is.na(col)])) == 2)
   binary_names <- vnames[binary_vars]
-  
-  # Reset zero and catzero for binary variables, with warnings
+
+  # Binary predictors must remain on their original two-level scale. Automatic
+  # preprocessing already returns scale = 1 for them via find_scale_factor(),
+  # but an explicitly supplied scale would otherwise override that safeguard.
+  # Reset it here, before scaling is estimated and applied below.
+  if (length(binary_names) > 0L) {
+    scale[binary_names] <- 1
+  }
+
+  # ACD uses the shifted covariate directly, without the ordinary MFP scaling
+  # step. Reset active ACD variables to scale 1 before missing scales are
+  # estimated and before the design matrix is divided below. Requests reset by
+  # reset_acd() remain ordinary FP variables and retain their usual scale rule.
+  acd_names <- names(acdx)[acdx]
+  if (length(acd_names) > 0L) {
+    scale[acd_names] <- 1
+  }
+
+  # Reset zero, catzero, and spike for binary variables, with a single warning.
+  # This must reset spike as well as zero/catzero. Otherwise a binary variable
+  # requested through spike_vars can be left in an inconsistent transient state:
+  #   spike = TRUE, catzero = FALSE, zero = FALSE
+  # until fit_mfp() attempts to repair or further process it.
   if (length(binary_names) > 0) {
-    # Find which binary variables have zero = TRUE or catzero = TRUE
-    zero_binary <- intersect(binary_names, names(zero)[zero])
+    zero_binary    <- intersect(binary_names, names(zero)[zero])
     catzero_binary <- intersect(binary_names, names(catzero)[catzero])
-    
-    vars_to_reset <- union(zero_binary, catzero_binary)
-    
+    spike_binary   <- intersect(binary_names, names(spike)[spike])
+
+    vars_to_reset <- Reduce(union, list(zero_binary, catzero_binary, spike_binary))
+
     if (length(vars_to_reset) > 0) {
       warning(
-        "The following binary variables were marked as 'zero = TRUE' or 'catzero = TRUE' but are binary and will be reset to FALSE: ",
-        paste(vars_to_reset, collapse = ", "), call. = FALSE
+        "The following binary variables were marked through 'zero_vars', ",
+        "'catzero_vars', or 'spike_vars' but are binary and will be reset to FALSE: ",
+        paste(vars_to_reset, collapse = ", "), ".",
+        call. = FALSE
       )
-      zero[vars_to_reset] <- FALSE
+      zero[vars_to_reset]    <- FALSE
       catzero[vars_to_reset] <- FALSE
+      spike[vars_to_reset]   <- FALSE
     }
   }
-  
-  # set df ---------------------------------------------------------------------
-  if (length(df) == 1) {
-    if (df != 1) {
-      # we assign variables different df based on number of unique values
-      df.list <- assign_df(x = x, df_default = df)
+
+  # Step 13: Resolve spike-at-zero eligibility -----------------------------------
+  # This must happen before assign_df() and before shift values are chosen.
+  # A variable requested as spike-at-zero but found ineligible should revert to
+  # the user's explicit zero/catzero choices before ordinary FP preprocessing.
+  if (any(spike)) {
+    saz_flags <- resolve_saz_eligibility(
+      x                      = preprocess_x,
+      spike                  = spike,
+      catzero                = catzero,
+      zero                   = zero,
+      min_saz_prop = min_saz_prop
+    )
+
+    spike   <- saz_flags$spike
+    catzero <- saz_flags$catzero
+    zero    <- saz_flags$zero
+  }
+
+  # Step 14: Assign effective df per predictor -----------------------------------
+  # An unnamed scalar retains the historical scalar-default cardinality rules.
+  # For named inputs, explicitly supplied values retain the historical vector
+  # behavior, while omitted values filled from the package default receive the
+  # ordinary scalar-default cardinality reductions.
+  if (df_global_scalar) {
+    # A scalar df controls ordinary continuous predictors. Explicitly mapped
+    # terms are supplied fixed linear design blocks, so assign df = 1 to their
+    # raw columns before applying cardinality rules to the remaining columns.
+    df_default <- expand_scalar_df_for_mapped_terms(
+      df = df_scalar_value,
+      vnames = vnames,
+      term_to_columns = term_to_columns
+    )
+
+    if (any(df_default != 1L)) {
+      df.list <- assign_df(x = preprocess_x, df_default = df_default)
     } else {
-      df.list <- rep(df, nvars)
+      df.list <- df_default
     }
   } else {
-    # ensure that variables with <= 3 unique values have df = 1
-    nux <- apply(x, 2, function(v) length(unique(v)))
-    index <- nux <= 3
-    if (any(df[index] != 1)) {
-        warning("i For any variable with fewer than 4 unique values the df are set to 1 (linear) by mfp2().\n", 
-                sprintf("i This applies to the following variables: %s.", 
-                        paste0(vnames[index & df != 1], collapse = ", ")))
-        df[index] <- 1
+    defaulted <- !df_supplied
+    if (any(defaulted)) {
+      df_from_defaults <- assign_df(x = preprocess_x, df_default = df)
+      df[defaulted] <- df_from_defaults[defaulted]
     }
+
+    nux <- apply(preprocess_x, 2, function(v) length(unique(v)))
+    index <- nux <= 3
+
+    if (any(df[index] != 1)) {
+      warning("i For any variable with fewer than 4 unique values the df are set to 1 (linear) by mfp2().\n",
+              sprintf("i This applies to the following variables: %s.",
+                      paste0(vnames[index & df != 1], collapse = ", ")))
+      df[index] <- 1
+    }
+
     df.list <- df
   }
-  
-  # Reset shift = 0 for zero and catzero variables, since only the positive part 
-  # is transformed, so no shift is needed. Similar to variables with df = 1
-  
-  # Initialize logical vector to track variables that should have shift = 0
+
+  validate_grouped_term_setting(
+    term_to_columns,
+    stats::setNames(df.list, vnames),
+    "df",
+    function(v) v == 1,
+    "1 (linear-only)"
+  )
+
+  # Step 15: Cascade spike -> catzero -> zero, then reset shift for affected vars
+  # Compute effective zero/catzero by applying the spike -> catzero -> zero
+  # cascade. This is needed to correctly set shift = 0 for spike variables,
+  # whose structural zeros must remain at zero after shifting. The original
+  # (un-cascaded) zero, catzero, and spike vectors are passed unchanged to
+  # fit_mfp(), which saves user intent before re-applying the cascade internally.
+  effective_catzero <- catzero
+  effective_zero <- zero
+  effective_catzero[spike] <- TRUE        # spike implies catzero
+  effective_zero[effective_catzero] <- TRUE # catzero implies zero
+
+  # Reset shift = 0 for variables with effective zero or catzero status
+  # (including those implied by spike), since only the positive part is
+  # transformed and the zero group must remain at zero.
+  # Similar logic applies to variables with df = 1.
   shift_to_zero <- rep(FALSE, length(vnames))
   names(shift_to_zero) <- vnames
-  
-  # Set TRUE for variables marked TRUE in `zero` as well as catzero
-  shift_to_zero[names(zero)[zero]] <- TRUE
-  shift_to_zero[names(catzero)[catzero]] <- TRUE
-  
-  # Mark linear terms (df = 1) as well as set shift to zero
+
+  shift_to_zero[names(effective_zero)[effective_zero]] <- TRUE
+  shift_to_zero[names(effective_catzero)[effective_catzero]] <- TRUE
   shift_to_zero[vnames[df.list == 1]] <- TRUE
+
   shift[shift_to_zero] <- 0
-  
-  # data preparation -----------------------------------------------------------
-  # Apply shift transformation to the x matrix
-  x <- sweep(x, 2, shift, "+")
-  
-  # Identify variables that require fractional polynomial transformation 
-  # (where df.list not equal 1)
+
+  shift_missing <- is.na(shift)
+  if (any(shift_missing)) {
+    shift[shift_missing] <- apply(
+      preprocess_x[, shift_missing, drop = FALSE],
+      2,
+      find_shift_factor
+    )
+  }
+
+  # Step 16: Shift and scale the design matrix -----------------------------------
+  # Shift each column of x so that fractional-polynomial powers (which require
+  # positive values) can be computed; see "Details on shifting, scaling,
+  # centering" in the documentation above.
+  if (formula_generated_settings) {
+    # Formula calls may carry a full-data preprocessing matrix that differs
+    # from the fitting design (for example when `subset` is used). Shift
+    # both matrices independently so full-data preprocessing semantics are
+    # preserved exactly.
+    preprocess_x_shifted <- sweep(preprocess_x, 2, shift, "+")
+    x <- sweep(x, 2, shift, "+")
+  } else {
+    # Direct matrix calls have no separate preprocessing matrix:
+    # extract_preprocess_matrix() returns the same input matrix for both
+    # `x` and `preprocess_x`. Shift that matrix once and let the
+    # shifted-but-unscaled result serve both roles. The later scaling
+    # assignment rebinds `x` to a new matrix, so `preprocess_x_shifted`
+    # remains available for scale estimation and positivity checks.
+    # This removes one redundant O(n * p) sweep and one full temporary
+    # matrix allocation without changing the numerical preprocessing.
+    x <- sweep(x, 2, shift, "+")
+    preprocess_x_shifted <- x
+  }
+
+  # Scaling is estimated after shifting because find_scale_factor() operates on
+  # shifted values. `scale` is already validated, named, and column-aligned.
+  # Zero-handled predictors keep an automatic scale of 1: scaling would add a
+  # constant to log terms on the positive rows only, making selection depend on
+  # the arbitrary scale factor.
+  scale <- fix_zero_handled_scale(scale, effective_zero, preprocess_x_shifted)
+  scale_missing <- is.na(scale)
+
+  if (any(scale_missing)) {
+    scale[scale_missing] <- apply(
+      preprocess_x_shifted[, scale_missing, drop = FALSE],
+      2,
+      find_scale_factor
+    )
+  }
+
+  # Step 17: Verify shifted values are strictly positive where FPs are used -----
+  # Identify variables that require fractional polynomial transformation
   nonlinear_variables <- which(df.list != 1)
-  
-  # Get the corresponding names from x
   nonlinear_names <- vnames[nonlinear_variables]
-  
-  # Exclude variables that are in `zero` or `catzero`
-  all_zero_vars <- union(names(zero)[zero],  names(catzero)[catzero])
+
+  # Exclude variables that have effective zero or catzero status (including
+  # spike-implied) from the positivity check, as their zeros are intentional
+  all_zero_vars <- union(names(effective_zero)[effective_zero],
+                         names(effective_catzero)[effective_catzero])
   vars_to_check <- setdiff(nonlinear_names, all_zero_vars)
-  
-  # Proceed only if there are variables left to check
+
   if (length(vars_to_check) > 0) {
-    # Extract only the relevant columns that need the positivity check
     check_indices <- match(vars_to_check, vnames)
-    xd <- x[, check_indices, drop = FALSE]
-    
-    # Check for nonpositive values after shifting
+    xd <- preprocess_x_shifted[, check_indices, drop = FALSE]
+
     neg_cols <- which(colSums(xd <= 0, na.rm = TRUE) > 0)
-    
+
     if (length(neg_cols) > 0) {
-      # Get the names of problematic columns for user-friendly error message
       cols_with_negatives <- colnames(xd)[neg_cols]
-      
-      # Provide a clear error message with the specific columns that have issues
+
       stop(
-        "i The shifting factors are insufficient to ensure positive values for fractional polynomial transformation.\n", 
-        sprintf("i Problematic variables: %s", 
-                paste0(cols_with_negatives, collapse = ", ")), 
+        "i The shifting factors are insufficient to ensure positive values for fractional polynomial transformation.\n",
+        sprintf("i Problematic variables: %s",
+                paste0(cols_with_negatives, collapse = ", ")),
         "\ni Consider increasing the shift values for these variables.",
         call. = FALSE
       )
     }
   }
-  
-  # scale x after shifting
+
+  # Apply the (possibly estimated) scale factors, after shifting and after the
+  # positivity check above. Active ACD variables have scale 1 and therefore pass
+  # through unchanged on their shifted scale.
   x <- sweep(x, 2, scale, "/")
-  
-  # stratification for cox model
-  istrata <- strata
-  if (family_string == "cox" && !is.null(strata)) {
-    # TODO: Replace strata with interaction()
-    # survival::strata: When used outside of a coxph formula the result of the
-    # function is essentially identical to the interaction function, though the
-    # labels from strata are often more verbose.
-      istrata <- survival::strata(strata, shortlabel = TRUE)
-      # convert strata to integers as conducted by coxph
-      istrata <- as.integer(istrata)
+
+  # Step 18: Build the Cox stratification object --------------------------------
+  # Normalize all Cox strata to one factor before any candidate fit. This
+  # mirrors survival::coxph(): multiple strata variables are combined first,
+  # while a single character/numeric/logical vector is treated as categorical
+  # labels. Integer conversion is deferred to the coxph.fit() boundary.
+  strata_keep <- strata
+
+  if (mfp2_family_is_survival(family_string) && !is.null(strata_keep)) {
+    strata_keep <- normalize_cox_strata(strata_keep, nobs = nobs)
   }
 
-    # data subsetting ----------------------------------------------------------
+  id_keep <- id
+  waves_keep <- waves
+
+  # Step 19: Apply `subset`, after full-data preprocessing ----------------------
+  # Matrix calls reach this branch with their original numeric design. Before
+  # rows are removed, verify that every explicitly mapped block keeps the same
+  # estimable dimension. Unlike the formula method, this path has no factor-level
+  # or contrast recipe from which to rebuild a reduced categorical design.
   if (!is.null(subset)) {
-    # check the sample size if it is too small, likely to occur after subsetting
-    if (length(subset) < 5)
-      stop("! The length of subset is too small (<5) to fit an mfp model.", 
-           sprintf("i The number of observations is %d", length(subset)), 
-           call. = FALSE)
-    
+    validate_grouped_subset_rank(
+      x_full = x_input,
+      x_fit = x_input[subset, , drop = FALSE],
+      term_to_columns = term_to_columns
+    )
+
     x <- x[subset, , drop = FALSE]
-    y <- if (family_string != "cox") {
-      y[subset]
-    } else y[subset, , drop = FALSE]
-    
+
+    if (is.matrix(y)) {
+      y <- y[subset, , drop = FALSE]
+    } else {
+      y <- y[subset]
+    }
+
     weights <- weights[subset]
-    offset <- offset[subset]
-    istrata <- istrata[subset]
+    offset <- if (is.matrix(offset)) {
+      offset[subset, , drop = FALSE]
+    } else {
+      offset[subset]
+    }
+    if (!is.null(strata_keep)) {
+      # Keep strata aligned with the fitted rows and remove levels no longer
+      # represented after subsetting.
+      strata_keep <- droplevels(strata_keep[subset])
+    }
+    if (!is.null(id_keep)) id_keep <- id_keep[subset]
+    if (!is.null(waves_keep)) waves_keep <- waves_keep[subset]
   }
-                 
-  # fit model ------------------------------------------------------------------
-  fit <- fit_mfp(
-      x = x, y = y, 
-      weights = weights, offset = offset, cycles = cycles,
-      scale = scale, shift = shift, df = df.list, center = center, 
-      family = family, family_string = family_string, criterion = criterion, 
-      select = select, alpha = alpha, keep = keep, xorder = xorder, 
-      powers = power_list, method = ties, strata = istrata, nocenter = nocenter, 
-      acdx = acdx, ftest = ftest, 
-      control = control, zero = zero, catzero = catzero,spike = spike,
-      min_prop = min_prop, max_prop = max_prop, verbose = verbose
+
+  # geepack treats a contiguous run of equal IDs as one cluster. Group the
+  # fitted rows once for all candidate models and the retained geeglm fit.
+  # This stable order preserves within-cluster visit order when waves is absent
+  # and keeps x, response, weights, offset, id and waves aligned. It is relative
+  # to the already-subset fitted sample, not to the original full data.
+  gee_input_row_order <- NULL
+  if (identical(family_string, "gee")) {
+    gee_input_row_order <- mfp2_gee_cluster_order(id_keep)
+    if (!identical(gee_input_row_order, seq_len(NROW(y)))) {
+      x <- x[gee_input_row_order, , drop = FALSE]
+      y <- if (is.matrix(y)) {
+        y[gee_input_row_order, , drop = FALSE]
+      } else {
+        y[gee_input_row_order]
+      }
+      if (!is.null(weights)) weights <- weights[gee_input_row_order]
+      if (!is.null(offset)) offset <- offset[gee_input_row_order]
+      id_keep <- id_keep[gee_input_row_order]
+      if (!is.null(waves_keep)) waves_keep <- waves_keep[gee_input_row_order]
+    }
+  }
+
+  # Require more fitted observations than predictor columns. For matrix calls,
+  # this check runs after `subset` has been applied; formula calls already pass
+  # their subset-specific model matrix into this shared path.
+  dimx <- dim(x)
+  nrow_x <- dimx[1L]
+  ncol_x <- dimx[2L]
+  if (nrow_x <= ncol_x) {
+    stop(
+      sprintf(
+        "! The number of observations must be greater than the number of predictor columns (n = %d, p = %d).",
+        nrow_x,
+        ncol_x
+      ),
+      call. = FALSE
+    )
+  }
+
+  # Collapse raw-column options to one value per conceptual term only after all
+  # column-level preprocessing has completed. Grouped members must agree on
+  # settings that have a single term-level meaning.
+  alpha_term <- collapse_option_to_terms(
+    alpha, term_to_columns, "alpha"
   )
-  
-  # add additional information to fitted object
-  # original mfp2 call
+  select_term <- collapse_option_to_terms(
+    select, term_to_columns, "select"
+  )
+  df_term <- collapse_option_to_terms(
+    stats::setNames(df.list, vnames), term_to_columns, "df"
+  )
+  center_term <- collapse_option_to_terms(
+    stats::setNames(center, vnames), term_to_columns, "center"
+  )
+  shift_term <- collapse_option_to_terms(
+    shift, term_to_columns, "shift"
+  )
+  scale_term <- collapse_option_to_terms(
+    scale, term_to_columns, "scale"
+  )
+  acdx_term <- collapse_option_to_terms(acdx, term_to_columns, "acd_vars")
+  zero_term <- collapse_option_to_terms(zero, term_to_columns, "zero_vars")
+  catzero_term <- collapse_option_to_terms(catzero, term_to_columns, "catzero_vars")
+  spike_term <- collapse_option_to_terms(spike, term_to_columns, "spike_vars")
+  force_max_fp_term <- collapse_option_to_terms(
+    force_max_fp, term_to_columns, "force_max_fp"
+  )
+
+  powers_term <- lapply(names(term_to_columns), function(term) {
+    cols <- term_to_columns[[term]]
+    if (term_uses_column_mapping(term, cols)) 1 else power_list[[cols]]
+  })
+  names(powers_term) <- names(term_to_columns)
+
+  keep_term <- if (is.null(keep)) {
+    NULL
+  } else {
+    unique(vapply(
+      keep,
+      function(value) {
+        if (value %in% names(term_to_columns)) value else unname(column_to_term[[value]])
+      },
+      character(1L)
+    ))
+  }
+
+  # Step 20: Fit the multivariable FP model --------------------------------------
+  # Fail early if the design matrix is rank-deficient, rather than letting
+  # glm()/coxph() fail deep inside the backfitting cycles with a less clear error.
+  prepared_family <- prepare_family_for_fit(
+    family = family,
+    family_string = family_string,
+    y = y,
+    weights = weights,
+    strata = strata_keep,
+    id = id_keep,
+    offset = offset,
+    has_offset = has_offset,
+    waves = waves_keep,
+    control = control
+  )
+  family <- prepared_family$family
+  strata_keep <- prepared_family$strata
+
+  validate_default_design_rank(
+    x = x,
+    intercept = mfp2_family_has_intercept(family_string)
+  )
+
+  # Delegate the actual variable selection, FP degree/power selection, and
+  # model fitting (including SAZ and ACD handling) to fit_mfp().
+  fit <- fit_mfp(
+    x = x, y = y,
+    weights = weights, offset = offset, cycles = cycles,
+    scale = scale_term, shift = shift_term, df = df_term, center = center_term,
+    family = family, family_string = family_string, fitter = fitter,
+    criterion = criterion,
+    select = select_term, alpha = alpha_term, keep = keep_term, xorder = xorder,
+    powers = powers_term, method = ties, strata = strata_keep, nocenter = nocenter,
+    acdx = acdx_term, ftest = ftest, force_max_fp = force_max_fp_term,
+    control = control, zero = zero_term, catzero = catzero_term, spike = spike_term,
+    min_saz_prop = min_saz_prop,
+    saz_pre_resolved = TRUE,
+    term_to_columns = term_to_columns,
+    center_method = center_method,
+    has_offset = has_offset,
+    verbose = verbose
+  )
+
+  # Step 21: Attach mfp2-specific metadata to the fitted object -----------------
   fit$call_mfp <- cl
-  fit$family <- family
+  if (!identical(family_string, "negbin")) {
+    fit$family <- mfp2_strip_prepared_family(family)
+  }
   fit$family_string <- family_string
-  fit$offset <- offset
-  
+  if (identical(family_string, "finegray")) {
+    # Preserve the expanded offset stored by the native coxph fit: its mean is
+    # part of predict.coxph()'s linear-predictor origin. Summary refits instead
+    # use this original-row vector and expand it through the cached row map.
+    fit$mfp2_original_offset <- offset
+  } else {
+    fit$offset <- offset
+  }
+  fit$has_offset <- has_offset
+  if (identical(family_string, "gee")) {
+    fit$gee_input_row_order <- gee_input_row_order
+  }
+
   fit
 }
 
-#' @describeIn mfp2 Provides formula interface for `mfp2`.
+
+#' @describeIn mfp2 Formula interface: accepts a model formula and data frame.
+#' Factors are expanded automatically. Use [fp()] or [fp2()] to set
+#' variable-specific options.
+#' @importFrom utils modifyList
 #' @export
-mfp2.formula <- function(formula, 
-                         data, 
-                         weights = NULL, 
-                         offset = NULL, 
+mfp2.formula <- function(formula,
+                         data,
+                         weights = NULL,
+                         offset = NULL,
                          cycles = 5,
-                         scale = NULL, 
-                         shift = NULL, 
-                         df = 4, 
+                         scale = NULL,
+                         shift = NULL,
+                         df = 4,
                          center = TRUE,
                          subset = NULL,
-                         family = "gaussian",
-                         criterion = c("pvalue", "aic", "bic"),
-                         select = 0.05, 
+                         family = gaussian(),
+                         criterion = NULL,
+                         select = 0.05,
                          alpha = 0.05,
                          keep = NULL,
                          xorder = c("ascending", "descending", "original"),
                          powers = NULL,
-                         ties = c("breslow", "efron", "exact"),
+                         ties = c( "efron", "breslow"),
                          strata = NULL,
-                         nocenter = NULL,
+                         nocenter = c(-1, 0, 1),
                          ftest = FALSE,
                          control = NULL,
-                         min_prop = 0.05,
-                         max_prop = 0.95,
+                         min_saz_prop = 0.10,
                          verbose = TRUE,
+                         fitter = c("base", "fastglm"),
+                         id = NULL,
+                         waves = NULL,
                          ...) {
-  # capture the call
+  # mfp2.formula() translates a formula + data.frame specification into the
+  # matrix/vector inputs expected by mfp2.default(): it expands categorical
+  # predictors via model.matrix(), extracts per-variable fp() settings, and
+  # then calls mfp2.default() to perform the actual fitting.
+
+
+  # Step 1: Capture the call and resolve multiple-choice arguments -------------
   call <- match.call()
-  #family <- match.arg(family)
-  
-  # Allowed families
-  allowed_families <- c("gaussian", "binomial", "poisson", "cox")
-  
-  # TODO: Extend to Gamma and inverse.gaussian families that glm.fit allow 
-  # computation of AIC. Standard families (gaussian, binomial, poisson, Gamma,
-  # inverse.gaussian) have aic methods, so AIC is defined. Quasi-families 
-  # (quasi, quasibinomial, quasipoisson) do not have a true likelihood, so 
-  # glm can't compute AIC meaningfully. Attempting AIC(fit_quasi) will return 
-  # NA or a warning.
-  
-  if (is.character(family)) {
-    if (!family %in% allowed_families) {
-      stop(
-        sprintf("! Invalid family: '%s'. Allowed families are: %s",
-                family, paste(allowed_families, collapse = ", ")),
-        call. = FALSE
+
+  # Match coxph-style formula usage while preserving the released mfp2 API for
+  # a transition period. Formula strata remain authoritative when both forms
+  # are supplied, and this is the only warning emitted for that combination.
+  strata_supplied <- !missing(strata)
+  if (strata_supplied) {
+    .Deprecated(
+      new = "strata() in the formula",
+      package = "mfp2",
+      old = "strata",
+      msg = paste0(
+        "`strata` as an argument to `mfp2.formula()` is deprecated; ",
+        "include `strata(...)` in the formula instead. If both are supplied, ",
+        "the formula term is used."
       )
-    }
-    
-    family_string <- family
-    
-    if (family != "cox") {
-      # Convert to GLM family object
-      family <- tryCatch(
-        get(family, mode = "function", envir = parent.frame())(),
-        error = function(e) {
-          stop(
-            sprintf("! Cannot construct family object from character '%s'. %s", 
-                    family, conditionMessage(e)),
-            call. = FALSE
-          )
-        }
-      )
-    }
-    
-  } else if (is.function(family)) {
-    # Get the function name for better error messages
-    family_name <- deparse(substitute(family))
-    
-    # Try to call the function to get family object
-    family_obj <- tryCatch(
-      family(), 
-      error = function(e) {
-        stop(
-          sprintf("! Could not create a family object from the provided function '%s'. Error: %s", 
-                  family_name, conditionMessage(e)),
-          call. = FALSE
-        )
-      }
     )
-    
-    if (!inherits(family_obj, "family")) {
-      stop(
-        sprintf("! The provided function '%s' did not return a valid GLM family object.", 
-                family_name),
-        call. = FALSE
-      )
-    }
-    
-    family <- family_obj
-    family_string <- family$family
-    
-    if (family_string == "cox") {
-      stop("! 'cox' must be specified as a character string, not as a function.", 
-           call. = FALSE)
-    }
-    
-    # Check if family is allowed (for function input)
-    if (!family_string %in% allowed_families) {
-      stop(
-        sprintf("! Invalid family: '%s'. Allowed families are: %s",
-                family_string, paste(allowed_families, collapse = ", ")), 
-        call. = FALSE
-      )
-    }
-    
-  } else if (inherits(family, "family")) {
-    # Family object directly
-    family_string <- family$family
-    
-    if (family_string == "cox") {
-      stop("! 'cox' must be specified as a character string, not as a family object.", 
-           call. = FALSE)
-    }
-    
-    # Check if family is allowed (for family object input)
-    if (!family_string %in% allowed_families) {
-      stop(
-        sprintf("! Invalid family: '%s'. Allowed families are: %s",
-                family_string, paste(allowed_families, collapse = ", ")), 
-        call. = FALSE
-      )
-    }
-    
-  } else {
-    stop("! The 'family' argument must be a character string, a function, or a GLM family object.", 
-         call. = FALSE)
   }
- 
-  # assert that data must be provided
+
+  # Preserve the unevaluated observation-level arguments before any validation
+  # can force their promises. Formula methods conventionally look these names
+  # up in `data` first and then in the formula environment. Resolve each one
+  # exactly once below, before subsetting, so expressions with side effects are
+  # not repeated and complete-vector validation retains its existing semantics.
+  weights_expr <- substitute(weights)
+  offset_expr <- substitute(offset)
+  subset_expr <- substitute(subset)
+  strata_expr <- substitute(strata)
+  id_expr <- substitute(id)
+  waves_expr <- substitute(waves)
+
+  if (!is.null(criterion)) {
+    criterion <- resolve_mfp_criterion(criterion, family_string = NULL)
+  }
+  xorder <- match.arg(xorder)
+  ties <- resolve_mfp_ties(ties)
+  fitter <- match.arg(fitter)
+
+  # acd_vars is not a top-level argument in the formula interface: ACD handling is
+  # requested per-variable via fp(..., acd = TRUE), so reject the matrix-interface
+  # spelling (acd_vars) with a clear pointer to the correct syntax.
+  dots <- list(...)
+
+  if ("acd_vars" %in% names(dots)) {
+    stop(
+      "`acd_vars` is not supported as an argument to `mfp2.formula()`. ",
+      "Use `fp(..., acd = TRUE)` or `fp2(..., acd = TRUE)` inside the formula ",
+      "to request ACD handling for formula terms.",
+      call. = FALSE
+    )
+  }
+  mfp2_warn_unused_dots(dots, "mfp2()", formula_interface = TRUE)
+
+  # Resolve the family argument to its canonical string form (e.g. "gaussian",
+  # "cox") used for family-specific branching throughout this function.
+  family_string <- get_family_string_formula(
+    family,
+    family_arg = deparse(substitute(family))
+  )
+
+
+  # Step 2: Validate that `data` and `formula` were supplied and well-formed ----
   if (missing(data)) {
     stop("! data argument is missing.\n",
          "i An input data.frame is required for the use of mfp2.",
          call. = FALSE)
   }
-  
+
   # assert that data has column names
   if (is.null(colnames(data))) {
     stop("! data must have column names.\n",
          "i Please set column names.", call. = FALSE)
   }
-  
+
+  if (!is.data.frame(data)) {
+    stop("`data` must be a data.frame.", call. = FALSE)
+  }
+
   # assert that a formula must be provided
   if (missing(formula)) {
     stop("! formula is missing.", call. = FALSE)
   }
-  
+
   if (!inherits(formula, "formula")) {
     stop("method is only for formula objects", call. = FALSE)
   }
-  
-  # assert length of df, alpha, select, center, shift, scale, acdx equal to one
-  if (length(df) != 1) {
-    stop("! df must be a single numeric.", 
-         "i Use the fp() function to set different df values in the input formula.",
-         call. = FALSE)
-  }
-  
-  if (length(alpha) != 1) {
-    stop("! alpha must be a single numeric.", 
-         "i Use the fp() function to set different alpha values in the input formula.",
-         call. = FALSE)
-  }
-  
-  if (length(select) != 1) {
-    stop("! select must be a single numeric.", 
-         "i Use the fp() function to set different select values in the input formula.",
-         call. = FALSE)
-  }
-  
-  if (!is.null(scale) && length(scale) != 1) {
-    stop("! scale must be a single numeric or NULL.",
-         "i Use the fp() function to set different scaling factors in the input formula.", 
-         call. = FALSE)
-  }
-  
-  if (length(center) != 1) {
-    stop("! center must be a single logical value.", 
-         "i Use the fp() function to set different center values in the input formula.",
-         call. = FALSE)
-  }
-  
-  if (!is.null(shift) && length(shift) != 1) {
-    stop("! shift must be a single numeric.", 
-         "i Use the fp() function to set different shift values in the input formula.",
-         call. = FALSE)
-  }
-  
-  if (!is.null(powers) && !is.list(powers)) {
-    stop(" Powers must be a named list or set it to NULL", call. = FALSE)
-  }
-  
-  # model.frame preserves the attributes of the data unlike model.matrix
-  mf <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
-  
-  # check whether no predictor exist in the model i.e y~1: 
-  labels <-  attr(terms(mf), "term.labels")
-  if (length(labels ) == 0) {
-    stop("No predictors are provided for model fitting.\n At least one predictor is required",
-         call. = FALSE)
-  }
-  
-  # stratification for Cox models ----------------------------------------------
 
-  # strata not allowed in the formula if the family is not cox
-  specials <- "strata"
-  terms_formula <- terms(formula, specials = specials, data = data)
+  # Keep the user's formula unchanged for fitted-object metadata.
+  formula_user <- formula
 
-  # remember position of strata variables to drop from input data if necessary
-  terms_drop <- NULL
-  if (!is.null(attr(terms_formula,"specials")$strata)) {
-    if (family_string == "cox") {
-      
-      # check whether strata is both in the formula and in the argument
-      if (!is.null(call$strata))
-        warning("i strata appear both in the formula and as an input argument.\n",
-                "i The information in the formula is used and the input argument ignored.",
-                call. = FALSE)
-      
-      # untangle the terms for strata as in coxph
-      # this function returns the strata names, e.g "strata(x1)" 
-      # and its position in the terms when outcome is excluded
-      stemp <- survival::untangle.specials(terms_formula,
-                                           special = "strata", 
-                                           order = 1)
-      
-      if (length(stemp$vars) == 1) {
-        # only one strata exists in the formula   
+  # Use this only for internal formula parsing/evaluation. This helps
+  # because if a user passes survival::strata() in the formula it can
+  # fail similarly stats:offset() as suggested by Terry Therneau
+  formula_internal <- normalize_formula_special_namespaces(formula_user)
+
+  # Step 3: Validate scalar formula-interface defaults ---------------------------
+  # A named value such as shift = c(age = 5) would otherwise be accepted as a
+  # scalar and silently applied to every predictor, so reject names here.
+  for (setting_name in c("df", "alpha", "select", "shift", "scale", "center")) {
+    if (!is.null(names(get(setting_name, inherits = FALSE)))) {
+      stop(
+        sprintf(
+          "! In the formula interface, `%s` must be a single unnamed value that applies to all terms.\ni Use fp(..., %s = value) to set it for an individual variable.",
+          setting_name, setting_name
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
+  # In the formula interface, df, alpha, select, shift, scale, and center are
+  # global scalar defaults applied to every predictor unless overridden inside
+  # fp(). validate_formula_scalar()/validate_formula_probability() (defined in
+  # validation_helpers.R) are thin wrappers around the shared scalar/vector
+  # validators (nvars = 1L, since every formula-interface default is a single
+  # global value); they only add the "use fp(...)" hint that is specific to
+  # this interface.
+
+  validate_formula_scalar(
+    df,
+    "df",
+    "numeric",
+    allow_null = FALSE,
+    allow_na = FALSE,
+    hint = "i Use fp(..., df = value) to set different df values for individual variables."
+  )
+
+  if (df != as.integer(df)) {
+    stop(
+      sprintf(
+        "! `df` must be an integer value.\ni You supplied: %s.\ni Use fp(..., df = value) to set different df values for individual variables.",
+        df
+      ),
+      call. = FALSE
+    )
+  }
+
+  if (df <= 0) {
+    stop(
+      sprintf(
+        "! `df` must be positive.\ni You supplied: %s.\ni Use fp(..., df = value) to set different df values for individual variables.",
+        df
+      ),
+      call. = FALSE
+    )
+  }
+
+  if (df != 1 && df %% 2 != 0) {
+    stop(
+      sprintf(
+        "! `df` must be 1 or an even positive integer.\ni You supplied: %s.\ni Use fp(..., df = value) to set different df values for individual variables.",
+        df
+      ),
+      call. = FALSE
+    )
+  }
+
+  validate_formula_probability(
+    alpha,
+    "alpha",
+    hint = "i Use fp(..., alpha = value) to set different alpha values for individual variables."
+  )
+
+  validate_formula_probability(
+    select,
+    "select",
+    hint = "i Use fp(..., select = value) to set different select values for individual variables."
+  )
+
+  # strictly_positive = TRUE folds the old separate "scale must be positive"
+  # check into the shared validator, since NA (automatic scaling) is still
+  # allowed via allow_na = TRUE.
+  validate_formula_scalar(
+    scale,
+    "scale",
+    "numeric",
+    allow_null = TRUE,
+    allow_na = TRUE,
+    strictly_positive = TRUE,
+    hint = "i Use fp(..., scale = value) to set different scaling factors for individual variables."
+  )
+
+  validate_formula_scalar(
+    shift,
+    "shift",
+    "numeric",
+    allow_null = TRUE,
+    allow_na = TRUE,
+    hint = "i Use fp(..., shift = value) to set different shift values for individual variables."
+  )
+
+  validate_formula_scalar(
+    center,
+    "center",
+    "logical",
+    allow_null = FALSE,
+    allow_na = FALSE,
+    hint = "i Use fp(..., center = TRUE) or fp(..., center = FALSE) to set different center values for individual variables."
+  )
+
+  # Step 4: Evaluate and validate observation-level inputs ---------------------
+  n_data <- nrow(data)
+
+  # Match the data-mask semantics used by standard formula methods. Columns of
+  # `data` take precedence and caller-scope objects remain available through
+  # the normalized formula environment. Reuse only these resolved values from
+  # this point onward.
+  weights <- eval(
+    weights_expr,
+    envir = data,
+    enclos = environment(formula_internal)
+  )
+  offset <- eval(
+    offset_expr,
+    envir = data,
+    enclos = environment(formula_internal)
+  )
+  subset <- eval(
+    subset_expr,
+    envir = data,
+    enclos = environment(formula_internal)
+  )
+  strata <- eval(
+    strata_expr,
+    envir = data,
+    enclos = environment(formula_internal)
+  )
+  id <- eval(
+    id_expr,
+    envir = data,
+    enclos = environment(formula_internal)
+  )
+  waves <- eval(
+    waves_expr,
+    envir = data,
+    enclos = environment(formula_internal)
+  )
+
+ # strata required only for survival models
+  if (!is.null(strata) && !mfp2_family_is_survival(family_string)) {
+    stop(
+      "! `strata` is only allowed for survival models.\n",
+      "i Use `family = \"cox\"`, `survreg_family()`, or `finegray_family()`, or remove `strata`.",
+      call. = FALSE
+    )
+  }
+
+  # id required only for fine-gray and GEE models
+  if (!is.null(id)) {
+    if (!family_string %in% c("finegray", "gee")) {
+      stop(
+        "! `id` is only used with `family = finegray_family()` or `family = gee_family()`.",
+        call. = FALSE
+      )
+    }
+    if (!is.atomic(id) || length(id) != n_data || anyNA(id) ||
+        is.matrix(id) || !is.null(dim(id))) {
+      stop(
+        "! `id` must be a one-dimensional vector or factor with one value for every row of `data` and no missing values.\n",
+        "i Use the same ID for rows from the same subject or cluster.",
+        call. = FALSE
+      )
+    }
+  } else if (identical(family_string, "gee")) {
+    stop(
+      "! `id` is required for `family = gee_family()`: supply a cluster ",
+      "identifier evaluated in `data`.",
+      call. = FALSE
+    )
+  }
+
+  # waves required only for GEE models
+  if (!is.null(waves)) {
+    if (!identical(family_string, "gee")) {
+      stop("! `waves` is only used with `family = gee_family()`.", call. = FALSE)
+    }
+    if (!is.atomic(waves) || length(waves) != n_data || anyNA(waves) ||
+        is.matrix(waves) || !is.null(dim(waves))) {
+      stop(
+        "! `waves` must have one non-missing positive integer for every row of `data`.\n",
+        "i Use `waves` to number observations within each `id` cluster; numbers must be unique within a cluster.",
+        call. = FALSE
+      )
+    }
+  }
+
+  if (!is.null(offset)) {
+    if (!is.numeric(offset)) {
+      stop("! `offset` must be numeric.", call. = FALSE)
+    }
+
+    if (length(offset) != n_data) {
+      stop(
+        sprintf(
+          "! `offset` must have one value per row of `data`.\ni `offset` has length %d, but `data` has %d rows.",
+          length(offset), n_data
+        ),
+        call. = FALSE
+      )
+    }
+
+    if (anyNA(offset) || any(!is.finite(offset))) {
+      stop(
+        "! `offset` must contain only finite, non-missing values.",
+        call. = FALSE
+      )
+    }
+  }
+
+  if (!is.null(subset)) {
+    if (is.logical(subset)) {
+      if (length(subset) != n_data || anyNA(subset)) {
+        stop(
+          "! Logical `subset` must have one TRUE/FALSE value per row of `data` and contain no NA.",
+          call. = FALSE
+        )
+      }
+    } else if (is.numeric(subset)) {
+      if (
+        anyNA(subset) ||
+        any(!is.finite(subset)) ||
+        any(subset != as.integer(subset)) ||
+        any(subset < 1L) ||
+        any(subset > n_data)
+      ) {
+        stop(
+          "! Numeric `subset` must contain valid positive row indices within `data`.",
+          call. = FALSE
+        )
+      }
+      if (anyDuplicated(subset)) {
+        stop(
+          "! `subset` must not contain duplicated row indices.",
+          call. = FALSE
+        )
+      }
+    } else {
+      stop(
+        "! `subset` must be either a logical vector or a numeric/integer vector of row indices.",
+        call. = FALSE
+      )
+    }
+    n_selected <- if (is.logical(subset)) sum(subset) else length(subset)
+    if (n_selected == 0L) {
+      stop("! `subset` selects no observations.", call. = FALSE)
+    }
+  }
+
+  # Apply the same strictly-positive weight contract as the matrix interface.
+  # Validation covers the complete user-supplied vector, including rows later
+  # excluded by `subset`, so the public API has one unambiguous weight rule.
+  validate_model_weights(
+    weights = weights,
+    nobs = n_data
+  )
+
+  # Step 5: Parse the formula and validate `strata` against it -------------------
+  # "strata" is registered as a special so that strata() terms inside the
+  # formula can be detected and later separated from the predictor terms.
+  terms_formula <- stats::terms(
+    formula_internal,
+    specials = "strata",
+    data = data
+  )
+
+  has_formula_strata <- !is.null(attr(terms_formula, "specials")$strata)
+
+  # If strata() is not used inside the formula, the `strata` argument (if any)
+  # is validated here against the raw data; it is otherwise extracted from the
+  # formula further below.
+  if (!is.null(strata) && !has_formula_strata) {
+    strata_n <- if (is.vector(strata) || is.factor(strata)) {
+      length(strata)
+    } else {
+      NROW(strata)
+    }
+
+    if (strata_n != n_data) {
+      strata_unit <- if (is.vector(strata) || is.factor(strata)) {
+        "values"
+      } else {
+        "rows"
+      }
+
+      stop(
+        sprintf(
+          "! `strata` must provide one value or row for each row of `data`.\n",
+          "i `strata` has %d %s; `data` has %d rows.",
+          strata_n, strata_unit, n_data
+        ),
+        call. = FALSE
+      )
+    }
+
+    if (anyNA(strata)) {
+      stop("! `strata` must not contain missing values.", call. = FALSE)
+    }
+  }
+
+  # Step 6: Build full-data and fitted model frames ------------------------------
+  # The formula interface deliberately keeps two model frames:
+  #   * mf_full supplies the original continuous values used by automatic
+  #     preprocessing, preserving the documented pre-subset behavior;
+  #   * mf reuses mf_full when subset is NULL; otherwise it is rebuilt on
+  #     fit_rows and supplies the response, fitted factor levels, contrasts,
+  #     design matrix, and prediction metadata.
+  #
+  # Use na.pass so the global na.action option cannot silently alter either row
+  # set. Missingness is diagnosed explicitly against the full model frame below.
+  mf_full <- stats::model.frame(
+    terms_formula,
+    data = data,
+    drop.unused.levels = TRUE,
+    na.action = stats::na.pass
+  )
+  # Keep the ordinary formula path independent of subset-specific helpers.
+  # A genuine subset is resolved once; otherwise all evaluated model-frame rows
+  # are retained in their original order.
+  if (is.null(subset)) {
+    fit_rows <- seq_len(nrow(mf_full))
+  } else {
+    fit_rows <- formula_subset_rows(subset, nrow(mf_full))
+  }
+  # Factor columns are expanded by model.matrix() below and then mapped back
+  # to their original formula term through the `assign` attribute. Both
+  # unordered treatment-contrast blocks and ordered polynomial-contrast blocks
+  # are therefore selected jointly by the grouped-term fitting path.
+
+  # Reject an intercept-only formula (e.g. y ~ 1): mfp2() requires at least one
+  # predictor to perform variable/FP selection on.
+  labels <- attr(terms_formula, "term.labels")
+  if (length(labels) == 0) {
+    stop(
+      "! No predictors are provided for model fitting.\n",
+      "i At least one predictor is required.",
+      call. = FALSE
+    )
+  }
+
+  # Because na.action = na.pass was used above, missing values survive into mf
+  # and must be checked for explicitly here, with informative row numbers.
+  if (anyNA(mf_full)) {
+    na_rows <- which(!stats::complete.cases(mf_full))
+
+    msg <- sprintf(
+      "! Missing values are not allowed in variables used by the model formula.\ni Rows with missing values: %s.",
+      paste(utils::head(na_rows, 10L), collapse = ", ")
+    )
+
+    if (length(na_rows) > 10L) {
+      msg <- paste0(msg, sprintf("\ni Showing first 10 of %d affected rows.", length(na_rows)))
+    }
+
+    msg <- paste0(msg, "\ni Please remove or impute missing values before calling mfp2().")
+
+    stop(msg, call. = FALSE)
+  }
+
+  # With no subset, reuse the complete evaluated frame unchanged. This keeps the
+  # ordinary formula path simple and avoids unnecessary row copying or factor
+  # reconstruction. Only a genuine subset needs a retained-row frame with unused
+  # levels removed before model.matrix() rebuilds treatment or ordered contrasts.
+  if (is.null(subset)) {
+    mf <- mf_full
+  } else {
+    # Avoid passing the local `fit_rows` symbol through model.frame(subset = ...):
+    # model.frame() evaluates that expression in the formula/data environment,
+    # where a method-local object is not visible.
+    mf <- subset_formula_model_frame(mf_full, fit_rows)
+  }
+
+
+  # Step 7: Extract strata() and offset() terms out of the formula --------------
+  # strata() and offset() are model-fitting constructs, not ordinary predictors,
+  # so their term positions are recorded here and removed before model.matrix()
+  # is used to build the predictor design matrix `x` further below.
+  terms_drop <- integer(0L)
+
+  # Prediction metadata for formula-level fitting constructs. These are not
+  # ordinary predictors and are removed from the model matrix, so they must be
+  # stored separately for predict.mfp2(newdata = ...).
+  formula_strata_terms <- NULL
+  formula_strata_xlevels <- NULL
+  formula_offset_terms <- NULL
+  formula_offset_xlevels <- NULL
+
+  # Survival-model strata: baseline hazards for Cox, scale for survreg, and the
+  # censoring distribution for Fine--Gray.
+  if (!is.null(attr(terms_formula, "specials")$strata)) {
+    if (mfp2_family_is_survival(family_string)) {
+
+      # untangle the terms for strata as in survival::coxph()
+      stemp <- survival::untangle.specials(
+        terms_formula,
+        special = "strata",
+        order = 1
+      )
+
+      # for predict
+      strata_formula <- stats::reformulate(stemp$vars)
+      environment(strata_formula) <- environment(formula_internal)
+
+      formula_strata_terms <- stats::terms(
+        strata_formula,
+        data = data
+      )
+
+      formula_strata_xlevels <- .getXlevels(formula_strata_terms, mf)
+
+      missing_strata_vars <- setdiff(stemp$vars, names(mf))
+      if (length(missing_strata_vars) > 0L) {
+        stop(
+          sprintf(
+            "! Could not extract strata variable(s) from the model frame: %s.",
+            paste(missing_strata_vars, collapse = ", ")
+          ),
+          call. = FALSE
+        )
+      }
+
+      if (length(stemp$vars) == 1L) {
         strata <- mf[[stemp$vars]]
       } else {
-        # more than one strata exists in the formula
-        strata <- mf[, stemp$vars]
+        strata <- do.call(
+          survival::strata,
+          c(as.list(mf[, stemp$vars, drop = FALSE]), list(shortlabel = TRUE))
+        )
       }
-      
-      # extract the position of strata variables in the terms to be dropped
-      terms_drop <- stemp$terms
+
+
+      terms_drop <- c(terms_drop, stemp$terms)
     } else {
-      stop("! strata are only allowed for Cox models.\n", 
+      stop("! strata are only allowed for survival models.\n",
            "i Please remove any strata terms from the model formula.",
            call. = FALSE)
     }
   }
-  
-  # drop strata variables if necessary before using model.matrix()
-  if (!is.null(terms_drop)) {
-    terms_model <- terms_formula[-terms_drop]
-  } else {
-    terms_model <- terms_formula
-  }
-  
-  # offset ---------------------------------------------------------------------
+
+  # Offset: an offset() term in the formula takes precedence over the `offset`
+  # argument, with a warning.
   term_offset <- attr(terms_formula, "offset")
+
   if (!is.null(term_offset) && length(term_offset) > 1) {
     stop("! Only one offset in the formula is allowed.", call. = FALSE)
   }
-  
-  # check whether offset is both in the formula and as an argument.
-  if (!is.null(term_offset) && !is.null(call$offset)) {
-    warning("i Offset appears both in the formula and as an input argument.\n", 
-            "i The information in the model formula is used and the input argument is ignored.", 
-            call. = FALSE)
-    offset <- as.vector(model.offset(mf))
+
+  if (!is.null(term_offset)) {
+    if (!is.null(call$offset)) {
+      warning(
+        "i Offset appears both in the formula and as an input argument.\n",
+        "i The information in the model formula is used and the input argument is ignored.",
+        call. = FALSE
+      )
+    }
+
+    offset <- stats::model.offset(mf)
+    if (!identical(family_string, "multinomial")) {
+      offset <- as.vector(offset)
+    }
+    terms_drop <- c(terms_drop, term_offset)
+
+    # for predict.mfp2
+    offset_call <- attr(terms_formula, "variables")[[term_offset + 1L]]
+
+    offset_formula <- stats::as.formula(
+      call("~", offset_call),
+      env = environment(formula_internal)
+    )
+
+    formula_offset_terms <- stats::terms(
+      offset_formula,
+      data = data
+    )
+
+    formula_offset_xlevels <- .getXlevels(formula_offset_terms, mf)
   }
-  
-  # data preparation -----------------------------------------------------------
-  
+
+  if (is.null(term_offset) && !is.null(offset) && !is.null(subset)) {
+    offset <- if (is.matrix(offset)) {
+      offset[fit_rows, , drop = FALSE]
+    } else {
+      offset[fit_rows]
+    }
+  }
+
+  if (!is.null(offset)) {
+    if (!is.numeric(offset)) {
+      stop("! `offset` must be numeric.", call. = FALSE)
+    }
+
+    offset_rows <- if (is.matrix(offset)) nrow(offset) else length(offset)
+    if (offset_rows != nrow(mf)) {
+      stop("! `offset` must have one value per observation.", call. = FALSE)
+    }
+    if (identical(family_string, "multinomial")) {
+      # `y` is not extracted until after offset validation, so read the
+      # response directly from the model frame here.
+      c_classes <- mfp2_multinomial_n_classes(model.extract(mf, "response"))
+      if (!is.matrix(offset) || !ncol(offset) %in% c(c_classes - 1L, c_classes)) {
+        stop(
+          "! Multinomial `offset` must be an n x C class matrix or an n x (C - 1) reference-logit matrix.",
+          call. = FALSE
+        )
+      }
+    }
+
+    if (anyNA(offset) || any(!is.finite(offset))) {
+      stop(
+        "! `offset` must contain only finite, non-missing values.",
+        call. = FALSE
+      )
+    }
+  }
+
+  # Step 8: Build the model matrix and drop the intercept column ----------------
+  # Drop strata() and offset() terms before using model.matrix().
+  if (length(terms_drop) > 0L) {
+    terms_model <- terms_formula[-unique(terms_drop)]
+  } else {
+    terms_model <- terms_formula
+  }
+
+  remaining_labels <- attr(terms_model, "term.labels")
+
+  if (length(remaining_labels) == 0L) {
+    stop(
+      "! No predictors are provided for model fitting after removing strata() and offset() terms.\n",
+      "i At least one non-strata, non-offset predictor is required.",
+      call. = FALSE
+    )
+  }
+
+  validate_formula_factor_levels(terms_model, mf)
+
+  # Extract the fitted response and build both designs independently. `mm` is
+  # authoritative for categorical columns, term mappings, fitting, and prediction.
+  # `mm_full` is only a source of full-data values for automatic preprocessing of
+  # stable, same-named continuous columns; its factor coding is never fitted.
   y <- model.extract(mf, "response")
-  if (family_string != "cox") {
-    y <- as.numeric(y)
-  }
-  
-  # Factor variables will be expanded in case they exist
-  x <- model.matrix(terms_model, mf)
-  
-  # remove intercept if necessary
-  # intercept is coded as entry 0 in attribute assigned by model.matrix
-  # intercept is always the first column
-  if (0 %in% attr(x, "assign")) {
-    x <- x[, -1, drop = FALSE]
-  }
-  
-  nx <- ncol(x) 
+
+  mm_full <- stats::model.matrix(terms_model, mf_full)
+  mm <- stats::model.matrix(terms_model, mf)
+
+  # Identify unordered and ordered factor terms before the intercept is
+  # removed. Their model-matrix columns will be grouped and forced to fixed
+  # linear settings below. Ordered factors therefore retain their configured
+  # contrasts (contr.poly by default) but are selected as one conceptual term.
+  factor_term_labels <- identify_formula_factor_terms(terms_model, mf)
+  conceptual_term_names <- formula_conceptual_term_names(terms_model, mf)
+  # Retain the original formula-label -> conceptual-term relationship for
+  # prediction. This map is updated below when fp()/fp2() expressions are
+  # renamed to their source-variable names.
+  formula_prediction_term_names <- conceptual_term_names
+  factor_terms <- unname(conceptual_term_names[factor_term_labels])
+
+  assign <- attr(mm, "assign")
+  term_labels <- attr(terms_model, "term.labels")
+
+  # mfp2 fits models without an intercept term internally (the intercept is
+  # handled by fit_mfp()/glm()/coxph()); drop the (Intercept) column here but
+  # keep `assign` aligned with the remaining columns of x.
+  keep_cols <- colnames(mm) != "(Intercept)"
+  x <- mm[, keep_cols, drop = FALSE]
+  assign <- assign[keep_cols]
+  full_keep_cols <- colnames(mm_full) != "(Intercept)"
+  x_full <- mm_full[, full_keep_cols, drop = FALSE]
+
+  nx <- ncol(x)
   names_x <- colnames(x)
-  
-  # select variables that undergo fp transformation and extract their attributes
-  fp_pos <- grep("fp(.*)", colnames(mf))
-  
+
+  # Map conceptual terms to the exact model-matrix columns they generated.
+  # Simple factor wrappers use the source variable name as the conceptual term;
+  # their low-level design columns retain model.matrix() names such as
+  # factor(x9)2 and factor(x9)3.
+  term_to_columns <- build_formula_term_to_columns(
+    x_columns = colnames(x),
+    assign = assign,
+    term_labels = term_labels,
+    conceptual_names = conceptual_term_names
+  )
+
+  # Step 9: Extract fp()/fp2() term settings and rename fp() columns -----------
+  # Locate which columns of the model frame come from fp() or fp2() terms, so
+  # their per-variable settings (df, scale, shift, powers, acdx, zero, ...) can
+  # be pulled from the attributes fp() attached to them.
+  fp_pos <- which(is_fp_term(colnames(mf)))
+
   if (length(fp_pos) > 0) {
-    fp_data <- mf[, fp_pos, drop = FALSE]
-    
-    # extract names of the variables that undergo fp transformation
-    fp_vars <- unname(sapply(fp_data, function(v) attr(v, "name")))
-    
-    # check for variables used more than once in fp() function 
+    # Term settings are read from the full-data frame so that a formula
+    # `subset` can never affect them.
+    fp_data <- formula_fp_settings_frame(mf, mf_full, fp_pos)
+
+    # The real variable name (e.g. "age") is stored as an attribute on the
+    # fp()-transformed column (whose model-frame name is literally "fp(age)").
+    fp_vars <- unname(vapply(fp_data, function(v) attr(v, "name"), character(1L)))
+
+    # A variable must not be wrapped in fp() more than once in the same formula.
     fp_vars_duplicates <- fp_vars[duplicated(fp_vars)]
     if (length(fp_vars_duplicates) != 0) {
-      stop("! Variables should be used only once in the fp() within the formula.\n", 
-           sprintf("i The following variable(s) are duplicated in fp() function: %s.", 
-                   paste0(fp_vars_duplicates, collapse = ", ")), 
+      stop("! Variables should be used only once in the fp() within the formula.\n",
+           sprintf("i The following variable(s) are duplicated in fp() function: %s.",
+                   paste0(fp_vars_duplicates, collapse = ", ")),
            call. = FALSE)
     }
-    # check for variables used in fp() as well as other parts of the formula
+
+    # A variable wrapped in fp() must not also appear elsewhere in the formula
+    # (e.g. `y ~ fp(age) + age`), since that would create two representations
+    # of the same predictor.
     vars_duplicates <- which(colnames(mf) %in% fp_vars)
     if (length(vars_duplicates) != 0) {
-      stop("! Variables used in the fp() should not be included in other parts of the formula.\n", 
-           sprintf("i This applies to the following variable(s): %s.", 
-                   paste0(colnames(mf)[vars_duplicates], collapse = ", ")), 
+      stop("! Variables used in the fp() should not be included in other parts of the formula.\n",
+           sprintf("i This applies to the following variable(s): %s.",
+                   paste0(colnames(mf)[vars_duplicates], collapse = ", ")),
            call. = FALSE)
     }
-    
-    # replace names such as fp(x1) by real name "x1" in the x matrix
-    names_x <- replace(names_x, grep("fp(.*)", names_x), fp_vars)
+
+    # Capture the raw fp()/fp2() model-matrix column names before renaming.
+    fp_columns <- names_x[is_fp_term(names_x)]
+    if (length(fp_columns) != length(fp_vars)) {
+      stop(
+        "! Internal formula parsing error: the number of fp()/fp2() terms in the model matrix does not match the model frame.",
+        call. = FALSE
+      )
+    }
+
+    # Rename fp()/fp2() model-matrix columns to the underlying variable name,
+    # e.g. "fp(age)" becomes "age", so downstream code (and the fitted object)
+    # exposes ordinary variable names rather than formula syntax.
+    names_x <- replace(names_x, which(is_fp_term(names_x)), fp_vars)
     colnames(x) <- names_x
+    full_fp_pos <- which(is_fp_term(colnames(x_full)))
+    if (length(full_fp_pos) != length(fp_vars)) {
+      stop(
+        "! Internal formula parsing error: full-data and fitted fp()/fp2() columns do not align.",
+        call. = FALSE
+      )
+    }
+    colnames(x_full)[full_fp_pos] <- fp_vars
+
+    # The model-matrix column was renamed above (for example, "fp(age)" to
+    # "age"). Update the existing `age` entry in `term_to_columns` to use
+    # the new column name.
+    for (i in seq_along(fp_columns)) {
+      fp_var <- fp_vars[[i]]
+      if (fp_var %in% names(term_to_columns)) {
+        columns <- term_to_columns[[fp_var]]
+        columns[columns == fp_columns[[i]]] <- fp_var
+        term_to_columns[[fp_var]] <- columns
+      }
+    }
   }
-  
-  # call default method---------------------------------------------------------
-  
-  # if fp() is not used in the formula, it reduces to mfp2.default() 
-  df_list <-  setNames(as.list(assign_df(x = x, df_default = df)), names_x)
-  
+
+  # Step 10: Build per-variable default option lists from the global scalars ---
+  # Every predictor starts out with the global df/scale/shift/center/alpha/select
+  # defaults; fp()-term-specific settings (Step 11) then override individual
+  # entries of these lists where the user supplied them. Cardinality-based df
+  # defaults retain the original full-data source for continuous predictors.
+  x_preprocess <- align_formula_preprocess_matrix(x, x_full)
+  df_list <- setNames(
+    as.list(assign_df(x = x_preprocess, df_default = df)),
+    names_x
+  )
+
   # scaling
+  # NA means automatic scaling. mfp2.default() will estimate these values
+  # after applying its full shift logic, including zero/catzero/spike/df resets.
   if (is.null(scale)) {
-    scale_list <- setNames(as.list(apply(x, 2, find_scale_factor)), names_x)
+    scale_list <- setNames(rep(list(NA_real_), nx), names_x)
   } else {
     scale_list <- setNames(rep(list(scale), nx), names_x)
-    
   }
-  
+
   # shifting
+  # NA means automatic shift. mfp2.default() will estimate the shift and then
+  # apply its full zero/catzero/spike/df reset logic.
   if (is.null(shift)) {
-    shift_list <- setNames(as.list(apply(x, 2, find_shift_factor)), names_x)
+    shift_list <- setNames(rep(list(NA_real_), nx), names_x)
   } else {
     shift_list <- setNames(rep(list(shift), nx), names_x)
   }
-  
-  # center, alpha, select, acd, zero, catzero
+
+  # center, alpha, select
   center_list <- setNames(rep(list(center), nx), names_x)
   alpha_list <- setNames(rep(list(alpha), nx), names_x)
   select_list <- setNames(rep(list(select), nx), names_x)
-  
-  # default FP powers proposed by Royston and Altman (1994)
-  powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
-  power_list <- setNames(replicate(nx, powx, simplify = FALSE),names_x)
-  
-  # deal with user supplied powers in the argument not through fp()
-  if (!is.null(powers)) {
-    if (length(powers) != sum(names(powers) != "", na.rm = TRUE)) {
-      stop(" All the powers supplied in the argument must have names",
-           call. = FALSE)
-    }
-    
-    # check the names of supplied powers
-    dd <- which(!names(powers) %in% names_x)
-    if (length(dd) != 0) {
-      stop(" The names of all powers must be in the column names of x.\n",
-           sprintf("i This applies to the following powers: %s.", 
-                   paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
-    }
-    
-    # sort powers
-    powers <- lapply(powers, function(v) sort(v))
-    
-    # modify the default powers, some variables assigned default powers
-    power_list <- modifyList(power_list, Filter(Negate(is.null), powers))
-    
-  }
-  
-  # if fp() is used in the formula
+  force_max_fp_list <- setNames(rep(list(FALSE), nx), names_x)
+
+
+  # Step 11: Override defaults with per-variable fp() term settings -------------
+  # Powers supplied inside fp() are collected separately so they can override
+  # top-level `powers` after both have been validated against the final model
+  # matrix column names and effective df values.
+  powerx <- list()
+
+  # acdx/zero/catzero/spike default to NULL (i.e. no variables flagged) unless
+  # fp() terms request them below.
   acdx <- NULL
   zero <- NULL
   catzero <- NULL
   spike <- NULL
+
   if (length(fp_pos) != 0) {
-    # modify the default parameters based on the user inputs: 
-    # TODO: use helper function to avoid repetition
-    df_list <- modifyList(df_list, 
+    # modifyList() replaces only the named entries supplied by fp() terms,
+    # leaving the global default in place for every other variable.
+    df_list <- modifyList(df_list,
                           setNames(lapply(fp_data, attr, "df"), fp_vars))
-    scale_list <- modifyList(scale_list, 
-                             Filter(Negate(is.null),setNames(lapply(fp_data, attr,
-                                                                    "scale"), fp_vars)))
-    shift_list <- modifyList(shift_list, 
-                             Filter(Negate(is.null),setNames(lapply(fp_data, 
-                                                                    attr, "shift"), fp_vars)))
+
+    scale_list <- modifyList(
+      scale_list,
+      Filter(Negate(is.null), setNames(lapply(fp_data, attr, "scale"), fp_vars))
+    )
+
+    shift_list <- modifyList(
+      shift_list,
+      Filter(Negate(is.null), setNames(lapply(fp_data, attr, "shift"), fp_vars))
+    )
+
     center_list <- modifyList(center_list,
                               setNames(lapply(fp_data, attr, "center"), fp_vars))
-    alpha_list <- modifyList(alpha_list, 
+
+    alpha_list <- modifyList(alpha_list,
                              setNames(lapply(fp_data, attr, "alpha"), fp_vars))
-    select_list <- modifyList(select_list, 
+
+    select_list <- modifyList(select_list,
                               setNames(lapply(fp_data, attr, "select"), fp_vars))
-      # We give preference to powers supplied in the fp() function over the power argument.
-    powerx <- Filter(Negate(is.null),setNames(lapply(fp_data, attr, "powers"), fp_vars))
-    
-    nax <- intersect(names(powerx), names(powers))
-    if (length(nax) != 0)
-      warning("i Powers are specified in both the `fp()` function within\n the formula and as an argument.                 The argument term ignored.\n", 
-              sprintf("i This applies to the following variables: %s.", 
-                      paste0(nax, collapse = ", ")), call. = FALSE)
-    
-    power_list <- modifyList(power_list, powerx)
-    
-    # zero and catzero variables: check this
+
+    force_max_fp_list <- modifyList(
+      force_max_fp_list,
+      setNames(lapply(fp_data, attr, "force_max_fp"), fp_vars)
+    )
+
+    # Preference is given to powers supplied in fp() over powers argument
+    powerx <- Filter(
+      Negate(is.null),
+      setNames(lapply(fp_data, attr, "powers"), fp_vars)
+    )
+
+    nax <- if (is.null(powers)) {
+      character(0L)
+    } else {
+      intersect(names(powerx), names(powers))
+    }
+
+    if (length(nax) != 0) {
+      warning(
+        "i Powers are specified both in `fp()` and in the `powers` argument.",
+        "\ni The `fp()`-specific powers take precedence; the corresponding `powers` argument entries are ignored.",
+        sprintf(
+          "\ni This applies to: %s.",
+          paste(nax, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+
+    # In the formula interface, zero, catzero and spike are logical attributes
+    # attached to individual fp() terms. Before calling mfp2.default(), they are
+    # converted to character vectors of variable names and passed as *_vars.
     acdx <- setNames(sapply(fp_data, attr, "acd"), fp_vars)
     zero <- setNames(sapply(fp_data, attr, "zero"), fp_vars)
     catzero <- setNames(sapply(fp_data, attr, "catzero"), fp_vars)
     spike <- setNames(sapply(fp_data, attr, "spike"), fp_vars)
-    
-    # mfp2.default() requires acdx, zero, catzero and spike to be variable names or NULL 
+
     if (sum(acdx) == 0) {
       acdx <- NULL
     } else {
       acdx <- names(acdx[acdx])
     }
-    
+
     if (sum(zero) == 0) {
       zero <- NULL
     } else {
       zero <- names(zero[zero])
     }
-    
+
     if (sum(catzero) == 0) {
       catzero <- NULL
     } else {
       catzero <- names(catzero[catzero])
     }
-    
+
     if (sum(spike) == 0) {
       spike <- NULL
     } else {
       spike <- names(spike[spike])
     }
-    
+
   }
-  
-  # --- handle factor variables when keep is used ---
+
+  # Step 11b: Force factor-generated columns to fixed linear settings ---------
+  # A factor term is represented by a contrast block rather than by one
+  # continuous covariate. Every generated column is therefore an ordinary
+  # linear coefficient. Using shift = 0 and scale = 1 also ensures all members
+  # of an ordered-factor contrast block have identical grouped-term metadata.
+  factor_columns <- unique(unlist(
+    term_to_columns[intersect(factor_terms, names(term_to_columns))],
+    use.names = FALSE
+  ))
+  factor_columns <- intersect(factor_columns, names_x)
+
+  if (length(factor_columns) > 0L) {
+    df_list[factor_columns] <- rep(list(1L), length(factor_columns))
+    shift_list[factor_columns] <- rep(list(0), length(factor_columns))
+    scale_list[factor_columns] <- rep(list(1), length(factor_columns))
+    force_max_fp_list[factor_columns] <- rep(list(FALSE), length(factor_columns))
+  }
+
+  # Step 12: Validate and build the final candidate FP power list ---------------
+  # Keep the normalized df vector aligned with candidate powers for downstream
+  # fitting metadata and compatibility with internal validation hooks.
+  df_vec <- unlist(df_list, use.names = TRUE)
+
+  # fp()-specific powers (powerx) take precedence over the top-level `powers`
+  # argument, so any variable present in both is dropped from `powers_arg`
+  # before validation to avoid a duplicate/conflicting specification.
+  powers_arg <- powers
+
+  if (!is.null(powers_arg) && length(powerx) > 0L) {
+    powers_arg[names(powerx)] <- NULL
+
+    if (length(powers_arg) == 0L) {
+      powers_arg <- NULL
+    }
+  }
+
+  # formula-interface candidate-power parsing should not reject df-dependent
+  # cases before final df modifications happen.
+  power_list <- validate_fp_power_list(
+    powers = powers_arg,
+    vnames = names_x,
+    arg_name = "powers"
+  )
+
+  if (length(powerx) > 0L) {
+    fp_power_list <- validate_fp_power_list(
+      powers = powerx,
+      vnames = names_x,
+      arg_name = "fp() powers"
+    )
+
+    power_list[names(powerx)] <- fp_power_list[names(powerx)]
+  }
+
+  # Step 13: Expand `keep` to full model-matrix column names --------------------
+  # Expand keep using exact formula-term and model-matrix-column matching.
+  # This avoids unsafe prefix matching, e.g. keep = "age" matching "age_group".
   if (!is.null(keep)) {
-    vars <- colnames(x)
-    
-    # Expand keep: include dummy variables for categorical predictors
-    expanded_keep <- unique(unlist(lapply(keep, function(k) vars[startsWith(vars, paste0(k))])))
-    
-    # If no matches, preserve original names
-    expanded_keep <- if (length(expanded_keep) > 0) expanded_keep else keep
-    
-    # Update select_list: assign select = 1 for all columns in expanded_keep
-    for (ek in expanded_keep) {
-      if (ek %in% names(select_list)) {
-        select_list[[ek]] <- 1
+
+    expanded_keep <- character(0)
+
+    # Accept final model-matrix columns, conceptual term names, and original
+    # formula labels such as fp(x). Formula labels resolve through the explicit
+    # fit-time label-to-conceptual-name map.
+    valid_keep <- unique(c(
+      colnames(x),
+      names(term_to_columns),
+      names(formula_prediction_term_names)
+    ))
+    bad_keep <- setdiff(keep, valid_keep)
+
+    if (length(bad_keep) > 0L) {
+      stop(
+        sprintf(
+          "! Unknown variable(s) in keep: %s.",
+          paste(bad_keep, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+
+    for (k in keep) {
+      if (k %in% colnames(x)) {
+        # Exact final column match, e.g. keep = "age".
+        expanded_keep <- c(expanded_keep, k)
+      } else {
+        conceptual_name <- if (k %in% names(formula_prediction_term_names)) {
+          unname(formula_prediction_term_names[[k]])
+        } else {
+          k
+        }
+        if (conceptual_name %in% names(term_to_columns)) {
+          # Exact conceptual or original formula-term match, including fp(x).
+          expanded_keep <- c(
+            expanded_keep,
+            term_to_columns[[conceptual_name]]
+          )
+        }
       }
     }
-    
-    # Update 'keep' before passing to mfp2.default
-    keep <- expanded_keep
+
+    keep <- unique(expanded_keep)
   }
-  
-  mfp2.default(x = x, 
-               y = y, 
-               weights = weights, 
-               offset = offset, 
-               cycles = cycles,
-               scale = unlist(scale_list), 
-               shift = unlist(shift_list), 
-               df = unlist(df_list), 
-               center = unlist(center_list),
-               subset = subset,
-               family = family,
-               criterion = criterion,
-               select = unlist(select_list), 
-               alpha = unlist(alpha_list),
-               keep = keep,
-               xorder = xorder,
-               powers = power_list,
-               ties = ties,
-               strata = strata,
-               nocenter = nocenter,
-               acdx = acdx,
-               ftest = ftest,
-               control = control,
-               zero = zero,
-               catzero = catzero,
-               spike = spike,
-               min_prop = min_prop,
-               max_prop = max_prop,
-               verbose = verbose
+
+  # Step 14: Delegate using the subset-specific fitting design ------------------
+  # The private attribute transports the aligned full-data preprocessing source
+  # into mfp2.default(); it is removed immediately on entry there. Responses and
+  # other observation-level inputs are subset here, so pass subset = NULL below
+  # and avoid applying the row selection twice. Formula metadata is derived only
+  # from mf/mm, never from the full-data categorical representation.
+  x <- attach_formula_preprocess_matrix(x, x_full)
+  if (!is.null(subset)) {
+    if (!is.null(weights)) weights <- weights[fit_rows]
+    if (!is.null(id)) id <- id[fit_rows]
+    if (!is.null(waves)) waves <- waves[fit_rows]
+    if (!is.null(strata) && !has_formula_strata) {
+      strata <- if (is.matrix(strata) || is.data.frame(strata)) {
+        strata[fit_rows, , drop = FALSE]
+      } else {
+        strata[fit_rows]
+      }
+    }
+  }
+
+  # Store the raw model-matrix column names before fp() columns are renamed.
+  # These are needed by predict.mfp2() to rebuild the same expanded design
+  # matrix from ordinary formula-style newdata.
+  formula_column_map <- setNames(names_x, colnames(mm)[keep_cols])
+
+  formula_factor_info <- build_formula_factor_info(
+    factor_terms = factor_term_labels,
+    terms_object = terms_model,
+    model_frame = mf,
+    term_name_map = conceptual_term_names,
+    term_to_columns = term_to_columns,
+    x = x
   )
+
+  # A numeric matrix alone cannot distinguish a two-valued polynomial contrast
+  # from an ordinary binary predictor. Transport the formula-derived distinction
+  # privately so the final transformation can mean-center non-indicator factor
+  # contrasts without changing direct matrix-interface behavior.
+  attr(x, "mfp2_center_method") <- formula_factor_center_methods(
+    factor_terms = factor_terms,
+    term_to_columns = term_to_columns,
+    x = x
+  )
+
+  # Pass every factor mapping, including two-level factors that generate one
+  # non-identity dummy column. Ordinary identity singleton terms are added by
+  # normalize_term_groups() and need not be supplied explicitly.
+  grouped_formula_terms <- term_to_columns[
+    intersect(factor_terms, names(term_to_columns))
+  ]
+  if (length(grouped_formula_terms) > 0L) {
+    grouped_formula_terms <- grouped_formula_terms[
+      mapped_term_flags(grouped_formula_terms)
+    ]
+  }
+  if (length(grouped_formula_terms) == 0L) {
+    grouped_formula_terms <- NULL
+  }
+
+  # Convert the per-column logical settings collected from fp() terms into the
+  # public variable-name interface expected by mfp2.default().
+  force_max_fp_values <- unlist(
+    force_max_fp_list,
+    use.names = TRUE
+  )
+
+  force_max_fp_vars <- unique(
+    names(force_max_fp_values)[force_max_fp_values]
+  )
+
+  if (length(force_max_fp_vars) == 0L) {
+    force_max_fp_vars <- NULL
+  }
+
+  # Construct explicit per-column numeric vectors from the formula defaults and
+  # fp()/fp2() overrides. vapply() preserves the outer variable names while
+  # discarding any incidental name attached to an individual scalar value.
+  scale_vec <- vapply(scale_list, function(value) {
+    as.numeric(value[[1L]])
+  }, numeric(1L))
+  shift_vec <- vapply(shift_list, function(value) {
+    as.numeric(value[[1L]])
+  }, numeric(1L))
+
+  fit <- mfp2.default(x = x,
+                      y = y,
+                      term_groups = grouped_formula_terms,
+                      weights = weights,
+                      offset = offset,
+                      cycles = cycles,
+                      scale = scale_vec,
+                      shift = shift_vec,
+                      df = unlist(df_list),
+                      center = unlist(center_list),
+                      subset = NULL,
+                      family = family,
+                      fitter = fitter,
+                      criterion = criterion,
+                      select = unlist(select_list),
+                      alpha = unlist(alpha_list),
+                      keep = keep,
+                      xorder = xorder,
+                      powers = power_list,
+                      ties = ties,
+                      strata = strata,
+                      id = id,
+                      waves = waves,
+                      nocenter = nocenter,
+                      acd_vars = acdx,
+                      ftest = ftest,
+                      control = control,
+                      zero_vars = zero,
+                      catzero_vars = catzero,
+                      spike_vars = spike,
+                      force_max_fp_vars = force_max_fp_vars,
+                      min_saz_prop = min_saz_prop,
+                      verbose = verbose
+  )
+  fit$formula_interface <- TRUE
+  fit$formula <- formula_user
+  fit$formula_terms <- stats::delete.response(terms_model)
+  fit$formula_contrasts <- attr(mm, "contrasts")
+  fit$formula_xlevels <- .getXlevels(terms_model, mf)
+  fit$formula_column_map <- formula_column_map
+  fit$formula_model_matrix_columns <- names_x
+  fit$formula_term_to_columns <- term_to_columns
+  fit$formula_prediction_term_names <- formula_prediction_term_names
+  fit$formula_factor_info <- formula_factor_info
+
+  fit$formula_strata_terms <- formula_strata_terms
+  fit$formula_strata_xlevels <- formula_strata_xlevels
+  fit$formula_offset_terms <- formula_offset_terms
+  fit$formula_offset_xlevels <- formula_offset_xlevels
+  # Replace the internal mfp2.default() call with the original
+  # user-facing formula-interface call.
+  call[[1L]] <- quote(mfp2)
+
+  formula_position <- match("formula", names(call))
+
+  if (!is.na(formula_position)) {
+    names(call)[formula_position] <- ""
+  }
+
+  fit$call_mfp <- call
+
+  fit
 }
 
-#' Extract coefficients from object of class `mfp2`
-#' 
-#' This function is a method for the generic [stats::coef()] function for 
-#' objects of class `mfp2`. 
-#' 
-#' @param object an object of class `mfp2`, usually, a result of a call to
-#' \code{mfp2()}.
-#' @param ... not used.
-#' 
-#' @return 
-#' Named numeric vector of coefficients extracted from the model `object`.
-#' 
+#' Identify fractional polynomial terms
+#'
+#' Checks whether each string represents an `fp()` or `fp2()` call,
+#' optionally qualified with `mfp2::` or `mfp2:::`.
+#'
+#' @param z A character vector of formula terms.
+#' @return A logical vector with one value per element of `z`.
+#' @keywords internal
+#' @noRd
+is_fp_term <- function(z) {
+  grepl("^(mfp2:::?)?fp2?\\(.*\\)$", z)
+}
+
+#' Extract Coefficients from an `mfp2` Model
+#'
+#' Returns coefficients from a fitted [mfp2()] model. This is a method for the
+#' generic [stats::coef()] function.
+#'
+#' @param object A fitted [mfp2()] object.
+#' @param ... Not used.
+#'
+#' @return
+#' A named numeric vector for scalar-response models. For multinomial models,
+#' a matrix with one row per non-reference outcome and one column per fitted
+#' term; powers are common across rows but coefficients are outcome specific.
+#'
+#' @seealso [mfp2()], [summary.mfp2()], [predict.mfp2()]
+#'
+#' @examples
+#' data("prostate")
+#' fit <- mfp2(
+#'   lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+#'   data = prostate,
+#'   verbose = FALSE
+#' )
+#' coef(fit)
+#'
 #' @export
 coef.mfp2 <- function(object, ...) {
   object$coefficients
 }
 
-#' Summarizing `mfp2` model fits
-#' 
-#' This function is a method for the generic [base::summary()] function for
-#' objects of class `mfp2`.
-#' 
-#' @param object an object of class `mfp2`, usually, a result of a call to
-#' \code{mfp2()}.
-#' @param ... further arguments passed to the summary functions for `glm()` 
-#' ([stats::summary.glm()], i.e. families supported by `glm()`) or `coxph()` 
-#' ([survival::summary.coxph()], if `object$family = "cox"`).
-#' 
-#' @return 
-#' An object returned from [stats::summary.glm()] or
-#' [survival::summary.coxph()], depending on the family parameter of `object`.
-#' 
-#' @seealso 
-#' \code{mfp2()}, [stats::glm()], [stats::summary.glm()], [survival::coxph()],
-#' [survival::summary.coxph()]
-#' 
-#' @export
-summary.mfp2 <- function(object, ...) {
-  NextMethod("summary", object)
-}
 
-#' Print method for objects of class `mfp2`
-#' 
-#' Enhances printing by information on data processing and fractional 
-#' polynomials.
-#' 
-#' @param x `mfp2` object to be printed.
-#' @param ... passed to `print` methods of underlying model class. A useful 
-#' option as the `digits` argument, indicating printed digits.
+#' Confidence Intervals for `mfp2` Model Parameters
 #'
-#' @return Two dataframes: the first one contains preprocessing parameters (shifting, scaling, and
-#' centering), and the second one includes additional parameters such as `df`, `select`, and 
-#' `alpha` passed through `mfp2`. It also returns a list of the final model fitted, which can be 
-#' either a GLM or Cox model depending on the chosen family.
-#' @export
-print.mfp2 <- function(x,
-                       ...) {
-  # shift and scaling factors with centering values
-  cat("Shifting, Scaling and Centering of covariates", "\n")
-  print.data.frame(x$transformations)
-  cat("\n")
-  
-  # Final MFP Powers
-  cat("Final Multivariable Fractional Polynomial for y", "\n")
-
-  # Exclude 'acd' column if all its elements are false
-  fp_terms <- x$fp_terms
-  if (all(!fp_terms["acd"])) {
-    fp_terms <- fp_terms[, !names(fp_terms) %in% "acd"]
-  }
-  
-  print.data.frame(fp_terms)
-  cat("\n")
-  
-  cat(sprintf("MFP algorithm convergence: %s\n", x$convergence_mfp))
-  
-  # print model object using underlying print function
-  NextMethod("print", x)
-}
-
-#' Helper to assign attributes to a variable undergoing FP-transformation
-#' 
-#' Used in formula interface to `mfp2()`.
-#' 
-#' @param x a vector representing a continuous variable undergoing 
-#' fp-transformation.
-#' @param df,alpha,select,shift,scale,center,acdx,zero,catzero,spike See 
-#' [mfp2::mfp2()]) for details. 
-#' @param powers a vector of powers to be evaluated for `x`. Default is `NULL` 
-#' and `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` will be used.
-#' @param ... used in alias `fp2` to pass arguments.
-#' 
+#' Wald confidence intervals for the coefficients of a fitted [mfp2()] model,
+#' a method for the generic [stats::confint()].
+#'
+#' The intervals are
+#' \eqn{\hat\beta \pm z_{1-\alpha/2}\,\mathrm{SE}(\hat\beta)}, with standard
+#' errors taken from [stats::vcov()] of the fitted object. These are the same
+#' Wald intervals summarised by [summary.mfp2()] (which displays its 95%
+#' interval with the conventional rounded multiplier 1.96, whereas `confint()`
+#' uses the exact normal quantile and honours `level`), and they apply uniformly
+#' to every scalar-coefficient family. They are used in preference to the default
+#' profile-likelihood intervals of [stats::confint()] for `glm` fits because those refit
+#' the model on `mfp2`'s internally transformed design and fail; for GEE
+#' (`gee_family()`) the covariance is the robust sandwich estimator, which is
+#' the correct basis for GEE inference (and `geepack` supplies no `confint`
+#' method). Multinomial and ordinal models, whose coefficients are not a single
+#' named vector, defer to the interval method of the underlying fit.
+#'
+#' @param object A fitted [mfp2()] object.
+#' @param parm Optional character vector of parameter names, or numeric indices,
+#'   selecting which coefficients to report. Defaults to all.
+#' @param level The confidence level. Default `0.95`.
+#' @param ... Passed to the underlying interval method for multinomial/ordinal
+#'   models.
+#'
+#' @return A matrix with a row per selected parameter and two columns giving the
+#'   lower and upper confidence limits.
+#'
+#' @seealso [mfp2()], [summary.mfp2()], [vcov()]
+#'
 #' @examples
+#' data("prostate")
+#' fit <- mfp2(
+#'   lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+#'   data = prostate,
+#'   verbose = FALSE
+#' )
+#' confint(fit)
+#' confint(fit, parm = "svi.1", level = 0.9)
 #'
-#' xr = 1:10
-#' fp(xr)
-#' fp2(xr)
-#' @return 
-#' The vector `x` with new attributes relevant for fp-transformation. All 
-#' arguments passed to this function will be stored as attributes. 
-#' 
 #' @export
-fp <- function(x, 
-               df = 4, 
+confint.mfp2 <- function(object, parm, level = 0.95, ...) {
+  # GEE intervals use geepack's vcov() method; check it is available.
+  mfp2_require_geepack_for_fit(object)
+
+  # Multinomial and ordinal models carry non-vector coefficient structures
+  # (per-logit matrices, threshold intercepts); keep their own interval method.
+  if (object$family_string %in% c("multinomial", "ordinal")) {
+    return(NextMethod())
+  }
+
+  if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
+      level <= 0 || level >= 1) {
+    stop("`level` must be a single number in (0, 1).", call. = FALSE)
+  }
+
+  a <- (1 - level) / 2
+  probs <- c(a, 1 - a)
+  pct <- paste(
+    format(100 * probs, trim = TRUE, scientific = FALSE, digits = 3),
+    "%"
+  )
+
+  cf <- object$coefficients
+
+  # A selection run may retain no covariates at all (every variable dropped);
+  # such a model has no coefficients to interval, so return an empty matrix
+  # rather than delegating to a base method that errors on the empty fit.
+  if (is.null(cf) || length(cf) == 0L) {
+    return(matrix(numeric(0), nrow = 0L, ncol = 2L,
+                  dimnames = list(character(0), pct)))
+  }
+
+  nm <- names(cf)
+  if (is.null(nm)) nm <- as.character(seq_along(cf))
+
+  # Wald standard errors from the fitted covariance (robust sandwich for GEE).
+  # If the covariance is unavailable, the interval limits are NA rather than a
+  # hard error, so a usable object is always returned.
+  V <- tryCatch(as.matrix(stats::vcov(object)), error = function(e) NULL)
+  ses <- stats::setNames(rep(NA_real_, length(nm)), nm)
+  if (!is.null(V) && !is.null(rownames(V))) {
+    shared <- nm[nm %in% rownames(V)]
+    if (length(shared) > 0L) {
+      ses[shared] <- sqrt(diag(V)[shared])
+    }
+  }
+
+  ci <- unname(cf) + outer(unname(ses), stats::qnorm(probs))
+  dimnames(ci) <- list(nm, pct)
+
+  if (!missing(parm)) {
+    if (is.character(parm)) {
+      unknown <- setdiff(parm, nm)
+      if (length(unknown) > 0L) {
+        stop(
+          "! Unknown parameter name(s) in `parm`: ", paste(unknown, collapse = ", "),
+          ".\ni Available names are: ", paste(nm, collapse = ", "), ".",
+          call. = FALSE
+        )
+      }
+      sel <- parm
+    } else if (is.numeric(parm) && all(is.finite(parm)) &&
+               all(parm == round(parm)) && all(abs(parm) >= 1) &&
+               all(abs(parm) <= length(nm)) &&
+               (all(parm > 0) || all(parm < 0))) {
+      sel <- nm[parm]
+    } else {
+      stop(
+        "! `parm` must be coefficient names or valid coefficient positions (1 to ",
+        length(nm), ").",
+        call. = FALSE
+      )
+    }
+    ci <- ci[sel, , drop = FALSE]
+  }
+  ci
+}
+
+#' Extract Residuals from an `mfp2` Model
+#'
+#' Returns residuals from a fitted [mfp2()] model. For GEE and multinomial
+#' models, `type` can be `"deviance"` (the default), `"pearson"`,
+#' `"working"`, or `"response"`.
+#'
+#' @details
+#' For GEE models, residuals are based on the marginal fitted means.
+#' Deviance residuals are calculated from the response family's deviance
+#' function and the model's prior weights. Pearson, working, and response
+#' residuals are obtained from the underlying GEE fit.
+#'
+#' For multinomial models, residuals are calculated separately for each
+#' non-reference category. Each category is treated as a binary outcome,
+#' using its fitted class probability. The result has one column per
+#' non-reference category.
+#'
+#' For other models, residual calculation is passed to the underlying fit,
+#' including its choice of default residual type.
+#'
+#' @param object A fitted [mfp2()] model.
+#' @param ... For GEE and multinomial models, use `type` to select
+#' `"deviance"` (the default), `"pearson"`, `"working"`, or `"response"`
+#' residuals. For other models, `type` and any other arguments follow
+#' the residual method for that model's family; see, for example,
+#' [stats::residuals.glm()] for GLM models.
+#'
+#' @return A numeric vector for GEE and other scalar-response models, or a
+#' numeric matrix with one row per observation and one column per
+#' non-reference category for multinomial models.
+#'
+#' @seealso [mfp2()], [plot()], [stats::residuals()]
+#'
+#' @examples
+#' data("prostate")
+#' fit <- mfp2(
+#'   lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+#'   data = prostate,
+#'   verbose = FALSE
+#' )
+#' head(residuals(fit))
+#'
+#' @export
+residuals.mfp2 <- function(object, ...) {
+  if (identical(object$family_string, "gee")) {
+    mfp2_require_geepack()
+    dots <- list(...)
+    type <- if (!is.null(dots[["type"]])) {
+      match.arg(
+        dots[["type"]],
+        c("deviance", "pearson", "working", "response")
+      )
+    } else {
+      "deviance"
+    }
+
+    if (identical(type, "deviance")) {
+      # Deviance residuals are not provided by geepack, but they only require
+      # the marginal mean and the family deviance function (not the working
+      # correlation), so compute them directly. This matches Stata `fracplot`.
+      family <- object$family$response_family
+      mu <- as.numeric(object$fitted.values)
+      y <- as.numeric(object$y)
+      wt <- object$prior.weights
+      if (is.null(wt) || length(wt) != length(y)) wt <- rep(1, length(y))
+      dev <- family$dev.resids(y, mu, wt)
+      res <- sign(y - mu) * sqrt(pmax(dev, 0))
+      names(res) <- names(object$fitted.values)
+      return(res)
+    }
+
+    obj <- mfp2_restore_gee_family(object)
+    class(obj) <- setdiff(class(obj), "mfp2")
+    res <- stats::residuals(obj, type = type)
+    # geeglm stores its linear predictor and fitted values as one-column
+    # matrices, so residuals.geeglm() returns an n-by-1 matrix. Coerce to a
+    # plain (optionally named) vector, which is what callers and the
+    # component-plus-residual plots expect.
+    if (is.matrix(res) && ncol(res) == 1L) {
+      res <- drop(res)
+    }
+    return(res)
+  }
+
+  if (identical(object$family_string, "multinomial")) {
+    dots <- list(...)
+    type <- if (!is.null(dots[["type"]])) {
+      match.arg(
+        dots[["type"]],
+        c("deviance", "pearson", "working", "response")
+      )
+    } else {
+      "deviance"
+    }
+    return(mfp2_multinomial_residuals(object, type = type))
+  }
+
+  NextMethod()
+}
+
+
+#' Residuals for a Multinomial `mfp2` Model
+#'
+#' `nnet::multinom` provides no `residuals()` method, so
+#' `residuals.default()` is used and returns the raw response residuals
+#' \eqn{y_{ik}-\hat\pi_{ik}} for every class (including the reference), with the
+#' `type` argument silently ignored. This helper computes proper per-logit
+#' residuals instead.
+#'
+#' Each non-reference logit \eqn{q} is treated as a binary sub-problem with
+#' indicator \eqn{y_{iq}=\mathbf{1}\{\text{class}_i=q\}} and fitted probability
+#' \eqn{\hat\pi_{iq}} (the marginal class probability from
+#' `predict(type = "response")`). Deviance residuals then follow the binomial
+#' convention
+#' \eqn{\mathrm{sign}(y_{iq}-\hat\pi_{iq})\sqrt{-2[y_{iq}\log\hat\pi_{iq} +
+#' (1-y_{iq})\log(1-\hat\pi_{iq})]}}, matching the residual used for the
+#' component-plus-residual plot. Pearson, working, and response residuals use
+#' the corresponding binary definitions.
+#'
+#' @param object A fitted multinomial [mfp2()] object.
+#' @param type Residual scale, one of `"deviance"` (default), `"pearson"`,
+#' `"working"`, or `"response"`.
+#'
+#' @return A numeric `n` by `Q` matrix, where `Q` is the number of
+#' non-reference logits. Columns are named by the non-reference class labels,
+#' in the order carried by the fitted coefficient matrix.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_multinomial_residuals <- function(object, type = "deviance") {
+  probabilities <- stats::predict(object, type = "response")
+  probabilities <- as.matrix(probabilities)
+
+  # Non-reference logits, in the order carried by the coefficient matrix, so
+  # residual columns align with coef(), vcov() blocks, and term predictions.
+  logits <- rownames(object$mfp2_coefficient_matrix)
+  if (is.null(logits)) {
+    logits <- setdiff(object$class_levels, object$reference_class)
+  }
+
+  y_labels <- as.character(object$y)
+  eps <- .Machine$double.eps
+
+  out <- matrix(
+    NA_real_, nrow(probabilities), length(logits),
+    dimnames = list(rownames(probabilities), logits)
+  )
+  for (q in logits) {
+    y_q <- as.numeric(y_labels == q)
+    p_q <- pmin(pmax(probabilities[, q], eps), 1 - eps)
+    resid_q <- y_q - p_q
+    out[, q] <- switch(
+      type,
+      response = resid_q,
+      pearson  = resid_q / sqrt(p_q * (1 - p_q)),
+      working  = resid_q / (p_q * (1 - p_q)),
+      deviance = sign(resid_q) * sqrt(pmax(
+        -2 * (y_q * log(p_q) + (1 - y_q) * log(1 - p_q)), 0
+      ))
+    )
+  }
+  out
+}
+
+
+#' Specify a Fractional-Polynomial Term
+#'
+#' Use `fp()` or `fp2()` inside an [mfp2()] or [mfpi()] formula to set
+#' fractional-polynomial (FP) options for one continuous predictor. In
+#' [mfp2()], continuous terms without `fp()` are also considered for FP
+#' selection, using its top-level settings. `fp()` and `fp2()` specify the
+#' same model term and record options for fitting; neither transforms the
+#' values when the formula is created.
+#'
+#' `fp2()` was introduced to avoid a name conflict with `mfp::fp()`.
+#' That conflict is now resolved: formulas passed to `mfp2()` or `mfpi()`
+#' use this package's `fp()` even when `mfp` is attached.
+#'
+#' Add categorical predictors to the formula without `fp()` or `fp2()`.
+#' Convert numeric category codes with `factor()`.
+#'
+#' @details
+#' The default `df = 4` permits selection of a linear effect, a first-degree
+#' FP (FP1), or a second-degree FP (FP2). Selection may also exclude the
+#' predictor. Use `df = 2` to permit at most FP1, or `df = 1` for a linear
+#' effect only. The fitting procedure may reduce the permitted complexity
+#' when a predictor has few distinct values.
+#'
+#' Candidate powers default to `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`. A power
+#' of zero represents a logarithm. `powers` changes the candidates searched;
+#' it does not specify the powers of the final fitted function.
+#'
+#' Options set inside `fp()` apply to this term. `df`, `alpha`, `select`,
+#' and `center` have their own defaults in `fp()` and ignore the values
+#' supplied to the surrounding `mfp2()` call; set them inside `fp()` to
+#' change them. `shift`, `scale`, and `powers` default to `NULL` and use the
+#' top-level values unless set here. Under p-value selection, `select = 1`
+#' forces inclusion and `alpha = 1` prevents simplification of the permitted
+#' functional form.
+#'
+#' @param x Continuous numeric predictor to include in the formula. Do not
+#'   wrap a factor in `fp()`.
+#' @param df Maximum FP complexity: `1` for linear only, `2` for up to FP1,
+#'   or `4` (default) for up to FP2. Higher positive even values permit
+#'   higher FP degrees.
+#' @param alpha Significance level for comparisons between functional forms
+#'   under p-value selection. Default `0.05`. For eligible spike-at-zero
+#'   terms, also controls tests that remove components.
+#' @param select Significance level for variable inclusion under p-value
+#'   selection. Default `0.05`; use `1` to force inclusion. It does not
+#'   control inclusion under AIC or BIC selection.
+#' @param shift Numeric value added before FP transformation. `NULL` (default)
+#'   inherits the setting from `mfp2()`; `0` disables shifting for this term.
+#' @param scale Positive divisor applied after shifting. `NULL` (default)
+#'   inherits the setting from `mfp2()`; `1` disables scaling for this term.
+#'   With `zero`, `catzero`, or `spike`, the automatic scale is `1`.
+#' @param center Whether to center the fitted terms. Default `TRUE`.
+#' @param acd Whether to request approximate cumulative distribution (ACD)
+#'   modelling. Default `FALSE`.
+#' @param powers Numeric vector of candidate FP powers for this predictor.
+#'   `NULL` (default) uses the global candidate set. Duplicate candidates
+#'   are removed.
+#' @param zero If `TRUE`, transform only values with `x > 0`; exact zeros
+#'   contribute zero to the continuous component. Requires nonnegative `x`.
+#'   Default `FALSE`.
+#' @param catzero If `TRUE`, add a binary indicator for `x = 0` alongside
+#'   the positive component. Implies `zero = TRUE`. Default `FALSE`.
+#' @param spike If `TRUE`, request spike-at-zero (SAZ) model selection,
+#'   subject to eligibility checks. While eligible, it considers a positive
+#'   component and a binary indicator for `x = 0`. Requires nonnegative `x`.
+#'   Default `FALSE`.
+#' @param force_max_fp If `TRUE`, retain the most complex form permitted by
+#'   `df` and bypass variable removal and functional-form simplification.
+#'   For an eligible SAZ term, retain both components. Default `FALSE`.
+#' @param acdx Deprecated alias for `acd`. Use `acd`; supplying both
+#'   arguments is an error.
+#'
+#' @return The input vector with modelling options attached as attributes.
+#'   The options take effect when the term is used in an [mfp2()] or
+#'   [mfpi()] formula.
+#'
+#' @examples
+#' data("prostate")
+#'
+#' # Search up to FP1 for age.
+#' fit_fp <- mfp2(
+#'   lpsa ~ fp(age, df = 2) + svi,
+#'   data = prostate,
+#'   verbose = FALSE
+#' )
+#'
+#' # fp2() accepts the same options and produces the same model specification.
+#' fit_fp2 <- mfp2(
+#'   lpsa ~ fp2(age, df = 2) + svi,
+#'   data = prostate,
+#'   verbose = FALSE
+#' )
+#'
+#' @seealso [fp2()], [mfp2()], [mfpi()]
+#' @export
+fp <- function(x,
+               df = 4,
                alpha = 0.05,
-               select = 0.05, 
-               shift = NULL, 
+               select = 0.05,
+               shift = NULL,
                scale = NULL,
-               center = TRUE, 
-               acdx = FALSE, 
+               center = TRUE,
+               acd = FALSE,
                powers = NULL,
                zero = FALSE,
                catzero = FALSE,
-               spike = FALSE) {
-  
-  name <- deparse(substitute(x))
-  
-  # Assert that a factor variable must not be subjected to fp transformation
-  if (is.factor(x)) {
-    stop(name," is a factor variable and should not be passed to the fp() function.")
+               spike = FALSE,
+               force_max_fp = FALSE,
+               acdx = NULL
+) {
+
+  acd_supplied <- !missing(acd)
+  acdx_supplied <- !missing(acdx)
+
+  if (acd_supplied && acdx_supplied) {
+    stop(
+      "`acd` and its deprecated alias `acdx` cannot both be supplied.",
+      call. = FALSE
+    )
   }
-  
+
+  if (acdx_supplied) {
+    .Deprecated(
+      new = "acd",
+      package = "mfp2",
+      old = "acdx",
+      msg = "`acdx` is deprecated; use `acd` instead."
+    )
+    acd <- acdx
+  }
+
+  name <- deparse(substitute(x))
+
+  # Assert that a factor variable must not be subjected to fp transformation.
+  if (is.factor(x)) {
+    stop(
+      name, " is a factor variable and should not be passed to the fp() function.",
+      call. = FALSE
+    )
+  }
+
+  # fp() is part of the formula interface. It stores user-supplied options as
+  # attributes that mfp2.formula() later extracts. We validate only shape/type
+  # issues that can corrupt attribute extraction. Full range and semantic
+  # validation is still performed by mfp2.default() after formula options have
+  # been expanded to the final per-variable vectors.
+  #
+  # validate_scalar_fp() (defined in validation_helpers.R) is a thin wrapper
+  # around the shared scalar/vector validators (nvars = 1L, since every fp()
+  # term attribute is a single value); it attaches a hint identifying which
+  # fp() call and which argument raised the error.
+
+  # Numeric scalar attributes.
+  # shift and scale may be NULL because NULL means "use the global mfp2()
+  # behavior". They may also be NA only if supplied as scalar NA, meaning
+  # automatic shift/scale estimation for this variable.
+  validate_scalar_fp(df, "df", name, "numeric", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(alpha, "alpha", name, "numeric", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(select, "select", name, "numeric", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(shift, "shift", name, "numeric", allow_null = TRUE, allow_na = TRUE)
+  validate_scalar_fp(scale, "scale", name, "numeric", allow_null = TRUE, allow_na = TRUE)
+
+  # Logical scalar attributes.
+  validate_scalar_fp(center, "center", name, "logical", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(acd, "acd", name, "logical", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(zero, "zero", name, "logical", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(catzero, "catzero", name, "logical", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(spike, "spike", name, "logical", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(force_max_fp, "force_max_fp", name, "logical", allow_null = FALSE, allow_na = FALSE)
+
+  # `powers` is a candidate base-power set. Duplicate values are removed here so
+  # formula-level powers use the same semantics as the top-level `powers` list.
+  # Repeated selected powers are generated later by replacement.
+  if (!is.null(powers)) {
+    powers <- normalize_fp_power_vector(
+      powers,
+      context = sprintf("`powers` in fp(%s)", name)
+    )
+  }
+
   attr(x, "df") <- df
   attr(x, "alpha") <- alpha
   attr(x, "select") <- select
   attr(x, "shift") <- shift
   attr(x, "scale") <- scale
   attr(x, "center") <- center
-  attr(x, "acd") <- acdx
+  attr(x, "acd") <- acd
   attr(x, "powers") <- powers
   attr(x, "zero") <- zero
   attr(x, "catzero") <- catzero
   attr(x, "spike") <- spike
+  attr(x, "force_max_fp") <- force_max_fp
   attr(x, "name") <- name
-  
+
   x
 }
-
-#' @describeIn fp Alias for `fp()` - use in formula when both `mfp` and `mfp2` are loaded to avoid name shadowing.
+#' @rdname fp
+#' @param ... Arguments passed by `fp2()` to `fp()`.
 #' @export
 fp2 <- function(...) {
   fp(...)
 }
 
-#' Helper function to extract selected variables from fitted `mfp2` object
-#' 
-#' Simply extracts all variables for which not all powers are estimated to 
-#' be `NA`. The names refer to the original names in the dataset and do not
-#' include transformations.
-#' 
-#' @param object fitted `mfp2` object.
-#' 
-#' @examples
+#' Extract Names of Selected Variables from an `mfp2` Model
 #'
+#' Returns the names of predictors retained in the final model after MFP
+#' selection, as recorded in the `selected` column of `object$fp_terms`.
+#' Usually a selected variable has at least one fractional-polynomial power
+#' that is not `NA`. The exception is a spike-at-zero term for which only
+#' the binary indicator for `x = 0` is retained: it is selected although
+#' all of its powers are `NA`. Factors are reported by their variable name,
+#' not by their contrast columns.
+#'
+#' @param object A fitted [mfp2()] object.
+#'
+#' @examples
 #' # Gaussian model
 #' data("prostate")
-#' x = as.matrix(prostate[,2:8])
-#' y = as.numeric(prostate$lpsa)
-#' # default interface
-#' fit = mfp2(x, y, verbose = FALSE)
+#' x <- as.matrix(prostate[, 2:8])
+#' y <- as.numeric(prostate$lpsa)
+#' fit <- mfp2(x, y, verbose = FALSE)
 #' get_selected_variable_names(fit)
-#' 
-#' @return 
-#' Character vector of names, ordered as defined by `xorder` in \code{mfp2()}.
-#' 
+#'
+#' @return
+#' Character vector of selected predictor names, ordered according to the
+#' `xorder` used in the [mfp2()] call.
+#'
+#' @seealso [mfp2()], [print.mfp2()]
+#'
 #' @export
 get_selected_variable_names <- function(object) {
+  if (!inherits(object, "mfp2")) {
+    stop("! `object` must be a fitted `mfp2` model.", call. = FALSE)
+  }
   nms <- rownames(object$fp_terms)
   nms[object$fp_terms[, "selected"]]
 }
 
-#' Helper to assign degrees of freedom
-#' 
-#' Determine the number of unique values in a variable. To be used in \code{mfp2()}.
-#' 
-#' @details 
-#' Variables with fewer than or equal to three unique values, for example,
-#' will be assigned df = 1. df = 2 will be assigned to variables with 4-5 
-#' unique values, and df = 4 will be assigned to variables with unique values 
-#' greater than or equal to 6.
-#' 
-#' @param x input matrix.
-#' @param df_default default df to be used. Default is 4.
-#' 
-#' @examples
-#' x <- matrix(1:100, nrow = 10)
-#' assign_df(x)
+#' Warn About Arguments That `mfp2()` Does Not Use
 #'
-#' @return 
-#' Vector of length `ncol(x)` with degrees of freedom for each variable in `x`.
-#' 
-#' @export
-assign_df <- function(x, df_default = 4) {
-  
-  # default degrees of freedom for each variable
-  df <- rep(df_default, ncol(x))
-  # unique values of each column of x
-  nu <- apply(x, 2, function(x) length(unique(x)))
-  
-  index1 <- which(nu <= 3)
-  index2 <- which(nu >= 4 & nu <= 5)
-  # set df to 1
-  if (length(index1) != 0) {
-    df[index1] <- 1
+#' Arguments passed through `...` that match no formal argument are ignored
+#' by `mfp2()`. This helper warns, naming them, so that misspelled argument
+#' names are noticed. In the formula interface, matrix-interface arguments
+#' that are set with `fp()` receive a specific hint.
+#'
+#' @param dots List of arguments captured from `...`.
+#' @param context Character scalar naming the function for the message.
+#' @param formula_interface Whether the call used the formula interface.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_warn_unused_dots <- function(dots, context, formula_interface = FALSE) {
+  if (length(dots) == 0L) {
+    return(invisible(NULL))
   }
-  if (length(index2) != 0) {
-    df[index2] <- 2
+
+  msg <- paste0(
+    "Unused argument(s) ignored by `", context, "`: ",
+    paste(mfpi_dot_labels(dots), collapse = ", "), "."
+  )
+
+  matrix_only <- c(
+    "zero_vars", "catzero_vars", "spike_vars", "force_max_fp_vars",
+    "term_groups", "acdx"
+  )
+  if (isTRUE(formula_interface) && any(names(dots) %in% matrix_only)) {
+    msg <- paste0(
+      msg,
+      "\ni In formulas, set zero, catzero, spike, force_max_fp, and ACD options ",
+      "inside `fp()`, for example `fp(x, spike = TRUE)`; factors are grouped ",
+      "automatically."
+    )
   }
-  
-  return(df)
+
+  warning(msg, call. = FALSE)
+  invisible(NULL)
+}
+
+#' Assign Degrees of Freedom Based on Variable Cardinality
+#'
+#' Assigns a degree-of-freedom (df) setting to each column of a predictor
+#' matrix. Columns with few distinct values receive a lower df than requested.
+#' The fitting pipeline supplies columns without missing values or constant
+#' predictors; this helper does not check those conditions itself.
+#'
+#' @section Assignment rules:
+#' Let \eqn{u} be the number of distinct values in a column and \eqn{d} its
+#' requested df. For columns supplied by the fitting pipeline:
+#'
+#' \tabular{lll}{
+#'   \strong{Distinct values} \tab \strong{Assigned df} \tab \strong{Rule} \cr
+#'   \eqn{2 \le u \le 3} \tab \code{1}         \tab Use a linear term. \cr
+#'   \eqn{4 \le u \le 5} \tab \code{min(2, d)} \tab Cap df at 2. \cr
+#'   \eqn{u \ge 6}       \tab \code{d}         \tab Keep the requested df. \cr
+#' }
+#'
+#' The implementation also assigns df 1 when a directly supplied column has
+#' fewer than two distinct values. A directly supplied column containing
+#' missing values has those values counted by \code{unique()}.
+#'
+#' @param x A predictor matrix with column names. Each column represents one
+#'   variable.
+#' @param df_default A single value for all columns or a vector with one
+#'   value per column. Values are converted to integers and must be positive
+#'   after conversion. Default \code{4}.
+#'
+#' @return A named integer vector with one assigned df per column, in the
+#'   same order as \code{x}. Names come from \code{colnames(x)}.
+#'
+#' @examples
+#' x <- cbind(
+#'   binary     = c(0, 1, 0, 1, 0, 1, 0, 1, 0, 1),
+#'   few_levels = c(1, 2, 3, 4, 5, 1, 2, 3, 4, 5),
+#'   continuous = 1:10
+#' )
+#'
+#' assign_df(x, df_default = 4)
+#' # binary = 1, few_levels = 2, continuous = 4
+#'
+#' assign_df(x, df_default = c(1, 4, 2))
+#' # binary = 1, few_levels = 2, continuous = 2
+#'
+#' @keywords internal
+#' @noRd
+assign_df <- function(x, df_default = 4L) {
+  if (!is.matrix(x)) {
+    stop("`x` must be a matrix.", call. = FALSE)
+  }
+
+  v_names <- colnames(x)
+  if (is.null(v_names)) {
+    stop("`x` must have column names.", call. = FALSE)
+  }
+
+  # A scalar applies to every column; a vector supplies one value per column.
+  n_vars <- length(v_names)
+  if (!(length(df_default) %in% c(1L, n_vars))) {
+    stop(
+      "`df_default` must have length 1 or the number of columns (",
+      n_vars, ").",
+      call. = FALSE
+    )
+  }
+
+  df <- rep(as.integer(df_default), length.out = n_vars)
+  if (anyNA(df) || any(df < 1L)) {
+    stop("`df_default` must contain only positive integers.", call. = FALSE)
+  }
+
+  # Count distinct values separately for each predictor.
+  nu <- vapply(
+    seq_len(n_vars),
+    function(j) length(unique(x[, j])),
+    integer(1L)
+  )
+
+  # Two or three distinct values permit only a linear term.
+  df[nu <= 3L] <- 1L
+
+  # Four or five distinct values permit at most FP1 (df = 2).
+  mid <- nu >= 4L & nu <= 5L
+  df[mid] <- pmin(df[mid], 2L)
+
+  # Align the result with the matrix columns.
+  stats::setNames(df, v_names)
 }

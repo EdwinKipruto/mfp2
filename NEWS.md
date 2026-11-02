@@ -1,21 +1,74 @@
-# mfp2 1.0.0
+# mfp2 1.1.0
 
-* Initial CRAN submission.
+## New functionality
+
+* Added Gamma, inverse-Gaussian, and negative-binomial regression. GLM families can now be supplied as names, functions, or family objects, including alternative links.
+
+* Added ordinal regression through `ordinal_family()` and multinomial regression through `multinomial_family()`, with prediction and plotting support.
+
+* Added parametric survival regression through `survreg_family()` and Fine–Gray competing-risks regression through `finegray_family()`.
+
+* Added generalized estimating equations through `gee_family()`, with cluster identifiers supplied through `id` and optional measurement order through `waves`. GEE models default to QICu-based selection.
+
+* Added `mfpi()` for interaction analysis with a categorical grouping variable, including prediction and plotting methods for group-specific functions and differences.
+
+* Added spike-at-zero modelling and options for modelling positive predictor values with or without a separate zero indicator.
+
+* Added support for assessing categorical predictors as complete terms, with `term_groups` available in the default interface.
+
+* Added `force_max_fp_vars` to retain specified predictors at their maximum permitted FP degree.
+
+* Added `plot.mfp2()`. `fracplot()` is deprecated and will be removed in a future
+  release; use `plot()` with a fitted `mfp2` object instead.
+
+* Added the `fitter` argument to choose between `stats::glm.fit()` (`"base"`)
+  and the optional `fastglm` backend for GLM families.
+
+## Interface changes
+
+* The following low-level helper functions are no longer exported and are now internal: `apply_shift_scale()`, `assign_df()`, `center_matrix()`, `create_dummy_variables()`, `find_scale_factor()`, `find_shift_factor()`, `fit_acd()`, `generate_powers_acd()`, `generate_powers_fp()`, `transform_matrix()`, and `transform_vector_acd()`. Shifting, scaling, centring, and ACD transformations are controlled through the `shift`, `scale`, `center`, and `acd_vars` arguments of `mfp2()`, or through `shift`, `scale`, `center`, and `acd` in `fp()` and `fp2()`. `transform_vector_fp()` remains exported.
+
+* `mfp2()` now warns when it is given arguments it does not use, such as a misspelled argument name.
+
+* In the formula interface, named values for top-level `df`, `alpha`, `select`, `shift`, `scale`, or `center` are now an error; previously a value such as `shift = c(age = 5)` was silently applied to every predictor.
+
+* Variable-specific `df`, `select`, `alpha`, `shift`, and `scale` settings in the default methods now use named vectors matched to predictor columns. Partial named vectors are supported; unnamed vectors containing more than one value are rejected.
+
+* Cox models now default to `ties = "efron"` rather than `"breslow"`, and to `nocenter = c(-1, 0, 1)` rather than `NULL`. The `"exact"` tie option is no longer accepted.
+
+* Observation weights must be finite and strictly positive; zero weights are no longer accepted.
+
+* ACD settings now use `acd_vars` in the default interface and `acd = TRUE` within `fp()` or `fp2()`. The former `acdx` spelling remains available as a deprecated alias.
+
+* The direct `strata` argument to `mfp2.formula()` is deprecated in favour of `strata(...)` in the formula. For formula-stratified models, prediction data must contain the original stratification variables.
+
+## Fixes and improvements
+
+* Fixed binomial response predictions for new observations.
+
+* Corrected formula evaluation during subsetting and improved handling of unused factor levels. Removing levels from a factor with custom contrasts now produces an informative error.
+
+* Improved support for namespace-qualified terms such as `mfp2::fp()` and `mfp2::fp2()`.
+
 
 # mfp2 1.0.1
 
-* Final regression coefficients are now expressed on the original scale of the data.
-* `predict.mfp2()`: Fixed a bug when using `type = "terms"`.
-* `predict.mfp2()`: Added the `nseq` argument.
-* `mfp2()`: Fixed an issue where the `keep` argument was inactive when `criterion = "aic"` or `criterion = "bic"`.
-* Fixed a bug in BIC calculation for Cox models: `nobs` now correctly uses the number of events rather than the total number of observations.
-* Improved documentation for clarity and added references regarding the effects of influential points in FP functions.
-* `DESCRIPTION`: Removed `NeedsCompilation` field as the package contains no native code.
+## Changes and improvements
 
-# mfp2 1.0.2
-* Added spike-at-zero algorithm for modeling semicontinuous covariates.  
-* `mfp2()`: Introduced `zero` and `catzero` options to model only the positive part of a semicontinuous covariate.  
-* `mfp2()`: `family` argument now supports GLM family functions (e.g., `stats::binomial(link = "probit")`) and different link functions.  
-* `predict.mfp2()`: Fixed bug when using `type = "response"` with the binomial family.  
-* `transform_data_step()`: Improved efficiency by transforming a variable only when its fractional polynomial power or spike decision changes.
-* `fracplot()`: Extended to allow plotting variables with a spike at zero. 
+* Updated the final regression coefficients so that they are reported on the original scale of the data.
+
+* Added the `nseq` argument to `predict.mfp2()`.
+
+* Improved the package documentation and added references concerning the influence of influential observations on fractional polynomial functions.
+
+## Bug fixes
+
+* Fixed an issue in `predict.mfp2()` when `type = "terms"` was used.
+
+* Fixed an issue in `mfp2()` where the `keep` argument was not applied when `criterion = "aic"` or `criterion = "bic"`.
+
+* Corrected the BIC calculation for Cox models so that the effective sample size is based on the number of observed events rather than the total number of observations.
+
+# mfp2 1.0.0
+
+* Initial CRAN release.

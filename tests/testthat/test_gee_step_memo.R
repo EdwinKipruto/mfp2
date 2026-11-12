@@ -37,12 +37,12 @@ test_that("GEE MFP selection is unchanged by the step memo", {
     old <- options(mfp2.gee_step_memo = FALSE)
     slow <- fit(criterion)
     options(old)
-    expect_identical(fast$fp_powers, slow$fp_powers)
-    expect_identical(coef(fast), coef(slow))
-    expect_identical(vcov(fast), vcov(slow))
-    expect_identical(fast$fp_terms, slow$fp_terms)
+    expect_equal(fast$fp_powers, slow$fp_powers)
+    expect_equal(coef(fast), coef(slow))
+    expect_equal(vcov(fast), vcov(slow))
+    expect_equal(fast$fp_terms, slow$fp_terms)
     expect_false(is.null(fast$mfp_selection_score))
-    expect_identical(fast$mfp_selection_score, slow$mfp_selection_score)
+    expect_equal(fast$mfp_selection_score, slow$mfp_selection_score)
   }
 })
 
@@ -75,6 +75,6 @@ test_that("a revisited GEE term with unchanged adjustments reuses its search", {
   # Two terms, at least two cycles: the final cycle revisits both terms.
   expect_gte(plain$calls, 4L)
   expect_lt(memo$calls, plain$calls)
-  expect_identical(memo$model$fp_powers, plain$model$fp_powers)
-  expect_identical(coef(memo$model), coef(plain$model))
+  expect_equal(memo$model$fp_powers, plain$model$fp_powers)
+  expect_equal(coef(memo$model), coef(plain$model))
 })

@@ -1,3 +1,7 @@
+# mfp2 1.1.1
+
+* Restored the mfp2 vignette (mfp2-user-guide.Rmd), which was inadvertently omitted from version 1.1.0.
+
 # mfp2 1.1.0
 
 ## New functionality

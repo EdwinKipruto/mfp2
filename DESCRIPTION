@@ -1,8 +1,8 @@
 Package: mfp2
 Type: Package
 Title: Multivariable Fractional Polynomial Models with Extensions
-Version: 1.1.0
-Date: 2026-11-02
+Version: 1.1.1
+Date: 2026-11-12
 Authors@R: c(
     person("Edwin", "Kipruto", role = c("aut", "cre"),
            email = "kiprutoedwin2626@gmail.com"),
@@ -48,4 +48,4 @@ Roxygen: list(markdown = TRUE)
 VignetteBuilder: knitr
 LinkingTo: Rcpp
 Config/testthat/edition: 3
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1

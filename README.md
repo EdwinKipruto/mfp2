@@ -2,6 +2,9 @@
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/EdwinKipruto/mfp2/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/EdwinKipruto/mfp2/actions/workflows/R-CMD-check.yaml)
+[![CRAN version](https://www.r-pkg.org/badges/version/mfp2)](https://cran.r-project.org/package=mfp2)
+[![CRAN downloads last month](https://cranlogs.r-pkg.org/badges/mfp2?color=brightgreen)](https://cran.r-project.org/package=mfp2)
+[![Total CRAN downloads](https://cranlogs.r-pkg.org/badges/grand-total/mfp2?color=blue)](https://cran.r-project.org/package=mfp2)
 <!-- badges: end -->
 
 ## Overview

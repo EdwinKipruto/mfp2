@@ -33,91 +33,91 @@
 )
 }
 \arguments{
-\item{x}{An object of class \code{"mfpi"} returned by \code{\link[=mfpi]{mfpi()}}.}
+\item{x}{An object of class `"mfpi"` returned by [mfpi()].}
 
 \item{terms}{An optional character vector naming variables tested for
-interaction. The default is \code{NULL}, which plots selected interactions
+interaction. The default is `NULL`, which plots selected interactions
 only. Specify a variable to plot its interaction even if it was not
 selected.}
 
 \item{plot_type}{A character string specifying the plots to display:
-\code{"fitted"} for group-specific functions, \code{"difference"} for the
+`"fitted"` for group-specific functions, `"difference"` for the
 comparison-group function minus the reference-group function, or
-\code{"both"} for side-by-side plots. Default: \code{"both"}, which requires
+`"both"` for side-by-side plots. Default: `"both"`, which requires
 the optional \pkg{patchwork} package.}
 
 \item{auto_print}{A logical value indicating whether to display plots
-automatically. Default: \code{TRUE}. Use \code{FALSE} to return the plots
+automatically. Default: `TRUE`. Use `FALSE` to return the plots
 without displaying them.}
 
 \item{show_title}{A logical value indicating whether to display titles
-and subtitles. Default: \code{TRUE}.}
+and subtitles. Default: `TRUE`.}
 
 \item{show_grid}{A logical value indicating whether to display panel grid
-lines. Default: \code{TRUE}. Use \code{FALSE} to remove them.}
+lines. Default: `TRUE`. Use `FALSE` to remove them.}
 
 \item{show_rug}{A logical value indicating whether to show observed
 continuous predictor values as rug marks along the horizontal axis.
-Default: \code{FALSE}.}
+Default: `FALSE`.}
 
 \item{show_ci_fitted}{A logical value indicating whether to display
-confidence intervals for group-specific functions. Default: \code{FALSE}.}
+confidence intervals for group-specific functions. Default: `FALSE`.}
 
 \item{show_ci_diff}{A logical value indicating whether to display
-confidence intervals for group differences. Default: \code{TRUE}.}
+confidence intervals for group differences. Default: `TRUE`.}
 
 \item{show_null_line}{A logical value indicating whether to add a
-horizontal line at zero to difference plots. Default: \code{FALSE}.}
+horizontal line at zero to difference plots. Default: `FALSE`.}
 
 \item{show_maineffect_line}{A logical value indicating whether to add
 the constant group difference estimated by the model without interaction
-to difference plots. Default: \code{TRUE}. The line is omitted if that
+to difference plots. Default: `TRUE`. The line is omitted if that
 model is unavailable.}
 
 \item{show_ci_maineffect}{A logical value indicating whether to display
 a confidence band around the main-effects reference line.
-Requires \code{show_maineffect_line = TRUE} and an available standard error.
-Default: \code{FALSE}.}
+Requires `show_maineffect_line = TRUE` and an available standard error.
+Default: `FALSE`.}
 
 \item{legend_position}{A character string specifying the legend position:
-\code{"inside"} (default), \code{"right"}, \code{"left"}, \code{"bottom"}, \code{"top"}, or \code{"none"}.}
+`"inside"` (default), `"right"`, `"left"`, `"bottom"`, `"top"`, or `"none"`.}
 
 \item{legend_inside}{Two numeric values giving the horizontal and vertical
 position of an inside legend, between 0 and 1. The bottom-left corner
-is \code{c(0, 0)} and the top-right corner is \code{c(1, 1)}.
-Default: \code{c(0.02, 0.98)}.}
+is `c(0, 0)` and the top-right corner is `c(1, 1)`.
+Default: `c(0.02, 0.98)`.}
 
 \item{legend_justification}{Two numeric values specifying which part
-of an inside legend is anchored at \code{legend_inside}.
-Default: \code{c(0, 1)}, which anchors the legend at its top-left corner.}
+of an inside legend is anchored at `legend_inside`.
+Default: `c(0, 1)`, which anchors the legend at its top-left corner.}
 
 \item{colour_ref}{Colour of the reference-group curve, points, and
-confidence intervals. Default: \code{"#2166AC"}.}
+confidence intervals. Default: `"#2166AC"`.}
 
 \item{colour_group}{Colour of the comparison-group curve, points, and
-confidence intervals. Default: \code{"#D6604D"}.}
+confidence intervals. Default: `"#D6604D"`.}
 
 \item{line_types}{An optional character vector specifying curve styles.
-For example, \code{c("solid", "dashed")} gives the reference group a solid
+For example, `c("solid", "dashed")` gives the reference group a solid
 line and the comparison group a dashed line. Alternatively, assign styles
-to group labels, for example \code{c(Placebo = "solid", Treatment = "dashed")},
-using the labels in your data. Default: \code{NULL}, which makes all lines solid.}
+to group labels, for example `c(Placebo = "solid", Treatment = "dashed")`,
+using the labels in your data. Default: `NULL`, which makes all lines solid.}
 
 \item{colour_diff}{Colour of the difference curve, points, and confidence
-intervals. Default: \code{"#1B7837"}.}
+intervals. Default: `"#1B7837"`.}
 
-\item{colour_null}{Colour of the zero reference line. Default: \code{"grey50"}.}
+\item{colour_null}{Colour of the zero reference line. Default: `"grey50"`.}
 
 \item{colour_maineffect}{Colour of the main-effects reference line.
-Default: \code{"grey20"}.}
+Default: `"grey20"`.}
 
-\item{linewidth}{A positive number controlling curve width. Default: \code{1}.}
+\item{linewidth}{A positive number controlling curve width. Default: `1`.}
 
 \item{ribbon_alpha}{Confidence-band transparency, from 0 (transparent)
-to 1 (opaque). Default: \code{0.2}.}
+to 1 (opaque). Default: `0.2`.}
 
 \item{rug_alpha}{Rug-mark transparency, from 0 (transparent) to 1 (opaque).
-Default: \code{0.4}.}
+Default: `0.4`.}
 
 \item{...}{Not used. Supplied arguments generate a warning.}
 }
@@ -129,17 +129,17 @@ groups with the reference group.
 For multinomial models, each variable's results contain an additional
 list level for the non-reference response categories.
 
-Individual plots are \pkg{ggplot2} objects. With \code{plot_type = "both"},
+Individual plots are \pkg{ggplot2} objects. With `plot_type = "both"`,
 each group comparison contains a combined \pkg{patchwork} plot.
-Returned plots can be modified or saved using \code{\link[ggplot2:ggsave]{ggplot2::ggsave()}}.
-Use \code{auto_print = FALSE} to obtain them without displaying them.
+Returned plots can be modified or saved using [ggplot2::ggsave()].
+Use `auto_print = FALSE` to obtain them without displaying them.
 
 An empty list is returned if no interactions were selected and
-\code{terms = NULL}.
+`terms = NULL`.
 }
 \description{
 Plot group-specific fitted functions and differences between groups for
-variables tested for interaction by \code{\link[=mfpi]{mfpi()}}. Continuous predictors are
+variables tested for interaction by [mfpi()]. Continuous predictors are
 shown as curves; binary and categorical predictors are shown as points
 at each fitted level.
 }
@@ -159,10 +159,10 @@ functions (see Kipruto, Royston and Sauerbrei (2026) for details).
 
 Plots use the model's linear-predictor scale. For example, Gaussian
 models with an identity link use the outcome scale, and binomial models
-with a logit link use the log-odds scale. See \code{\link[=predict.mfpi]{predict.mfpi()}} for
+with a logit link use the log-odds scale. See [predict.mfpi()] for
 interpretation by model family.
 
-Confidence intervals use a fixed confidence level of 95\%. They are
+Confidence intervals use a fixed confidence level of 95%. They are
 pointwise intervals, shown as shaded bands for continuous predictors
 and error bars for binary and categorical predictors. They are conditional
 on the fitted model and do not account for uncertainty from selecting
@@ -174,13 +174,13 @@ variables, transformations, or interactions.
 Difference plots can show two horizontal reference lines.
 
 The zero line indicates no difference between the groups.
-Add it using \code{show_null_line = TRUE}.
+Add it using `show_null_line = TRUE`.
 
 The main-effects line shows the group difference estimated by the model
 without interaction. That model assumes the predictor has the same effect
 in every group, so the group difference is constant across predictor values.
-This line is shown by default; use \code{show_maineffect_line = FALSE} to hide it.
-Use \code{show_ci_maineffect = TRUE} to add its 95\% confidence band.
+This line is shown by default; use `show_maineffect_line = FALSE` to hide it.
+Use `show_ci_maineffect = TRUE` to add its 95% confidence band.
 }
 
 \examples{
@@ -232,8 +232,8 @@ if (requireNamespace("patchwork", quietly = TRUE) &&
 \references{
 Kipruto, E., Royston, P. and Sauerbrei, W. (2026).
 Multivariable Fractional Polynomial Interaction Models in R.
-\emph{Journal of Statistical Software}.
+*Journal of Statistical Software*.
 }
 \seealso{
-\code{\link[=mfpi]{mfpi()}}, \code{\link[=predict.mfpi]{predict.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}
+[mfpi()], [predict.mfpi()], [summary.mfpi()]
 }

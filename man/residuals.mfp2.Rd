@@ -2,18 +2,18 @@
 % Please edit documentation in R/mfp2.R
 \name{residuals.mfp2}
 \alias{residuals.mfp2}
-\title{Extract Residuals from an \code{mfp2} Model}
+\title{Extract Residuals from an `mfp2` Model}
 \usage{
 \method{residuals}{mfp2}(object, ...)
 }
 \arguments{
-\item{object}{A fitted \code{\link[=mfp2]{mfp2()}} model.}
+\item{object}{A fitted [mfp2()] model.}
 
-\item{...}{For GEE and multinomial models, use \code{type} to select
-\code{"deviance"} (the default), \code{"pearson"}, \code{"working"}, or \code{"response"}
-residuals. For other models, \code{type} and any other arguments follow
+\item{...}{For GEE and multinomial models, use `type` to select
+`"deviance"` (the default), `"pearson"`, `"working"`, or `"response"`
+residuals. For other models, `type` and any other arguments follow
 the residual method for that model's family; see, for example,
-\code{\link[stats:residuals.glm]{stats::residuals.glm()}} for GLM models.}
+[stats::residuals.glm()] for GLM models.}
 }
 \value{
 A numeric vector for GEE and other scalar-response models, or a
@@ -21,9 +21,9 @@ numeric matrix with one row per observation and one column per
 non-reference category for multinomial models.
 }
 \description{
-Returns residuals from a fitted \code{\link[=mfp2]{mfp2()}} model. For GEE and multinomial
-models, \code{type} can be \code{"deviance"} (the default), \code{"pearson"},
-\code{"working"}, or \code{"response"}.
+Returns residuals from a fitted [mfp2()] model. For GEE and multinomial
+models, `type` can be `"deviance"` (the default), `"pearson"`,
+`"working"`, or `"response"`.
 }
 \details{
 For GEE models, residuals are based on the marginal fitted means.
@@ -50,5 +50,5 @@ head(residuals(fit))
 
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=plot]{plot()}}, \code{\link[stats:residuals]{stats::residuals()}}
+[mfp2()], [plot()], [stats::residuals()]
 }

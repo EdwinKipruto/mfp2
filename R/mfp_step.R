@@ -213,6 +213,19 @@ find_best_fp_step <- function(x,
     calculate_gaussian_deviance = isTRUE(ftest)
   )
 
+  # Both spline types supply nested prefixes. B-spline prefixes are built
+  # from centered subsets of one fixed pool of interior knots.
+  if (xi %in% names(attr(term_to_columns, "spline_specs", exact = TRUE))) {
+    spec <- attr(term_to_columns, "spline_specs", exact = TRUE)[[xi]]
+    fit_spline <- if (identical(spec$type, "bspline")) {
+      select_bspline_step(selector_args, spec)
+    } else select_rcs_step(selector_args, spec$df)
+    if (verbose) {
+      print_spline_step(xi, criterion, fit_spline, spec, family_string)
+    }
+    return(fit_spline)
+  }
+
   # Path 1: force_max_fp fixes the final form before any selection criterion.
   # For df = 1 the maximum form is linear; adding xi to the selector's local
   # keep set forces that row. For df > 1, select_force_max_fp() fits only the
@@ -3655,7 +3668,18 @@ build_adjustment_step <- function(x,
             dimnames = list(rownames(x), character(0L))
           )
         } else {
-          data_adj_list[[term]] <- x[, term_to_columns[[term]], drop = FALSE]
+          cols <- term_to_columns[[term]]
+          if (term %in% names(attr(term_to_columns, "spline_specs", exact = TRUE))) {
+            spec <- attr(term_to_columns, "spline_specs", exact = TRUE)[[term]]
+            df <- as.integer(powers_adj[[term]][[1L]])
+            cols <- if (df == 0L) character(0L) else cols[seq_len(df)]
+            if (isTRUE(spec$indicator) &&
+                (df == 0L || !isTRUE(spec$spike) ||
+                 spike_decision_int_adj[[term]] == saz_decision_codes[["cont_binary"]])) {
+              cols <- c(cols, term_to_columns[[term]][[spec$df + 1L]])
+            }
+          }
+          data_adj_list[[term]] <- x[, cols, drop = FALSE]
         }
       }
 

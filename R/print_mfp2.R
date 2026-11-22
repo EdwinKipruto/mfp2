@@ -14,8 +14,27 @@ mfp2_print_design_info <- function(object) {
     rownames(object$fp_terms),
     info$variable
   ))
-  info[order(match(info$variable, variable_order), seq_len(nrow(info))),
-       , drop = FALSE]
+  info <- info[order(match(info$variable, variable_order), seq_len(nrow(info))),
+               , drop = FALSE]
+
+  # Full spline definitions repeat the knot vector on every coefficient row
+  # and can split print.data.frame into separate column blocks. The optional
+  # summary basis table retains those definitions; print labels the linear
+  # column and the successive nonlinear columns of the same spline instead.
+  for (term in names(spline_specs_from_fit(object))) {
+    selected_df <- spline_selected_df_from_fit(object)[[term]]
+    if (!is.null(selected_df) && !is.na(selected_df) && selected_df <= 1L) next
+    spec <- spline_specs_from_fit(object)[[term]]
+    label <- if (identical(spec$type, "bspline")) "BS" else "RCS"
+    rows <- which(info$variable == term)
+    info$basis[rows[info$basis[rows] == term]] <- paste(label, "linear")
+    nonlinear <- rows[grepl("^(RCS|BS)_[[:digit:]]+\\(", info$basis[rows])]
+    info$basis[nonlinear] <- sub(
+      "^(RCS|BS)_([[:digit:]]+)\\(.*$", "\\1 nonlinear \\2",
+      info$basis[nonlinear]
+    )
+  }
+  info
 }
 
 
@@ -341,6 +360,16 @@ mfp2_print_prepare <- function(x, digits) {
   } else {
     rep(FALSE, nrow(fp_terms))
   }
+  if (length(spline_specs_from_fit(x)) > 0L) {
+    for (term in intersect(names(spline_specs_from_fit(x)), variable_names)) {
+      i <- match(term, variable_names)
+      spec <- spline_specs_from_fit(x)[[term]]
+      spike_flag[[i]] <- isTRUE(spec$spike)
+      catzero_flag[[i]] <- isTRUE(spec$indicator) && selected_status[[i]] &&
+        tail(x$formula_term_to_columns[[term]], 1L) %in%
+          x$term_to_columns[[term]]
+    }
+  }
 
   searched_fp_flag <- if ("searched_fp" %in% names(fp_terms)) {
     as.logical(fp_terms[["searched_fp"]])
@@ -590,6 +619,12 @@ mfp2_print_selection <- function(x, digits, ctx) {
     # change this classification.
     is_plain_linear <- !acd_flag & !searched_fp_flag &
       vapply(powers_by_row, function(p) length(p) == 1L && isTRUE(p == 1), logical(1L))
+    if (length(spline_selected_df_from_fit(x)) > 0L) {
+      spline_linear <- intersect(names(spline_selected_df_from_fit(x))[
+        !is.na(spline_selected_df_from_fit(x)) & spline_selected_df_from_fit(x) %in% c(0L, 1L)
+      ], variable_names)
+      is_plain_linear[variable_names %in% spline_linear] <- TRUE
+    }
     is_binary_only <- vapply(powers_by_row, length, integer(1L)) == 0L & catzero_flag
 
     linear_status <- selected_status & (is_plain_linear | is_binary_only)
@@ -645,6 +680,15 @@ mfp2_print_selection <- function(x, digits, ctx) {
       MoreArgs = list(acd_prefix = FALSE),
       SIMPLIFY = TRUE
     )
+
+    if (length(spline_selected_df_from_fit(x)) > 0L) {
+      for (term in intersect(names(spline_selected_df_from_fit(x)), variable_names)) {
+        state <- spline_selected_df_from_fit(x)[[term]]
+        function_label_plain[variable_names == term] <-
+          spline_form_label(state, catzero_flag[[match(term, variable_names)]],
+                            spline_specs_from_fit(x)[[term]])
+      }
+    }
 
     # Partition: every variable belongs to exactly one of the three tables.
     # Spike-eligible variables go to SAZ regardless of ACD status (SAZ is the
@@ -717,6 +761,15 @@ mfp2_print_selection <- function(x, digits, ctx) {
         ),
         SIMPLIFY = TRUE
       )
+      if (length(spline_specs_from_fit(x)) > 0L) {
+        for (term in intersect(names(spline_specs_from_fit(x)), variable_names[in_saz])) {
+          function_label_saz[variable_names[in_saz] == term] <- spline_form_label(
+            spline_selected_df_from_fit(x)[[term]],
+            catzero_flag[[match(term, variable_names)]],
+            spline_specs_from_fit(x)[[term]]
+          )
+        }
+      }
 
       # Build the SAZ table from columns that are always relevant. The ACD
       # indicator is intentionally omitted by default: an all-"no" column can
@@ -796,6 +849,7 @@ mfp2_print_detailed_settings <- function(detailed_settings, notes, digits, ctx) 
       detailed_table[["saz_decision"]] <- saz_decision_text
       if ("power1" %in% names(fp_terms)) detailed_table[["power1"]] <- fp_terms[["power1"]]
       if ("power2" %in% names(fp_terms)) detailed_table[["power2"]] <- fp_terms[["power2"]]
+      if ("spline_df" %in% names(fp_terms)) detailed_table[["spline_df"]] <- fp_terms[["spline_df"]]
 
       detailed_table <- sort_selected_first(detailed_table, selected_status)
       detailed_table <- format_model_print_table(detailed_table, digits)
@@ -1209,6 +1263,8 @@ mfp2_print_fit <- function(x, digits, notes, ctx) {
 #' The coefficients table labels each fitted basis term and its standard
 #' error. If the fit was centered, it also displays the centering constant
 #' and explains how to read the estimate.
+#' Selected RCS and B-spline terms are labelled with their spline form and
+#' fitted coefficient count.
 #'
 #' Model-fit measures depend on the family. GLMs report deviances, Cox models
 #' report minus twice the partial log likelihood, and other families display

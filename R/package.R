@@ -54,7 +54,7 @@
 #' recoded if they should represent the zero group.
 #'
 #' @section Getting started:
-#' See `vignette("mfp2", package = "mfp2")` for an introduction
+#' See `vignette("mfp2-user-guide", package = "mfp2")` for an introduction
 #' to model fitting, interpretation, prediction, and plotting.
 #'
 #' Further guidance is available in:
@@ -70,5 +70,6 @@
 #'
 #' @useDynLib mfp2, .registration = TRUE
 #' @importFrom Rcpp evalCpp
+#' @importFrom utils tail
 #' @keywords package
 "_PACKAGE"

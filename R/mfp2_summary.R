@@ -46,7 +46,7 @@
 #'     fitted link scale; supported survival models additionally report the
 #'     usual exponentiated effect when it has a standard interpretation.
 #'   \item \strong{Nonlinear Terms}: one row per variable modelled by an FP1,
-#'     FP2, ACD, or spike/catzero compound form. Each row reports a joint
+#'     FP2, RCS, B-spline, ACD, or spike/catzero compound form. Each row reports a joint
 #'     likelihood-ratio test (LRT) of all of that variable's terms, using the
 #'     package's selection-adjusted degrees of freedom. The LRT compares the
 #'     final MFP model with an otherwise unchanged model that omits the variable.
@@ -66,6 +66,8 @@
 #' Coefficients for nonlinear terms are omitted from the default output. Set
 #' \code{formulas = TRUE} to append the fitted-function formulas, or
 #' \code{basis = TRUE} to append the individual fitted basis coefficients. For
+#' Spline terms, basis labels include the fitted knots and the zero indicator
+#' is identified separately when retained. For
 #' an active ACD component, either option also prints the fitted definition of
 #' \eqn{A(x)}, including the scale used during fitting. Set
 #' \code{raw = TRUE} to obtain the underlying model-specific summary object
@@ -1307,6 +1309,16 @@ mfp2_summary_classify_terms <- function(object) {
   zero    <- mfp2_summary_flag(fp_terms, "zero")
   catzero <- mfp2_summary_flag(fp_terms, "catzero")
   spike   <- mfp2_summary_flag(fp_terms, "spike")
+  if (length(spline_specs_from_fit(object)) > 0L) {
+    for (term in intersect(names(spline_specs_from_fit(object)), variable_names)) {
+      i <- match(term, variable_names)
+      spec <- spline_specs_from_fit(object)[[term]]
+      spike[[i]] <- isTRUE(spec$spike)
+      catzero[[i]] <- isTRUE(spec$indicator) && selected[[i]] &&
+        tail(object$formula_term_to_columns[[term]], 1L) %in%
+          object$term_to_columns[[term]]
+    }
+  }
   searched_fp <- mfp2_summary_flag(fp_terms, "searched_fp")
 
   df_final <- if ("df_final" %in% names(fp_terms)) {
@@ -1356,6 +1368,9 @@ mfp2_summary_classify_terms <- function(object) {
     if (!selected[i]) next
 
     p <- powers_by_var[[i]]
+    spline_state <- if (variable_names[[i]] %in% names(spline_selected_df_from_fit(object))) {
+      spline_selected_df_from_fit(object)[[variable_names[[i]]]]
+    } else NULL
     plain_linear <- (length(p) == 1L && isTRUE(p == 1)) &&
       !searched_fp[i] &&
       !acd[i] && !zero[i] && !catzero[i] && !spike[i]
@@ -1364,7 +1379,11 @@ mfp2_summary_classify_terms <- function(object) {
     saz_binary_only <- spike[i] &&
       mfp2_summary_saz_is_binary_only(spike_dec[i])
 
-    if (plain_linear) {
+    if (!is.null(spline_state) && !is.na(spline_state) && spline_state == 0L) {
+      is_linear[i] <- TRUE
+      binary_only[i] <- TRUE
+    } else if (plain_linear || (!is.null(spline_state) &&
+                         !is.na(spline_state) && spline_state %in% c(0L, 1L))) {
       is_linear[i] <- TRUE
     } else if (saz_binary_only) {
       is_linear[i] <- TRUE
@@ -1378,6 +1397,15 @@ mfp2_summary_classify_terms <- function(object) {
     variable_names, selected, df_final, powers_by_var,
     acd, zero, catzero, spike, spike_dec, searched_fp
   )
+
+  if (length(spline_selected_df_from_fit(object)) > 0L) {
+    for (term in intersect(names(spline_selected_df_from_fit(object)), variable_names)) {
+      state <- spline_selected_df_from_fit(object)[[term]]
+      function_table[function_table$Variable == term, "Function"] <-
+        spline_form_label(state, catzero[[match(term, variable_names)]],
+                          spline_specs_from_fit(object)[[term]])
+    }
+  }
 
   list(
     variable_names = variable_names,
@@ -1642,6 +1670,7 @@ mfp2_summary_function_overview <- function(variable_names, selected, df_final,
 mfp2_summary_coef_to_display <- function(object) {
   t2c <- object$term_to_columns
   tmc <- object$transformed_to_model_columns
+  source_map <- object$transformed_column_to_source
 
   if (is.null(t2c) || is.null(tmc)) {
     return(stats::setNames(character(0L), character(0L)))
@@ -1662,13 +1691,23 @@ mfp2_summary_coef_to_display <- function(object) {
     } else {
       stats::setNames(raw_cols, raw_cols)
     }
+    if (!is.null(spline_specs_from_fit(object)[[v]])) {
+      full_cols <- object$formula_term_to_columns[[v]]
+      display_for_raw <- stats::setNames(vapply(raw_cols, function(col) {
+        position <- match(col, full_cols)
+        if (is.na(position)) stop("Spline coefficient column is missing from the fitted mapping.")
+        spline_column_label(v, position, spline_specs_from_fit(object)[[v]])
+      }, character(1L)), raw_cols)
+    }
 
     for (raw_col in raw_cols) {
-      # transformed_to_model_columns is keyed by raw column; its value is the
-      # final fitted coefficient name. Names and values can be identical for
-      # scalar predictors, but for FP terms with multiple basis columns the
-      # same raw column may map to multiple fitted names.
-      hits <- which(names(tmc) == raw_col)
+      # Join through the recorded source mapping; transformed columns commonly
+      # carry a .1 suffix even for a single fitted raw column.
+      hits <- if (!is.null(source_map)) {
+        which(unname(source_map[names(tmc)]) == raw_col)
+      } else {
+        which(names(tmc) == raw_col)
+      }
       if (length(hits) == 0L) next
       fitted_names <- as.character(tmc[hits])
       out_names  <- c(out_names, fitted_names)
@@ -2395,6 +2434,11 @@ mfp2_summary_nonlinear_table <- function(object, classified) {
       classified$catzero[idx], classified$spike[idx],
       classified$spike_dec[idx], TRUE, classified$searched_fp[idx]
     )
+    if (!is.null(spline_specs_from_fit(object)[[v]])) {
+      form <- spline_form_label(spline_selected_df_from_fit(object)[[v]],
+                                classified$catzero[[idx]],
+                                spline_specs_from_fit(object)[[v]])
+    }
     test <- if (is_gee) {
       mfp2_summary_gee_wald_term(object, classified, v)
     } else {
@@ -2891,7 +2935,14 @@ mfp2_design_column_info <- function(object) {
       NULL
     }
 
-    if (!is.null(factor_column)) {
+    spline_spec <- spline_specs_from_fit(object)[[term]]
+    if (!is.null(spline_spec)) {
+      # The full mapping retains positions after knot columns are dropped.
+      position <- match(source, object$formula_term_to_columns[[term]])
+      if (is.na(position)) stop("Spline design column is missing from the fitted mapping.")
+      display_variable <- term
+      basis <- spline_column_label(term, position, spline_spec)
+    } else if (!is.null(factor_column)) {
       display_variable <- factor_column$variable
       basis <- factor_column$basis
     } else if (mapped_block) {
@@ -3479,6 +3530,7 @@ mfp2_summary_model_fit_values <- function(object) {
     )
     attr(values, "statistic_label") <- label
     attr(values, "heading") <- "Selection Scores"
+    attr(values, "spline_present") <- length(spline_specs_from_fit(object)) > 0L
     return(values)
   }
   fit_statistic <- c(
@@ -3540,6 +3592,7 @@ mfp2_summary_model_fit_values <- function(object) {
   } else if (mfp2_family_is_ordinal(family_string)) {
     attr(values, "n_ordinal_intercepts") <- length(object$mfp2_ordinal_intercepts)
   }
+  attr(values, "spline_present") <- length(spline_specs_from_fit(object)) > 0L
   values
 }
 
@@ -3624,6 +3677,9 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer,
     if (!is.null(heading)) {
       cat("df counts fitted mean-model coefficients, including the intercept, plus 1 df\n")
       cat("for each selected FP power. Smaller selection scores are preferred.\n")
+      if (isTRUE(attr(values, "spline_present"))) {
+        cat("For spline terms, df counts retained spline and zero-indicator coefficients.\n")
+      }
       return(invisible(NULL))
     }
     n_logits <- attr(values, "n_logits", exact = TRUE)
@@ -3655,6 +3711,9 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer,
       )
     }
     for (ln in note_lines) cat(ln, "\n", sep = "")
+    if (isTRUE(attr(values, "spline_present"))) {
+      cat("For spline terms, df counts retained spline and zero-indicator coefficients.\n")
+    }
   }
 }
 

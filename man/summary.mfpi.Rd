@@ -13,24 +13,24 @@
 }
 \value{
 An object of class \code{"summary.mfpi"}. In addition to the fields
-needed to reproduce the MFPI Steps 1--3 display, the object contains
-\code{regression_displays}, a named list of structured coefficient displays
-for retained interaction models. Each display contains readable coefficient
-metadata, the corresponding model-conditional coefficient statistics, and
-model-specific nuisance metadata. Retained negative-binomial models report
-their own theta, while retained \code{survreg} models report their own scale(s).
-The normalized \code{family_string} is retained. Multinomial summaries also
-retain \code{class_levels}, \code{reference_class}, and \code{n_logits};
-ordinal summaries retain \code{ordinal_levels}, \code{ordinal_link}, and
-\code{n_intercepts}.
-Printing the object produces the four-step summary described above.
+  needed to reproduce the MFPI Steps 1--3 display, the object contains
+  \code{regression_displays}, a named list of structured coefficient displays
+  for retained interaction models. Each display contains readable coefficient
+  metadata, the corresponding model-conditional coefficient statistics, and
+  model-specific nuisance metadata. Retained negative-binomial models report
+  their own theta, while retained `survreg` models report their own scale(s).
+  The normalized \code{family_string} is retained. Multinomial summaries also
+  retain \code{class_levels}, \code{reference_class}, and \code{n_logits};
+  ordinal summaries retain \code{ordinal_levels}, \code{ordinal_link}, and
+  \code{n_intercepts}.
+  Printing the object produces the four-step summary described above.
 }
 \description{
 Produces a structured summary of an \code{"mfpi"} fit.
 }
 \details{
 The printed summary has four steps. Steps 1--3 are the same model-building
-display produced by \code{\link[=print.mfpi]{print.mfpi()}}: the selected adjustment model, all
+display produced by [print.mfpi()]: the selected adjustment model, all
 interaction candidates, and the final interaction-selection summary. Step 4
 reports regression results for retained interaction models using MFPI-specific
 labels rather than the raw output of the underlying regression model.
@@ -43,12 +43,12 @@ underlined interaction heading and reports its FP form and interaction powers
 for every group level. Regression coefficients are then separated into:
 
 \enumerate{
-\item group-specific FP terms, displayed using the original group labels
-and readable FP transformations;
-\item group-variable coefficients, with the fitted reference level stated
-explicitly;
-\item a model intercept when the underlying model contains one; and
-\item adjustment coefficients.
+  \item group-specific FP terms, displayed using the original group labels
+    and readable FP transformations;
+  \item group-variable coefficients, with the fitted reference level stated
+    explicitly;
+  \item a model intercept when the underlying model contains one; and
+  \item adjustment coefficients.
 }
 
 Centered basis terms report their stored centering constants using the same
@@ -67,7 +67,7 @@ power selection.
 Group-variable coefficients are coefficients of the fitted regression
 parameterization. When a group-by-continuous interaction is present, they are
 not overall comparisons between group levels; group comparisons depend on
-the interacting variable and should be obtained from \code{\link[=predict.mfpi]{predict.mfpi()}}.
+the interacting variable and should be obtained from [predict.mfpi()].
 
 Coefficient-level p-values are also conditional on the selected functional
 forms and do not account for uncertainty introduced by adjustment-model, FP,
@@ -95,6 +95,6 @@ summary(fit)
 
 }
 \seealso{
-\code{\link[=mfpi]{mfpi()}}, \code{\link[=print.mfpi]{print.mfpi()}}, \code{\link[=coef.mfpi]{coef.mfpi()}}, \code{\link[=vcov.mfpi]{vcov.mfpi()}},
-\code{\link[=predict.mfpi]{predict.mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}}
+[mfpi()], [print.mfpi()], [coef.mfpi()], [vcov.mfpi()],
+  [predict.mfpi()], [plot.mfpi()]
 }

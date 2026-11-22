@@ -49,7 +49,7 @@ methodological extensions.
 
 For practical guidance on fitting, inspecting, predicting from, and plotting
 models with the `mfp2` package, see
-`vignette("mfp2", package = "mfp2")`.
+`vignette("mfp2-user-guide", package = "mfp2")`.
 
 ## Overview of MFP
 
@@ -94,7 +94,7 @@ selection for continuous covariates, variable selection, practical
 considerations, and selected methodological extensions.
 
 For guidance on fitting models with the `mfp2` package, see
-`vignette("mfp2", package = "mfp2")`. Dedicated guidance is also
+`vignette("mfp2-user-guide", package = "mfp2")`. Dedicated guidance is also
 available for approximate cumulative distribution transformations,
 spike-at-zero modelling, and MFPI interaction analysis:
 

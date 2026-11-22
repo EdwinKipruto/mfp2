@@ -15,10 +15,10 @@ are converted to factor levels before the reference is chosen.}
 }
 \value{
 A family specification to supply as the \code{family} argument
-of \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}}.
+  of [mfp2()] or [mfpi()].
 }
 \description{
-Use \code{multinomial_family()} with \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} when the outcome
+Use \code{multinomial_family()} with [mfp2()] or [mfpi()] when the outcome
 has at least three categories with no natural order. Choose one category
 as the reference; the model describes each other category in relation
 to it.
@@ -27,6 +27,7 @@ to it.
 Each predictor has one selected linear or curved form shared across the
 category comparisons. The strength and direction of its association
 may differ between categories.
+
 
 The response can be a factor, a vector of character or numeric category
 labels, or a numeric matrix of category counts. It must contain at least
@@ -73,5 +74,5 @@ predict(
 
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
+[mfp2()], [mfpi()]
 }

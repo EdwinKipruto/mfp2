@@ -13,10 +13,10 @@ ordinal_family(link = c("logistic", "probit", "loglog", "cloglog", "cauchit"))
 }
 \value{
 A family specification to supply as the \code{family} argument
-of \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}}.
+  of [mfp2()] or [mfpi()].
 }
 \description{
-Use \code{ordinal_family()} with \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} when the outcome
+Use \code{ordinal_family()} with [mfp2()] or [mfpi()] when the outcome
 has categories with a meaningful order, such as low, medium, and high.
 The default \code{"logistic"} link gives a proportional-odds model.
 The optional \pkg{rms} package (version 7.0-0 or later) is required.
@@ -75,5 +75,5 @@ if (requireNamespace("rms", quietly = TRUE) &&
 
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
+[mfp2()], [mfpi()]
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/mfp2_summary.R
 \name{summary.mfp2}
 \alias{summary.mfp2}
-\title{Summarize an \code{mfp2} Model Fit}
+\title{Summarize an `mfp2` Model Fit}
 \usage{
 \method{summary}{mfp2}(
   object,
@@ -15,7 +15,7 @@
 )
 }
 \arguments{
-\item{object}{A fitted \code{\link[=mfp2]{mfp2()}} object.}
+\item{object}{A fitted [mfp2()] object.}
 
 \item{formulas}{Logical. If \code{TRUE}, append the fitted-function formula
 for each nonlinear variable. Default \code{FALSE}.}
@@ -25,7 +25,7 @@ basis coefficients for nonlinear terms. Default \code{FALSE}.}
 
 \item{raw}{Logical. If \code{TRUE}, bypass the structured summary and return
 the raw model-specific summary object, with
-the fitting call replaced by the original \code{\link[=mfp2]{mfp2()}} call. Default
+the fitting call replaced by the original [mfp2()] call. Default
 \code{FALSE}.}
 
 \item{notes}{Logical. If \code{FALSE}, suppress the explanatory model-df note
@@ -63,7 +63,7 @@ coefficient table), \code{model_fit_values}, \code{multinomial},
 \code{raw = TRUE}, the underlying summary object.
 }
 \description{
-Produces a structured, MFP-aware summary of a fitted \code{\link[=mfp2]{mfp2()}} model. Unlike
+Produces a structured, MFP-aware summary of a fitted [mfp2()] model. Unlike
 the raw model-specific summary output, this
 method separates interpretable linear terms from fractional-polynomial (FP)
 and other nonlinear terms, whose individual coefficients are curve
@@ -75,29 +75,30 @@ functional forms and an outcome-specific coefficient table containing the
 estimate, standard error, z statistic, and p-value for each non-reference
 logit. Model-fit values are reported as minus twice the log likelihood.
 
+
 The summary is organised into the following sections:
 \itemize{
-\item \strong{Selection Overview}: a compact overview of the selected
-functional form for each variable.
-\item \strong{Ordinal Intercepts}: for ordinal models, the estimated
-threshold intercepts with standard errors, Wald statistics, p-values,
-and confidence intervals.
-\item \strong{Linear Terms}: variables entering the model as a single
-linear term (including binary-only spike variables and factor levels),
-with the coefficient, standard error, test statistic, p-value, and
-confidence interval. GLM coefficients are always reported on their
-fitted link scale; supported survival models additionally report the
-usual exponentiated effect when it has a standard interpretation.
-\item \strong{Nonlinear Terms}: one row per variable modelled by an FP1,
-FP2, ACD, or spike/catzero compound form. Each row reports a joint
-likelihood-ratio test (LRT) of all of that variable's terms, using the
-package's selection-adjusted degrees of freedom. The LRT compares the
-final MFP model with an otherwise unchanged model that omits the variable.
-\item \strong{Model Fit}: full-linear and final-MFP deviances for GLMs,
-or minus twice the fitted likelihood for survival models (partial
-likelihood for Cox and Fine--Gray), with model degrees of freedom.
-GEE models instead show selection scores for AIC/BIC, and omit this
-block for p-value selection.
+  \item \strong{Selection Overview}: a compact overview of the selected
+    functional form for each variable.
+  \item \strong{Ordinal Intercepts}: for ordinal models, the estimated
+    threshold intercepts with standard errors, Wald statistics, p-values,
+    and confidence intervals.
+  \item \strong{Linear Terms}: variables entering the model as a single
+    linear term (including binary-only spike variables and factor levels),
+    with the coefficient, standard error, test statistic, p-value, and
+    confidence interval. GLM coefficients are always reported on their
+    fitted link scale; supported survival models additionally report the
+    usual exponentiated effect when it has a standard interpretation.
+  \item \strong{Nonlinear Terms}: one row per variable modelled by an FP1,
+    FP2, RCS, B-spline, ACD, or spike/catzero compound form. Each row reports a joint
+    likelihood-ratio test (LRT) of all of that variable's terms, using the
+    package's selection-adjusted degrees of freedom. The LRT compares the
+    final MFP model with an otherwise unchanged model that omits the variable.
+  \item \strong{Model Fit}: full-linear and final-MFP deviances for GLMs,
+    or minus twice the fitted likelihood for survival models (partial
+    likelihood for Cox and Fine--Gray), with model degrees of freedom.
+    GEE models instead show selection scores for AIC/BIC, and omit this
+    block for p-value selection.
 }
 
 The joint LRT is a diagnostic: the variable was selected by the MFP
@@ -109,6 +110,8 @@ rather than treating the powers as fixed in advance.
 Coefficients for nonlinear terms are omitted from the default output. Set
 \code{formulas = TRUE} to append the fitted-function formulas, or
 \code{basis = TRUE} to append the individual fitted basis coefficients. For
+Spline terms, basis labels include the fitted knots and the zero indicator
+is identified separately when retained. For
 an active ACD component, either option also prints the fitted definition of
 \eqn{A(x)}, including the scale used during fitting. Set
 \code{raw = TRUE} to obtain the underlying model-specific summary object
@@ -117,7 +120,7 @@ instead.
 The structured header names the fitted model and its link where applicable.
 It also reports interpretation-critical nuisance parameters: the
 distribution, fixed or estimated scale, scale strata, and censoring pattern
-for \code{survreg} models; estimated or fixed dispersion for Gaussian, Gamma, and
+for `survreg` models; estimated or fixed dispersion for Gaussian, Gamma, and
 inverse-Gaussian GLMs; and the estimated theta for negative-binomial models.
 Ordinal and multinomial headers additionally report unweighted frequencies
 of the responses used for fitting.
@@ -125,11 +128,11 @@ of the responses used for fitting.
 \section{Coefficient statistics}{
 
 The linear-terms table reports the coefficient statistics from the applicable
-GLM, Cox, or \code{survreg} summary. For a robust Cox fit, it uses the robust
+GLM, Cox, or `survreg` summary. For a robust Cox fit, it uses the robust
 standard error so that the estimate, test statistic, and p-value remain
 consistent. When these statistics cannot be read directly from a compatible
 model summary, they are calculated from the fitted coefficients and
-\code{\link[stats:vcov]{stats::vcov()}} when possible.
+[stats::vcov()] when possible.
 }
 
 \examples{
@@ -153,6 +156,6 @@ fit_summary$raw_summary$coefficients
 
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=print.mfp2]{print.mfp2()}}, \code{\link[stats:summary.glm]{stats::summary.glm()}},
-\code{\link[survival:summary.coxph]{survival::summary.coxph()}}, \code{\link[survival:summary.survreg]{survival::summary.survreg()}}
+[mfp2()], [print.mfp2()], [stats::summary.glm()],
+  [survival::summary.coxph()], [survival::summary.survreg()]
 }

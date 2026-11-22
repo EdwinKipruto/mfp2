@@ -261,6 +261,29 @@
 #' `fp(x, spike = TRUE)`. `catzero` includes `zero` handling. An eligible
 #' `spike` request includes both `catzero` and `zero` handling. If ACD is
 #' also requested, its transformation uses positive values only.
+#' The formula term `rcs(x, df, knots, catzero = TRUE)` retains an exact-zero
+#' indicator with each selected spline form. With `spike = TRUE`, selection
+#' considers spline plus indicator, spline alone, indicator alone, and removal.
+#' When spike is ineligible, only explicitly requested `catzero` remains.
+#' Automatic RCS knots follow the `rms::rcs()` placement rules and are fixed
+#' for all candidate fits; when a zero indicator is used, they are calculated
+#' from positive fitting observations. rms and Hmisc are not required.
+#' `bs(x, df = 6)` compares exclusion, linearity, a cubic B-spline with
+#' the middle interior knot (four coefficients), and a cubic B-spline using
+#' all three fixed interior knots (six coefficients). Other `df` values use
+#' centered, nested interior-knot subsets. Boundaries and knot locations are
+#' fixed from the fitting rows and reused for prediction.
+#' The matrix interface can select splines alongside FP terms with
+#' `splines = c(age = "bspline", bmi = "rcs")` and named `df` overrides.
+#' For user-supplied knots, use [bs_spec()] and [rcs_spec()] in a named list
+#' passed as `splines`. The existing `catzero_vars` and `spike_vars` settings
+#' apply to the raw matrix column names; matrix predictions reconstruct the
+#' selected basis using the saved knots.
+#' Spline basis columns are centered by default. In a formula, set
+#' `center = FALSE` inside `rcs()` or `bs()` for an uncentered spline.
+#' The older `bspline()` formula spelling remains available as an alias.
+#' In the matrix interface, the existing named `center` setting applies to
+#' spline columns as well as ordinary predictors.
 #'
 #' Negative values cause an error and are never treated as zeros. These
 #' options do not apply to binary predictors. `zero` and `catzero` are
@@ -389,6 +412,11 @@
 #' `race`. Grouped columns must be linear (`df = 1`) and cannot use ACD or
 #' zero, catzero, or spike-at-zero modelling. Columns not listed are handled
 #' individually.
+#' @param splines For `mfp2.default()`, a named vector such as
+#'   `c(age = "bspline", bmi = "rcs")` for automatic knots, or a named list
+#'   of [bs_spec()] and [rcs_spec()] values for explicit knots and spline df.
+#'   Names must identify raw numeric columns of `x`. The existing `df`,
+#'   `catzero_vars`, and `spike_vars` settings apply by raw column name.
 #' @param formula For `mfp2.formula()`, a model formula. Use [fp()] or [fp2()]
 #'   to set variable-specific FP, ACD, zero, catzero, or SAZ options.
 #' @param data For `mfp2.formula()`, a data frame containing the variables in
@@ -428,15 +456,18 @@
 #' the top-level value applies only to terms outside `fp()` or `fp2()`;
 #' those terms default to `df = 4` unless set explicitly, for example
 #' `fp(age, df = 2)`. Predictors with few distinct values may be limited
-#' to a simpler form. See **Fractional-polynomial model selection**.
+#' to a simpler form. For matrix columns named in `splines`, a named `df`
+#' instead gives the maximum spline coefficient count (for example, `3`
+#' for RCS); ordinary FP columns retain the FP df rules. See
+#' **Fractional-polynomial model selection**.
 #' @param center If `TRUE` (default), center predictors after any FP or ACD
 #' transformation; `FALSE` leaves them uncentered. Continuous terms use
 #' their mean and binary terms use their lower observed value in the data.
 #' Centering does not change fitted values. In `mfp2.default()`,
 #' use one logical value for all predictors or a named vector for selected
 #' columns; unspecified columns use `TRUE`. In `mfp2.formula()`, the
-#' top-level value applies only to terms outside `fp()` or `fp2()`; set
-#' `center` inside the term to change it for an `fp()` term.
+#' top-level value applies only to terms outside `fp()`, `fp2()`, `rcs()`, or
+#' `bs()`; set `center` inside a term to choose its behavior.
 #' @param family Model family; default `"gaussian"`. Supported GLM families
 #' are `"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`, and
 #' `"inverse.gaussian"`, supplied as a name, function, or family object.
@@ -587,7 +618,8 @@
 #' Applies to `mfp2.default()` only; in formulas, use
 #' `fp(x, force_max_fp = TRUE)`.
 #' @param verbose Logical. If `TRUE`, print progress messages during model
-#' fitting. Default `TRUE`.
+#' fitting, including candidate tables for RCS and B-spline terms. Their DF
+#' column counts coefficients in the complete fitted model. Default `TRUE`.
 #' @param \dots Used to pass arguments from `mfp2()` to its fitting method.
 #'   Additional arguments supplied to the fitting method are not
 #'   used; a warning names them.
@@ -612,6 +644,21 @@
 #' }
 #'
 #' predict(fit_formula, newdata = prostate[1:5, ])
+#'
+#' # Mix a restricted cubic spline, a cubic B-spline, and an FP term.
+#' # select = 1 retains each predictor; functional-form selection still runs.
+#' fit_splines <- mfp2(
+#'   lpsa ~ rcs(age, df = 4) + mfp2::bs(cavol, df = 6) + fp(weight),
+#'   data = prostate, select = 1, verbose = FALSE
+#' )
+#' summary(fit_splines)
+#' predict(fit_splines, newdata = prostate[1:5, ])
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   spline_plots <- plot(fit_splines, terms = c("age", "cavol"),
+#'                        partial_only = TRUE)
+#'   print(spline_plots[["age"]])
+#'   print(spline_plots[["cavol"]])
+#' }
 #'
 #' # Matrix interface
 #' x <- as.matrix(prostate[, 2:8])
@@ -1079,16 +1126,16 @@ formula_factor_source_name <- function(term_label) {
 }
 
 
-#' Resolve a Simple fp()/fp2() Formula Term to Its Source Variable
+#' Resolve a Simple Transform Formula Term to Its Source Variable
 #'
 #' @param term_label Original formula term label.
 #'
-#' @return Source variable name for a simple fp()/fp2() wrapper, otherwise
+#' @return Source variable name for a simple FP, RCS, or B-spline wrapper, otherwise
 #'   `NULL`.
 #'
 #' @keywords internal
 #' @noRd
-formula_fp_source_name <- function(term_label) {
+formula_transform_source_name <- function(term_label) {
   expr <- tryCatch(str2lang(term_label), error = function(e) NULL)
   if (is.null(expr) || !is.call(expr) || length(expr) < 2L) {
     return(NULL)
@@ -1107,8 +1154,15 @@ formula_fp_source_name <- function(term_label) {
     NULL
   }
 
-  if (is.null(function_name) || !function_name %in% c("fp", "fp2") ||
+  if (is.null(function_name) ||
+      !function_name %in% c("fp", "fp2", "rcs", "bspline", "bs") ||
       !is.symbol(expr[[2L]])) {
+    return(NULL)
+  }
+  # The standard splines::bs() constructs a basis directly. Only mfp2::bs()
+  # (or an unqualified bs() supplied by mfp2) represents a selectable term.
+  if (identical(function_name, "bs") && is.call(call_head) &&
+      !identical(as.character(call_head[[2L]]), "mfp2")) {
     return(NULL)
   }
 
@@ -1141,7 +1195,7 @@ formula_conceptual_term_names <- function(terms_object, model_frame) {
     source_name <- if (label %in% factor_labels) {
       formula_factor_source_name(label)
     } else {
-      formula_fp_source_name(label)
+      formula_transform_source_name(label)
     }
     if (!is.null(source_name)) {
       out[[label]] <- source_name
@@ -1867,6 +1921,7 @@ mfp2.default <- function(x,
                          min_saz_prop = 0.10,
                          force_max_fp_vars = NULL,
                          term_groups = NULL,
+                         splines = NULL,
                          verbose = TRUE,
                          fitter = c("base", "fastglm"),
                          id = NULL,
@@ -1927,6 +1982,47 @@ mfp2.default <- function(x,
   spike <- spike_vars
   force_max_fp <- force_max_fp_vars
 
+  # Expand raw matrix spline columns using knots chosen on the fitted rows.
+  # The same private metadata path used by the formula interface then drives
+  # spline selection. Other raw predictors retain their existing FP settings.
+  matrix_spline_data <- NULL
+  if (!is.null(splines)) {
+    validate_variable_names(zero, "zero_vars", colnames(x))
+    validate_variable_names(acdx, "acd_vars", colnames(x))
+    validate_variable_names(force_max_fp, "force_max_fp_vars", colnames(x))
+    if (!is.numeric(min_saz_prop) || length(min_saz_prop) != 1L ||
+        is.na(min_saz_prop) || !is.finite(min_saz_prop) ||
+        min_saz_prop <= 0 || min_saz_prop >= 0.5) {
+      stop("`min_saz_prop` must be between 0 and 0.5.", call. = FALSE)
+    }
+    matrix_spline_data <- prepare_matrix_splines(
+      x, splines, subset, df, missing(df), catzero, spike,
+      term_groups, min_saz_prop
+    )
+    spline_names <- names(matrix_spline_data$specs)
+    if (length(intersect(spline_names, c(zero, acdx, force_max_fp)))) {
+      stop("Spline columns cannot use `zero_vars`, `acd_vars`, or `force_max_fp_vars`.",
+           call. = FALSE)
+    }
+    options <- matrix_spline_settings(
+      matrix_spline_data, df, alpha, select, center, shift, scale, powers
+    )
+    df <- options$df
+    alpha <- options$alpha
+    select <- options$select
+    center <- options$center
+    shift <- options$shift
+    scale <- options$scale
+    powers <- options$powers
+    catzero <- setdiff(catzero, spline_names)
+    spike <- setdiff(spike, spline_names)
+    term_groups <- matrix_spline_data$groups
+    x <- matrix_spline_data$x
+    # The expanded matrix also provides the full-row source for ordinary FP
+    # preprocessing; NA in the expanded shift/scale vectors means automatic.
+    x <- attach_formula_preprocess_matrix(x, x)
+  }
+
   # Step 2: Resolve multiple-choice arguments to their single selected value ----
   xorder    <- match.arg(xorder)
   ties      <- resolve_mfp_ties(ties)
@@ -1969,6 +2065,8 @@ mfp2.default <- function(x,
   formula_generated_settings <- !is.null(
     attr(x, "mfp2_preprocess_x", exact = TRUE)
   )
+  spline_specs <- attr(x, "mfp2_spline_specs", exact = TRUE)
+  attr(x, "mfp2_spline_specs") <- NULL
   center_method <- attr(x, "mfp2_center_method", exact = TRUE)
   attr(x, "mfp2_center_method") <- NULL
   preprocessing <- extract_preprocess_matrix(x)
@@ -2004,6 +2102,14 @@ mfp2.default <- function(x,
   # when term_groups = NULL, preserving the historical one-column-per-variable
   # behavior exactly.
   term_to_columns <- normalize_term_groups(vnames, term_groups)
+  if (length(spline_specs) > 0L) {
+    if (!all(names(spline_specs) %in% names(term_to_columns)) ||
+        any(lengths(term_to_columns[names(spline_specs)]) !=
+            vapply(spline_specs, function(spec) spec$df + as.integer(spec$indicator), integer(1L)))) {
+      stop("Internal error: spline terms do not match their design columns.", call. = FALSE)
+    }
+    attr(term_to_columns, "spline_specs") <- spline_specs
+  }
   column_to_term <- stats::setNames(
     rep(names(term_to_columns), lengths(term_to_columns)),
     unlist(term_to_columns, use.names = FALSE)
@@ -3004,6 +3110,14 @@ mfp2.default <- function(x,
     fit$offset <- offset
   }
   fit$has_offset <- has_offset
+  if (!is.null(matrix_spline_data)) {
+    fit$matrix_spline_specs <- matrix_spline_data$specs
+    # Selected columns are stored in fit$term_to_columns; plotting spline
+    # grids and prediction also require the complete fitted basis names.
+    fit$formula_term_to_columns <- normalize_term_groups(
+      colnames(matrix_spline_data$x), matrix_spline_data$groups
+    )
+  }
   if (identical(family_string, "gee")) {
     fit$gee_input_row_order <- gee_input_row_order
   }
@@ -3152,10 +3266,16 @@ mfp2.formula <- function(formula,
   # scalar and silently applied to every predictor, so reject names here.
   for (setting_name in c("df", "alpha", "select", "shift", "scale", "center")) {
     if (!is.null(names(get(setting_name, inherits = FALSE)))) {
+      term_hint <- if (setting_name == "center") {
+        "i Set `center` inside fp(), rcs(), or bs() to override an individual term."
+      } else {
+        sprintf("i Use fp(..., %s = value) to set it for an individual variable.",
+                setting_name)
+      }
       stop(
         sprintf(
-          "! In the formula interface, `%s` must be a single unnamed value that applies to all terms.\ni Use fp(..., %s = value) to set it for an individual variable.",
-          setting_name, setting_name
+          "! In the formula interface, `%s` must be a single unnamed value that applies to all terms.\n%s",
+          setting_name, term_hint
         ),
         call. = FALSE
       )
@@ -3249,7 +3369,7 @@ mfp2.formula <- function(formula,
     "logical",
     allow_null = FALSE,
     allow_na = FALSE,
-    hint = "i Use fp(..., center = TRUE) or fp(..., center = FALSE) to set different center values for individual variables."
+    hint = "i Set `center` inside fp(), rcs(), or bs() to choose it for an individual variable."
   )
 
   # Step 4: Evaluate and validate observation-level inputs ---------------------
@@ -3692,6 +3812,98 @@ mfp2.formula <- function(formula,
   # stable, same-named continuous columns; its factor coding is never fitted.
   y <- model.extract(mf, "response")
 
+  # Resolve knots using the fitted rows before creating either model matrix.
+  spline_labels <- intersect(attr(terms_model, "term.labels"), colnames(mf))
+  spline_labels <- spline_labels[
+    is_rcs_term(spline_labels) | is_bspline_term(spline_labels)
+  ]
+  if (length(spline_labels) > 0L &&
+      (length(min_saz_prop) != 1L || !is.numeric(min_saz_prop) ||
+       is.na(min_saz_prop) || !is.finite(min_saz_prop) ||
+       min_saz_prop <= 0 || min_saz_prop >= 0.5)) {
+    stop("`min_saz_prop` must be between 0 and 0.5.", call. = FALSE)
+  }
+  if (any(is_rcs_term(colnames(mf)) & !colnames(mf) %in% spline_labels)) {
+    stop("`rcs()` must appear as a standalone formula term.", call. = FALSE)
+  }
+  if (any(is_bspline_term(colnames(mf)) & !colnames(mf) %in% spline_labels)) {
+    stop("`bs()` or `bspline()` must appear as a standalone formula term.", call. = FALSE)
+  }
+  spline_specs <- list()
+  for (label in spline_labels) {
+    type <- if (is_bspline_term(label)) "bspline" else "rcs"
+    prefix <- if (type == "bspline") "bspline" else "rcs"
+    original <- mf_full[[label]]
+    source <- attr(original, paste0(prefix, "_name"))
+    max_df <- attr(original, paste0(prefix, "_df"))
+    if (is.null(source) || !is.symbol(str2lang(source))) {
+      stop("`", prefix, "()` requires a simple source variable name.", call. = FALSE)
+    }
+    values <- mf[[label]][, 1L]
+    requested_catzero <- isTRUE(attr(original, paste0(prefix, "_catzero")))
+    requested_spike <- isTRUE(attr(original, paste0(prefix, "_spike")))
+    requested_center <- attr(original, paste0(prefix, "_center"))
+    has_zero <- any(values == 0)
+    binary <- length(unique(values)) <= 2L
+    eligible <- requested_spike && !binary && has_zero &&
+      mean(values == 0) >= min_saz_prop && mean(values > 0) >= min_saz_prop
+    if (requested_spike && !eligible) {
+      warning("spike was reset for ", prefix, "(", source,
+              "); explicit catzero is preserved.", call. = FALSE)
+    }
+    use_catzero <- requested_catzero && has_zero && !binary
+    if (requested_catzero && !use_catzero) {
+      warning("catzero was reset for ", prefix, "(", source,
+              ") because it requires nonbinary values and exact zeros.", call. = FALSE)
+    }
+    use_indicator <- use_catzero || eligible
+    supplied <- attr(original, paste0(prefix, "_supplied_knots"))
+    # The indicator models exact zeros separately, so only positive fitted
+    # observations determine automatic spline knots in that case.
+    knot_observations <- if (use_indicator) values[values > 0] else values
+    if (type == "bspline") {
+      boundaries <- attr(original, "bspline_boundary_knots")
+      if (is.null(boundaries)) boundaries <- range(values)
+      bspline_validate_boundaries(boundaries)
+      knots <- if (is.null(supplied)) {
+        bspline_default_knots(knot_observations, max_df, boundaries)
+      } else supplied
+      bspline_validate_knots(knots, length(knots) + 3L, boundaries)
+      effective_df <- length(knots) + 3L
+      basis_terms <- bspline_basis_terms(knots, boundaries)
+      candidate_df <- lengths(bspline_knot_sets(knots)) + 3L
+      mf[[label]] <- bspline_basis(values, knots, boundaries,
+                                   indicator = use_indicator, terms = basis_terms)
+      mf_full[[label]] <- if (is.null(subset)) mf[[label]] else
+        bspline_basis(original[, 1L], knots, boundaries,
+                                        indicator = use_indicator, terms = basis_terms)
+    } else {
+      knots <- if (is.null(supplied)) {
+        rcs_default_knots(knot_observations, max_df)
+      } else supplied
+      effective_df <- length(knots) - 1L
+      boundaries <- NULL
+      basis_terms <- NULL
+      candidate_df <- seq.int(2L, effective_df)
+      mf[[label]] <- rcs_basis(values, knots, indicator = use_indicator)
+      mf_full[[label]] <- if (is.null(subset)) mf[[label]] else
+        rcs_basis(original[, 1L], knots,
+                                   indicator = use_indicator)
+    }
+    if (effective_df < max_df) {
+      warning(prefix, "(", source, ") has fewer distinct knots than requested; ",
+              "maximum df reduced from ", max_df, " to ", effective_df, ".",
+              call. = FALSE)
+    }
+    spline_specs[[source]] <- list(type = type, df = effective_df,
+                                   knots = knots, boundary_knots = boundaries,
+                                   basis_terms = basis_terms,
+                                   candidate_df = candidate_df, label = label,
+                                   center = requested_center,
+                                   catzero = use_catzero, spike = eligible,
+                                   indicator = use_indicator)
+  }
+
   mm_full <- stats::model.matrix(terms_model, mf_full)
   mm <- stats::model.matrix(terms_model, mf)
 
@@ -3738,6 +3950,7 @@ mfp2.formula <- function(formula,
   # their per-variable settings (df, scale, shift, powers, acdx, zero, ...) can
   # be pulled from the attributes fp() attached to them.
   fp_pos <- which(is_fp_term(colnames(mf)))
+  fp_vars <- character(0L)
 
   if (length(fp_pos) > 0) {
     # Term settings are read from the full-data frame so that a formula
@@ -3802,6 +4015,13 @@ mfp2.formula <- function(formula,
         term_to_columns[[fp_var]] <- columns
       }
     }
+  }
+
+  spline_columns <- unlist(term_to_columns[names(spline_specs)], use.names = FALSE)
+  if (length(spline_columns) > 0L &&
+      (any(names(spline_specs) %in% fp_vars) ||
+       any(names(spline_specs) %in% setdiff(colnames(mf), spline_labels)))) {
+    stop("A spline variable must appear only once in the formula.", call. = FALSE)
   }
 
   # Step 10: Build per-variable default option lists from the global scalars ---
@@ -3941,6 +4161,16 @@ mfp2.formula <- function(formula,
 
   }
 
+  if (length(spline_columns) > 0L) {
+    df_list[spline_columns] <- rep(list(1L), length(spline_columns))
+    shift_list[spline_columns] <- rep(list(0), length(spline_columns))
+    scale_list[spline_columns] <- rep(list(1), length(spline_columns))
+    for (term in names(spline_specs)) {
+      columns <- term_to_columns[[term]]
+      center_list[columns] <- rep(list(spline_specs[[term]]$center), length(columns))
+    }
+  }
+
   # Step 11b: Force factor-generated columns to fixed linear settings ---------
   # A factor term is represented by a contrast block rather than by one
   # continuous covariate. Every generated column is therefore an ordinary
@@ -4051,6 +4281,7 @@ mfp2.formula <- function(formula,
   # other observation-level inputs are subset here, so pass subset = NULL below
   # and avoid applying the row selection twice. Formula metadata is derived only
   # from mf/mm, never from the full-data categorical representation.
+  attr(x, "mfp2_spline_specs") <- spline_specs
   x <- attach_formula_preprocess_matrix(x, x_full)
   if (!is.null(subset)) {
     if (!is.null(weights)) weights <- weights[fit_rows]
@@ -4093,7 +4324,7 @@ mfp2.formula <- function(formula,
   # non-identity dummy column. Ordinary identity singleton terms are added by
   # normalize_term_groups() and need not be supplied explicitly.
   grouped_formula_terms <- term_to_columns[
-    intersect(factor_terms, names(term_to_columns))
+    intersect(c(factor_terms, names(spline_specs)), names(term_to_columns))
   ]
   if (length(grouped_formula_terms) > 0L) {
     grouped_formula_terms <- grouped_formula_terms[
@@ -4163,6 +4394,9 @@ mfp2.formula <- function(formula,
                       min_saz_prop = min_saz_prop,
                       verbose = verbose
   )
+  fit$formula_spline_specs <- spline_specs
+  fit$formula_rcs_specs <- Filter(function(spec) identical(spec$type, "rcs"),
+                                   spline_specs)
   fit$formula_interface <- TRUE
   fit$formula <- formula_user
   fit$formula_terms <- stats::delete.response(terms_model)

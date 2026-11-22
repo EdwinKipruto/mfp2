@@ -7,16 +7,16 @@
 \format{
 A dataset with 768 observations and 10 variables.
 \describe{
-\item{id}{Patient identifier.}
-\item{pregnant}{Number of times pregnant.}
-\item{glucose}{Plasma glucose concentration at 2h in an oral glucose tolerance test.}
-\item{diastolic}{Diastolic blood pressure in mmHg.}
-\item{triceps}{Triceps skin fold thickness in mm.}
-\item{insulin}{2-h serum insulin.}
-\item{bmi}{Body mass index.}
-\item{diabetes}{Diabetes pedigree function.}
-\item{age}{Age in years.}
-\item{y}{Binary outcome variable (diabetes, yes/no).}
+  \item{id}{Patient identifier.}
+  \item{pregnant}{Number of times pregnant.}
+  \item{glucose}{Plasma glucose concentration at 2h in an oral glucose tolerance test.}
+  \item{diastolic}{Diastolic blood pressure in mmHg.}
+  \item{triceps}{Triceps skin fold thickness in mm.}
+  \item{insulin}{2-h serum insulin.}
+  \item{bmi}{Body mass index.}
+  \item{diabetes}{Diabetes pedigree function.}
+  \item{age}{Age in years.}
+  \item{y}{Binary outcome variable (diabetes, yes/no).}
 }
 }
 \usage{

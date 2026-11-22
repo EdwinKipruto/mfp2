@@ -28,126 +28,129 @@
 )
 }
 \arguments{
-\item{x}{A fitted \code{mfp2} model.}
+\item{x}{A fitted `mfp2` model.}
 
 \item{terms}{Names of the variables to plot, for example,
-\code{c("age", "cavol")}. By default (\code{NULL}), requests all variables kept in
-the final model. See \strong{Choosing terms}.}
+`c("age", "cavol")`. By default (`NULL`), requests all variables kept in
+the final model. See **Choosing terms**.}
 
 \item{partial_only}{Whether to show only the fitted effect and confidence
-interval. Defaults to \code{FALSE}. See \strong{Component-plus-residual plots}.}
+interval. Defaults to `FALSE`. See **Component-plus-residual plots**.}
 
-\item{type}{Either \code{"terms"} (default) or \code{"contrasts"}.
-See \strong{Choosing the plot type}.}
+\item{type}{Either `"terms"` (default) or `"contrasts"`.
+See **Choosing the plot type**.}
 
 \item{ref}{Named list of reference values for contrast plots, for example,
-\code{list(age = 50)}. See \strong{Contrasts and reference values}.}
+`list(age = 50)`. See **Contrasts and reference values**.}
 
-\item{terms_seq}{Either \code{"data"} or \code{"equidistant"}.
-See \strong{Evaluation values} for their meaning and defaults.}
+\item{terms_seq}{Either `"data"` or `"equidistant"`.
+See **Evaluation values** for their meaning and defaults.}
 
 \item{alpha}{Significance level for confidence intervals. The default,
-\code{0.05}, gives 95 percent intervals. See \strong{Confidence intervals}.}
+`0.05`, gives 95 percent intervals. See **Confidence intervals**.}
 
 \item{show_titles}{Whether to show titles describing the fitted
-transformation or variable representation. Defaults to \code{TRUE}.}
+transformation or variable representation. Defaults to `TRUE`.}
 
 \item{show_grid}{Whether to show the major and minor panel grid lines of
-\code{\link[ggplot2:theme_bw]{ggplot2::theme_bw()}}. Defaults to \code{FALSE}, which draws plots without
+[ggplot2::theme_bw()]. Defaults to `FALSE`, which draws plots without
 grid lines.}
 
 \item{color_points}{Colour of component-plus-residual points, for example,
-\code{"grey60"} or \code{"#AAAAAA"}. All colour arguments accept ggplot2 colour
-names or hexadecimal codes. See \link[ggplot2:aes_colour_fill_alpha]{ggplot2::aes_colour_fill_alpha}.}
+`"grey60"` or `"#AAAAAA"`. All colour arguments accept ggplot2 colour
+names or hexadecimal codes. See [ggplot2::aes_colour_fill_alpha].}
 
 \item{color_line}{Colour of fitted curves and fitted points for binary
-predictors and factors, for example, \code{"black"} or \code{"blue"}. Also used
-for the zero endpoint of a term fitted with \code{zero = TRUE} alone.}
+predictors and factors, for example, `"black"` or `"blue"`. Also used
+for the zero endpoint of a term fitted with `zero = TRUE` alone.}
 
 \item{color_line_spike}{Colour of the separate zero endpoint for a
-\code{catzero} or spike-at-zero term with a continuous component,
-for example, \code{"red"}.}
+`catzero` or spike-at-zero term with a continuous component,
+for example, `"red"`.}
 
 \item{color_fill}{Fill colour of confidence bands, for example,
-\code{"lightblue"} or \code{"#56B4E9"}.}
+`"lightblue"` or `"#56B4E9"`.}
 
 \item{shape}{Shape of component-plus-residual points. Common ggplot2
-shape codes include \code{1} for open circles and \code{16} for solid circles.
-The default is \code{16}. See \code{\link[ggplot2:scale_shape]{ggplot2::scale_shape()}}.}
+shape codes include `1` for open circles and `16` for solid circles.
+The default is `16`. See [ggplot2::scale_shape()].}
 
 \item{size_points}{Numeric size of component-plus-residual points,
-in millimetres, for example, \code{1} or \code{2}. The default is \code{1}.
-See \code{\link[ggplot2:geom_point]{ggplot2::geom_point()}}.}
+in millimetres, for example, `1` or `2`. The default is `1`.
+See [ggplot2::geom_point()].}
 
 \item{size_points_spike}{Numeric size of fitted points for binary
 predictors, factors, and zero endpoints.
-For example, use \code{3} for larger points. The default is \code{2}.
-See \code{\link[ggplot2:geom_point]{ggplot2::geom_point()}}.}
+For example, use `3` for larger points. The default is `2`.
+See [ggplot2::geom_point()].}
 
-\item{linetype}{Line style of fitted curves, for example, \code{"solid"},
-\code{"dashed"}, or \code{"dotted"}. The default is \code{"solid"}.
-See \code{\link[ggplot2:scale_linetype]{ggplot2::scale_linetype()}}.}
+\item{linetype}{Line style of fitted curves, for example, `"solid"`,
+`"dashed"`, or `"dotted"`. The default is `"solid"`.
+See [ggplot2::scale_linetype()].}
 
-\item{linewidth}{Numeric width of fitted curves, for example, \code{0.5}
-or \code{1}. Larger values produce thicker lines. The default is \code{1}.
-See \code{\link[ggplot2:geom_line]{ggplot2::geom_line()}}.}
+\item{linewidth}{Numeric width of fitted curves, for example, `0.5`
+or `1`. Larger values produce thicker lines. The default is `1`.
+See [ggplot2::geom_line()].}
 
-\item{alpha_fill}{Confidence-band transparency, from \code{0} (transparent)
-to \code{1} (opaque).}
+\item{alpha_fill}{Confidence-band transparency, from `0` (transparent)
+to `1` (opaque).}
 
-\item{...}{Additional arguments are not used. Supplying \code{newdata} produces
+\item{...}{Additional arguments are not used. Supplying `newdata` produces
 an error; other arguments are ignored with a warning.}
 }
 \value{
-A named list of \code{ggplot2} objects, one per plotted variable.
-Individual plots can be printed by name or position and modified using
-\code{ggplot2}.
+A named list of `ggplot2` objects, one per plotted variable.
+  Individual plots can be printed by name or position and modified using
+  `ggplot2`.
 }
 \description{
 Shows how selected variables contribute to the fitted model, with confidence
 intervals. Term plots can also include component-plus-residual points to
 help assess the fitted relationship.
+RCS and B-spline curves use their fitted knots. When titles are enabled,
+a selected spline title identifies the variable and form, for example
+`age: bs(df=4)` or `cavol: rcs(df=3)`.
+This also applies to splines specified through the numeric matrix interface.
 }
 \section{Choosing the plot type}{
 
-Use \code{type} to choose what the fitted curve or fitted points represent:
-\itemize{
-\item \code{"terms"} (default) shows a variable's fitted contribution, using the
-relationship selected during fitting.
-\item \code{"contrasts"} shows the difference from a reference value. See
-\strong{Contrasts and reference values}.
-}
+Use `type` to choose what the fitted curve or fitted points represent:
+
+- `"terms"` (default) shows a variable's fitted contribution, using the
+  relationship selected during fitting.
+- `"contrasts"` shows the difference from a reference value. See
+  **Contrasts and reference values**.
 
 Fitted contributions use the following model scales:
-\itemize{
-\item Gaussian with an identity link: contributions to the mean response,
-in the same units as the response used for fitting. For example, fitting
-log-PSA gives contributions to mean log-PSA.
-\item Binomial with a logit link: log-odds.
-\item Poisson and negative-binomial with a log link: log mean.
-\item Negative-binomial with a square-root link: square root of the mean;
-with an identity link: the mean.
-\item Other GLM and GEE models: the scale defined by the fitted link function.
-\item Cox: log relative hazard.
-\item Fine--Gray: log relative subdistribution hazard.
-\item \code{survreg}: the fitted location scale, such as log time for Weibull models.
-}
+
+- Gaussian with an identity link: contributions to the mean response,
+  in the same units as the response used for fitting. For example, fitting
+  log-PSA gives contributions to mean log-PSA.
+- Binomial with a logit link: log-odds.
+- Poisson and negative-binomial with a log link: log mean.
+- Negative-binomial with a square-root link: square root of the mean;
+  with an identity link: the mean.
+- Other GLM and GEE models: the scale defined by the fitted link function.
+- Cox: log relative hazard.
+- Fine--Gray: log relative subdistribution hazard.
+- `survreg`: the fitted location scale, such as log time for Weibull models.
 
 Term plots include the intercept for GLM, negative-binomial, GEE, and
-\code{survreg} models. Cox and Fine--Gray terms have no intercept. Offsets are
-excluded from fitted term contributions. See \strong{Multinomial and ordinal
-models} for their scales, panels, and intercepts.
+`survreg` models. Cox and Fine--Gray terms have no intercept. Offsets are
+excluded from fitted term contributions. See **Multinomial and ordinal
+models** for their scales, panels, and intercepts.
 }
 
 \section{Choosing terms}{
 
-Use \code{terms} to select variables kept in the final model. Use their original
-names: \code{"age"} rather than \code{"fp(age)"}, and \code{"race"} rather than individual
-contrast-column names such as \code{"raceB"} and \code{"raceC"}.
+Use `terms` to select variables kept in the final model. Use their original
+names: `"age"` rather than `"fp(age)"`, and `"race"` rather than individual
+contrast-column names such as `"raceB"` and `"raceC"`.
 
 For example, for a model containing age, cancer volume, and the factor race:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{# Plot age only.
+```r
+# Plot age only.
 age_plots <- plot(fit, terms = "age")
 age_plots[["age"]]
 
@@ -158,24 +161,24 @@ patchwork::wrap_plots(plots, ncol = 2)
 # Show all fitted race levels together.
 race_plots <- plot(fit, terms = "race")
 race_plots[["race"]]
-}\if{html}{\out{</div>}}
+```
 }
 
 \section{Evaluation values}{
 
-Use \code{terms_seq} to choose where a numeric variable's fitted effect is
+Use `terms_seq` to choose where a numeric variable's fitted effect is
 calculated:
-\itemize{
-\item \code{"data"} uses the observed predictor values in the data used to fit
-the model.
-\item \code{"equidistant"} uses equally spaced values between the smallest and
-largest observed predictor values.
-}
 
-The default is \code{"data"} for term plots and \code{"equidistant"} for contrast
+- `"data"` uses the observed predictor values in the data used to fit
+  the model.
+- `"equidistant"` uses equally spaced values between the smallest and
+  largest observed predictor values.
+
+The default is `"data"` for term plots and `"equidistant"` for contrast
 plots. Both settings use the same fitted model.
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{# Evaluate the curve at observed ages.
+```r
+# Evaluate the curve at observed ages.
 plots <- plot(fit, terms = "age", terms_seq = "data")
 
 # Evaluate it at equally spaced ages over the same range.
@@ -183,11 +186,11 @@ curves <- plot(
   fit, terms = "age", terms_seq = "equidistant", partial_only = TRUE
 )
 curves[["age"]]
-}\if{html}{\out{</div>}}
+```
 
-See \strong{Binary and categorical predictors} for discrete variables.
-To obtain estimates at specific new values, use \code{\link[=predict.mfp2]{predict.mfp2()}} with
-\code{newdata} and \code{terms_seq = "data"}, then plot its output. An example is
+See **Binary and categorical predictors** for discrete variables.
+To obtain estimates at specific new values, use [predict.mfp2()] with
+`newdata` and `terms_seq = "data"`, then plot its output. An example is
 included below.
 }
 
@@ -195,15 +198,16 @@ included below.
 
 A contrast is:
 
-\verb{contribution at the plotted value - contribution at the reference}.
+`contribution at the plotted value - contribution at the reference`.
 
 For example, compare each age with age 50:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{plots <- plot(
+```r
+plots <- plot(
   fit, terms = "age", type = "contrasts", ref = list(age = 50)
 )
 plots[["age"]]
-}\if{html}{\out{</div>}}
+```
 
 The contrast is zero at age 50. Above zero, the fitted contribution is
 larger than at age 50; below zero, it is smaller. Intercepts cancel from
@@ -219,26 +223,26 @@ stratum.
 
 Supply references on the original variable scale. The fitted shift,
 transformation, and centering are applied automatically. For example, if
-age was fitted using \code{log(age + 10)}, supply \code{ref = list(age = 50)}, not
-\code{list(age = 60)} or \code{list(age = log(60))}.
+age was fitted using `log(age + 10)`, supply `ref = list(age = 50)`, not
+`list(age = 60)` or `list(age = log(60))`.
 
 For a formula factor, use a category label available during fitting.
 For example, if race has categories A, B, and C, compare each with race A:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{plots <- plot(
+```r
+plots <- plot(
   fit, terms = "race", type = "contrasts", ref = list(race = "A")
 )
 plots[["race"]]
-}\if{html}{\out{</div>}}
+```
 
 If a reference is omitted, the function uses:
-\itemize{
-\item the smaller value for a numeric predictor with two distinct values;
-\item the observed mean in the fitting data for other numeric predictors;
-\item the first fitted level for a formula factor.
-}
 
-See \strong{Contrasts and reference values} in \code{\link[=predict.mfp2]{predict.mfp2()}} for further
+- the smaller value for a numeric predictor with two distinct values;
+- the observed mean in the fitting data for other numeric predictors;
+- the first fitted level for a formula factor.
+
+See **Contrasts and reference values** in [predict.mfp2()] for further
 details.
 }
 
@@ -246,11 +250,10 @@ details.
 
 By default, term plots add one component-plus-residual point for each
 observation used to fit the model. Each point has:
-\itemize{
-\item a horizontal position given by the observed predictor value;
-\item a height equal to the fitted contribution at that value plus a residual
-from the complete model.
-}
+
+- a horizontal position given by the observed predictor value;
+- a height equal to the fitted contribution at that value plus a residual
+  from the complete model.
 
 These points leave out the fitted contributions of the other predictors,
 while keeping the plotted predictor's contribution and the residual from
@@ -259,28 +262,28 @@ accounting for the other predictors. Residuals are calculated from the
 complete fitted model, including any offsets.
 
 The type of residual added depends on the model:
-\itemize{
-\item GLM, negative-binomial, and \code{survreg}: deviance residuals.
-\item GEE: deviance residuals based on fitted marginal means and prior weights.
-\item Cox: martingale residuals.
-\item Fine--Gray: martingale residuals from the weighted Cox fit, summed over
-each subject's expanded rows.
-\item Multinomial: binary deviance residuals comparing each non-reference
-category with all other categories. This differs from the comparison
-with the reference category shown by the fitted curve.
-\item Ordinal: deviance residuals for the cutoff shown in each panel.
-}
+
+- GLM, negative-binomial, and `survreg`: deviance residuals.
+- GEE: deviance residuals based on fitted marginal means and prior weights.
+- Cox: martingale residuals.
+- Fine--Gray: martingale residuals from the weighted Cox fit, summed over
+  each subject's expanded rows.
+- Multinomial: binary deviance residuals comparing each non-reference
+  category with all other categories. This differs from the comparison
+  with the reference category shown by the fitted curve.
+- Ordinal: deviance residuals for the cutoff shown in each panel.
 
 For non-Gaussian models, these points provide a diagnostic display rather
 than an exact adjustment of the observed response for other predictors.
 Points always use observed predictor values, even when the fitted curve
-uses \code{terms_seq = "equidistant"}.
+uses `terms_seq = "equidistant"`.
 
-Set \code{partial_only = TRUE} to hide the component-plus-residual points:
+Set `partial_only = TRUE` to hide the component-plus-residual points:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{curves <- plot(fit, terms = "age", partial_only = TRUE)
+```r
+curves <- plot(fit, terms = "age", partial_only = TRUE)
 curves[["age"]]
-}\if{html}{\out{</div>}}
+```
 
 Contrast plots always omit component-plus-residual points.
 }
@@ -301,7 +304,7 @@ components. For GEE models, they use the covariance selected for the fit.
 \section{Multinomial and ordinal models}{
 
 Multinomial models return one plot per variable, with a panel for each
-non-reference category. A panel labelled \code{"B vs A"} shows the fitted
+non-reference category. A panel labelled `"B vs A"` shows the fitted
 contribution to the log-odds of category B versus reference category A,
 including that comparison's intercept for term plots. The fitted
 transformation is shared across panels, but the coefficients differ.
@@ -325,32 +328,34 @@ Numeric binary predictors use their observed values on the horizontal
 axis; formula factors use their fitted category labels.
 
 For numeric predictors with only two values in multinomial or ordinal
-models, use \code{terms_seq = "data"} to avoid displaying intermediate values.
+models, use `terms_seq = "data"` to avoid displaying intermediate values.
 }
 
 \section{Predictors containing zeros}{
 
-For a term fitted with \code{zero = TRUE}, the continuous function is defined
+For a term fitted with `zero = TRUE`, the continuous function is defined
 for positive values. Its curve and confidence band are drawn only above
 zero, with the fitted value at exactly zero shown as a separate point.
 Centering can make that contribution nonzero. This point comes from the
 continuous term and does not represent a separately estimated zero effect.
 
-A \code{catzero} term also includes a separately estimated zero indicator.
+A `catzero` term also includes a separately estimated zero indicator.
+For `rcs()` and `bs()` terms the title reports the selected spline degrees of freedom;
+the positive curve uses the saved knots. An exact-zero indicator is drawn
+as a separate point, and indicator-only spike fits use two level labels.
 A spike-at-zero term follows the representation selected in the final model:
-\itemize{
-\item a positive-value function with a zero indicator;
-\item the positive-value function alone;
-\item the zero indicator alone.
-}
+
+- a positive-value function with a zero indicator;
+- the positive-value function alone;
+- the zero indicator alone.
 
 When a continuous component is retained, the positive-value curve is not
-connected to the zero endpoint. For \code{catzero} and spike-at-zero terms,
-that endpoint uses \code{color_line_spike}; for \code{zero = TRUE} alone, it uses
-\code{color_line}.
+connected to the zero endpoint. For `catzero` and spike-at-zero terms,
+that endpoint uses `color_line_spike`; for `zero = TRUE` alone, it uses
+`color_line`.
 
-A binary-only spike term uses labels such as \code{"exposure = 0"} and
-\code{"exposure > 0"}, with fitted points in \code{color_line}.
+A binary-only spike term uses labels such as `"exposure = 0"` and
+`"exposure > 0"`, with fitted points in `color_line`.
 }
 
 \examples{
@@ -429,5 +434,5 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
 
 }
 \seealso{
-\code{\link[=predict.mfp2]{predict.mfp2()}}, \code{\link[=mfp2]{mfp2()}}
+[predict.mfp2()], [mfp2()]
 }

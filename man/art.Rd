@@ -7,12 +7,12 @@
 \format{
 The dataset has 250 observations and 11 variables (1 response and 10 covariates)
 \describe{
-\item{y}{Continuous response variable.}
-\item{x1, x3, x5-x7, x10}{Continuous covariates.}
-\item{x2}{Binary variable.}
-\item{x4}{Ordinal variable with 3 levels.}
-\item{x8}{Binary variable.}
-\item{x9}{Nominal variable with 3 levels.}
+  \item{y}{Continuous response variable.}
+  \item{x1, x3, x5-x7, x10}{Continuous covariates.}
+  \item{x2}{Binary variable.}
+  \item{x4}{Ordinal variable with 3 levels.}
+  \item{x8}{Binary variable.}
+  \item{x9}{Nominal variable with 3 levels.}
 }
 }
 \usage{

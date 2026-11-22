@@ -15,13 +15,13 @@ finegray_family(
 }
 \arguments{
 \item{dist}{Survival-time distribution accepted by
-\code{\link[survival:survreg]{survival::survreg()}}. The default is \code{"weibull"}.}
+[survival::survreg()]. The default is \code{"weibull"}.}
 
 \item{scale}{Scale of the chosen distribution. The default, \code{0},
 estimates it from the data; a positive value fixes it.}
 
 \item{parms}{Optional parameters for the chosen distribution, as accepted
-by \code{\link[survival:survreg]{survival::survreg()}}.}
+by [survival::survreg()].}
 
 \item{etype}{Event type of interest in a Fine--Gray model: one of the
 event levels of the multi-state \code{Surv()} response, such as
@@ -34,18 +34,18 @@ by rounding. The default is \code{TRUE}.}
 \item{strata_action}{How \code{strata()} terms in the model formula affect
 a Fine--Gray model:
 \describe{
-\item{\code{"both"}}{The default. Allows both the censoring pattern
-and the baseline event pattern to differ between strata.}
-\item{\code{"censoring"}}{Allows the censoring pattern to differ
-between strata, while using a common baseline event pattern.}
-\item{\code{"baseline"}}{Allows the baseline event pattern to differ
-between strata, while estimating a common censoring pattern.}
+  \item{\code{"both"}}{The default. Allows both the censoring pattern
+    and the baseline event pattern to differ between strata.}
+  \item{\code{"censoring"}}{Allows the censoring pattern to differ
+    between strata, while using a common baseline event pattern.}
+  \item{\code{"baseline"}}{Allows the baseline event pattern to differ
+    between strata, while estimating a common censoring pattern.}
 }}
 }
 \value{
 A family specification for the \code{family} argument of
-\code{\link[=mfp2]{mfp2()}}. The specification from \code{survreg_family()} can also be
-used with \code{\link[=mfpi]{mfpi()}}.
+  [mfp2()]. The specification from \code{survreg_family()} can also be
+  used with [mfpi()].
 }
 \description{
 Use \code{survreg_family()} to choose a parametric survival model and its
@@ -120,5 +120,5 @@ for stratified data. \emph{Biometrics}, 67(2), 661--670.
 \doi{10.1111/j.1541-0420.2010.01493.x}
 }
 \seealso{
-\code{\link[survival:survreg]{survival::survreg()}}, \code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
+[survival::survreg()], [mfp2()], [mfpi()]
 }

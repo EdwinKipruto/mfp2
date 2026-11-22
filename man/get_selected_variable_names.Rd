@@ -2,24 +2,24 @@
 % Please edit documentation in R/mfp2.R
 \name{get_selected_variable_names}
 \alias{get_selected_variable_names}
-\title{Extract Names of Selected Variables from an \code{mfp2} Model}
+\title{Extract Names of Selected Variables from an `mfp2` Model}
 \usage{
 get_selected_variable_names(object)
 }
 \arguments{
-\item{object}{A fitted \code{\link[=mfp2]{mfp2()}} object.}
+\item{object}{A fitted [mfp2()] object.}
 }
 \value{
 Character vector of selected predictor names, ordered according to the
-\code{xorder} used in the \code{\link[=mfp2]{mfp2()}} call.
+`xorder` used in the [mfp2()] call.
 }
 \description{
 Returns the names of predictors retained in the final model after MFP
-selection, as recorded in the \code{selected} column of \code{object$fp_terms}.
+selection, as recorded in the `selected` column of `object$fp_terms`.
 Usually a selected variable has at least one fractional-polynomial power
-that is not \code{NA}. The exception is a spike-at-zero term for which only
-the binary indicator for \code{x = 0} is retained: it is selected although
-all of its powers are \code{NA}. Factors are reported by their variable name,
+that is not `NA`. The exception is a spike-at-zero term for which only
+the binary indicator for `x = 0` is retained: it is selected although
+all of its powers are `NA`. Factors are reported by their variable name,
 not by their contrast columns.
 }
 \examples{
@@ -32,5 +32,5 @@ get_selected_variable_names(fit)
 
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=print.mfp2]{print.mfp2()}}
+[mfp2()], [print.mfp2()]
 }

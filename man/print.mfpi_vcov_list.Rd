@@ -7,15 +7,15 @@
 \method{print}{mfpi_vcov_list}(x, ...)
 }
 \arguments{
-\item{x}{A multi-model object returned by \code{\link[=vcov.mfpi]{vcov.mfpi()}}.}
+\item{x}{A multi-model object returned by [vcov.mfpi()].}
 
 \item{...}{Not used.}
 }
 \value{
-Invisibly returns \code{x}.
+Invisibly returns `x`.
 }
 \description{
-Prints a compact index when \code{\link[=vcov.mfpi]{vcov.mfpi()}} returns covariance matrices for
+Prints a compact index when [vcov.mfpi()] returns covariance matrices for
 several term-specific interaction models. Individual matrices can be
-displayed by requesting a single \code{term}.
+displayed by requesting a single `term`.
 }

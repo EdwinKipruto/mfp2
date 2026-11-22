@@ -1400,9 +1400,9 @@ validate_scalar_fp <- function(arg, arg_name, var_name, type,
 #'
 #' Rewrites formula-special calls that base R does not recognize when
 #' namespace-qualified, e.g. survival::strata(x) -> strata(x) and
-#' stats::offset(x) -> offset(x). It also binds the bare `fp()` and `fp2()`
-#' names to this package's implementations so another attached package cannot
-#' intercept their evaluation. The original call object should still be stored
+#' stats::offset(x) -> offset(x). It also binds bare `fp()`, `fp2()`, `rcs()`,
+#' `bs()`, and `bspline()` to this package's implementations so another attached
+#' package cannot intercept their evaluation. The original call is still stored
 #' on the fitted object; this normalized formula is for internal parsing.
 #'
 #' @param formula A model formula.
@@ -1465,6 +1465,9 @@ normalize_formula_special_namespaces <- function(formula) {
   env <- new.env(parent = environment(formula))
   env$fp <- fp2
   env$fp2 <- fp2
+  env$rcs <- rcs
+  env$bs <- bs
+  env$bspline <- bspline
   env$strata <- survival::strata
   env$offset <- stats::offset
 

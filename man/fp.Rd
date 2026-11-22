@@ -26,94 +26,95 @@ fp2(...)
 }
 \arguments{
 \item{x}{Continuous numeric predictor to include in the formula. Do not
-wrap a factor in \code{fp()}.}
+wrap a factor in `fp()`.}
 
-\item{df}{Maximum FP complexity: \code{1} for linear only, \code{2} for up to FP1,
-or \code{4} (default) for up to FP2. Higher positive even values permit
+\item{df}{Maximum FP complexity: `1` for linear only, `2` for up to FP1,
+or `4` (default) for up to FP2. Higher positive even values permit
 higher FP degrees.}
 
 \item{alpha}{Significance level for comparisons between functional forms
-under p-value selection. Default \code{0.05}. For eligible spike-at-zero
+under p-value selection. Default `0.05`. For eligible spike-at-zero
 terms, also controls tests that remove components.}
 
 \item{select}{Significance level for variable inclusion under p-value
-selection. Default \code{0.05}; use \code{1} to force inclusion. It does not
+selection. Default `0.05`; use `1` to force inclusion. It does not
 control inclusion under AIC or BIC selection.}
 
-\item{shift}{Numeric value added before FP transformation. \code{NULL} (default)
-inherits the setting from \code{mfp2()}; \code{0} disables shifting for this term.}
+\item{shift}{Numeric value added before FP transformation. `NULL` (default)
+inherits the setting from `mfp2()`; `0` disables shifting for this term.}
 
-\item{scale}{Positive divisor applied after shifting. \code{NULL} (default)
-inherits the setting from \code{mfp2()}; \code{1} disables scaling for this term.
-With \code{zero}, \code{catzero}, or \code{spike}, the automatic scale is \code{1}.}
+\item{scale}{Positive divisor applied after shifting. `NULL` (default)
+inherits the setting from `mfp2()`; `1` disables scaling for this term.
+With `zero`, `catzero`, or `spike`, the automatic scale is `1`.}
 
-\item{center}{Whether to center the fitted terms. Default \code{TRUE}.}
+\item{center}{Whether to center the fitted terms. Default `TRUE`.}
 
 \item{acd}{Whether to request approximate cumulative distribution (ACD)
-modelling. Default \code{FALSE}.}
+modelling. Default `FALSE`.}
 
 \item{powers}{Numeric vector of candidate FP powers for this predictor.
-\code{NULL} (default) uses the global candidate set. Duplicate candidates
+`NULL` (default) uses the global candidate set. Duplicate candidates
 are removed.}
 
-\item{zero}{If \code{TRUE}, transform only values with \code{x > 0}; exact zeros
-contribute zero to the continuous component. Requires nonnegative \code{x}.
-Default \code{FALSE}.}
+\item{zero}{If `TRUE`, transform only values with `x > 0`; exact zeros
+contribute zero to the continuous component. Requires nonnegative `x`.
+Default `FALSE`.}
 
-\item{catzero}{If \code{TRUE}, add a binary indicator for \code{x = 0} alongside
-the positive component. Implies \code{zero = TRUE}. Default \code{FALSE}.}
+\item{catzero}{If `TRUE`, add a binary indicator for `x = 0` alongside
+the positive component. Implies `zero = TRUE`. Default `FALSE`.}
 
-\item{spike}{If \code{TRUE}, request spike-at-zero (SAZ) model selection,
+\item{spike}{If `TRUE`, request spike-at-zero (SAZ) model selection,
 subject to eligibility checks. While eligible, it considers a positive
-component and a binary indicator for \code{x = 0}. Requires nonnegative \code{x}.
-Default \code{FALSE}.}
+component and a binary indicator for `x = 0`. Requires nonnegative `x`.
+Default `FALSE`.}
 
-\item{force_max_fp}{If \code{TRUE}, retain the most complex form permitted by
-\code{df} and bypass variable removal and functional-form simplification.
-For an eligible SAZ term, retain both components. Default \code{FALSE}.}
+\item{force_max_fp}{If `TRUE`, retain the most complex form permitted by
+`df` and bypass variable removal and functional-form simplification.
+For an eligible SAZ term, retain both components. Default `FALSE`.}
 
-\item{acdx}{Deprecated alias for \code{acd}. Use \code{acd}; supplying both
+\item{acdx}{Deprecated alias for `acd`. Use `acd`; supplying both
 arguments is an error.}
 
-\item{...}{Arguments passed by \code{fp2()} to \code{fp()}.}
+\item{...}{Arguments passed by `fp2()` to `fp()`.}
 }
 \value{
 The input vector with modelling options attached as attributes.
-The options take effect when the term is used in an \code{\link[=mfp2]{mfp2()}} or
-\code{\link[=mfpi]{mfpi()}} formula.
+  The options take effect when the term is used in an [mfp2()] or
+  [mfpi()] formula.
 }
 \description{
-Use \code{fp()} or \code{fp2()} inside an \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} formula to set
+Use `fp()` or `fp2()` inside an [mfp2()] or [mfpi()] formula to set
 fractional-polynomial (FP) options for one continuous predictor. In
-\code{\link[=mfp2]{mfp2()}}, continuous terms without \code{fp()} are also considered for FP
-selection, using its top-level settings. \code{fp()} and \code{fp2()} specify the
+[mfp2()], continuous terms without `fp()` are also considered for FP
+selection, using its top-level settings. `fp()` and `fp2()` specify the
 same model term and record options for fitting; neither transforms the
 values when the formula is created.
 }
 \details{
-\code{fp2()} was introduced to avoid a name conflict with \code{mfp::fp()}.
-That conflict is now resolved: formulas passed to \code{mfp2()} or \code{mfpi()}
-use this package's \code{fp()} even when \code{mfp} is attached.
+`fp2()` was introduced to avoid a name conflict with `mfp::fp()`.
+That conflict is now resolved: formulas passed to `mfp2()` or `mfpi()`
+use this package's `fp()` even when `mfp` is attached.
 
-Add categorical predictors to the formula without \code{fp()} or \code{fp2()}.
-Convert numeric category codes with \code{factor()}.
+Add categorical predictors to the formula without `fp()` or `fp2()`.
+Convert numeric category codes with `factor()`.
 
-The default \code{df = 4} permits selection of a linear effect, a first-degree
+
+The default `df = 4` permits selection of a linear effect, a first-degree
 FP (FP1), or a second-degree FP (FP2). Selection may also exclude the
-predictor. Use \code{df = 2} to permit at most FP1, or \code{df = 1} for a linear
+predictor. Use `df = 2` to permit at most FP1, or `df = 1` for a linear
 effect only. The fitting procedure may reduce the permitted complexity
 when a predictor has few distinct values.
 
-Candidate powers default to \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}. A power
-of zero represents a logarithm. \code{powers} changes the candidates searched;
+Candidate powers default to `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`. A power
+of zero represents a logarithm. `powers` changes the candidates searched;
 it does not specify the powers of the final fitted function.
 
-Options set inside \code{fp()} apply to this term. \code{df}, \code{alpha}, \code{select},
-and \code{center} have their own defaults in \code{fp()} and ignore the values
-supplied to the surrounding \code{mfp2()} call; set them inside \code{fp()} to
-change them. \code{shift}, \code{scale}, and \code{powers} default to \code{NULL} and use the
-top-level values unless set here. Under p-value selection, \code{select = 1}
-forces inclusion and \code{alpha = 1} prevents simplification of the permitted
+Options set inside `fp()` apply to this term. `df`, `alpha`, `select`,
+and `center` have their own defaults in `fp()` and ignore the values
+supplied to the surrounding `mfp2()` call; set them inside `fp()` to
+change them. `shift`, `scale`, and `powers` default to `NULL` and use the
+top-level values unless set here. Under p-value selection, `select = 1`
+forces inclusion and `alpha = 1` prevents simplification of the permitted
 functional form.
 }
 \examples{
@@ -135,5 +136,5 @@ fit_fp2 <- mfp2(
 
 }
 \seealso{
-\code{\link[=fp2]{fp2()}}, \code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
+[fp2()], [mfp2()], [mfpi()]
 }

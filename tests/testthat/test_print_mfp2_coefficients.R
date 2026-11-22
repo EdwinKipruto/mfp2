@@ -26,6 +26,29 @@ extract_print_section <- function(output, heading, next_heading) {
   output[seq.int(start, end)]
 }
 
+test_that("spline coefficients print in one compact table with full details in summary", {
+  old_width <- getOption("width")
+  on.exit(options(width = old_width), add = TRUE)
+  options(width = 80)
+
+  x <- seq(0.1, 3, length.out = 120)
+  dat <- data.frame(x = x, y = sin(4 * x) + x^2 + 0.01 * cos(13 * x))
+  formulas <- list(RCS = y ~ rcs(x, df = 4), BS = y ~ bspline(x, df = 6))
+  for (kind in names(formulas)) {
+    fit <- mfp2(formulas[[kind]], data = dat, select = 1, alpha = 1,
+                verbose = FALSE)
+    printed <- capture.output(print(fit, detailed_settings = FALSE))
+    block <- extract_print_section(printed, "Final Model Coefficients", "Model Fit")
+    expect_true(any(grepl("^\\s*Variable\\s+Basis\\s+Center\\s+Estimate\\s+SE\\s*$",
+                          block)))
+    expect_true(any(grepl(paste(kind, "linear"), block, fixed = TRUE)))
+    expect_true(any(grepl(paste(kind, "nonlinear 1"), block, fixed = TRUE)))
+    expect_false(any(grepl("; knots = c(", block, fixed = TRUE)))
+    expect_true(any(grepl("; knots = c(", summary(fit, basis = TRUE)$basis$term,
+                          fixed = TRUE)))
+  }
+})
+
 make_design_info_object <- function(variables,
                                     components,
                                     powers,

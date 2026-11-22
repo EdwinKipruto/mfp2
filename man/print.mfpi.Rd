@@ -30,8 +30,8 @@ returned object.
 }
 \details{
 The header reports the original call and fitted model type. Step 1 displays
-\code{df_initial} and \code{df_final}. For a grouped adjustment term,
-\code{df_initial} counts all member design columns in the initial model.
+`df_initial` and `df_final`. For a grouped adjustment term,
+`df_initial` counts all member design columns in the initial model.
 Step 2 reports the grouping variable, interaction-selection criterion and
 rule, and the p-value adjustment method when applicable. The candidate table
 retains the stored metric names except that \code{pvalue} is printed as
@@ -50,5 +50,5 @@ the \code{"mfpi"} object are not modified, and model-selection decisions are
 based on the unrounded values computed during fitting.
 }
 \seealso{
-\code{\link[=mfpi]{mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}
+[mfpi()], [summary.mfpi()]
 }

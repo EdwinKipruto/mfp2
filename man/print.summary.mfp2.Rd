@@ -2,7 +2,7 @@
 % Please edit documentation in R/mfp2_summary.R
 \name{print.summary.mfp2}
 \alias{print.summary.mfp2}
-\title{Print a Summary of an \code{mfp2} Model Fit}
+\title{Print a Summary of an `mfp2` Model Fit}
 \usage{
 \method{print}{summary.mfp2}(x, notes = x$notes, ...)
 }
@@ -10,7 +10,7 @@
 \item{x}{An object of class \code{"summary.mfp2"}.}
 
 \item{notes}{Logical. If \code{FALSE}, suppress the explanatory model-df
-note. Defaults to the value stored by \code{\link[=summary.mfp2]{summary.mfp2()}}.}
+note. Defaults to the value stored by [summary.mfp2()].}
 
 \item{...}{Not used.}
 }
@@ -18,8 +18,8 @@ note. Defaults to the value stored by \code{\link[=summary.mfp2]{summary.mfp2()}
 Invisibly returns \code{x}.
 }
 \description{
-Renders the structured summary produced by \code{\link[=summary.mfp2]{summary.mfp2()}}.
+Renders the structured summary produced by [summary.mfp2()].
 }
 \seealso{
-\code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=print.mfp2]{print.mfp2()}}
+[summary.mfp2()], [print.mfp2()]
 }

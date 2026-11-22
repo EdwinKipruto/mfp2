@@ -7,28 +7,28 @@
 \method{print}{mfp2}(x, detailed_settings = TRUE, notes = TRUE, intercepts = NULL, ...)
 }
 \arguments{
-\item{x}{A fitted \code{mfp2} object.}
+\item{x}{A fitted `mfp2` object.}
 
-\item{detailed_settings}{Show the Detailed Settings table. Default \code{TRUE};
-set to \code{FALSE} for a shorter report.}
+\item{detailed_settings}{Show the Detailed Settings table. Default `TRUE`;
+set to `FALSE` for a shorter report.}
 
 \item{notes}{Show explanatory notes beneath the settings and model-fit
-sections. Default \code{TRUE}.}
+sections. Default `TRUE`.}
 
-\item{intercepts}{Show ordinal threshold intercepts. By default (\code{NULL}),
-they are shown when there are fewer than 10 thresholds; use \code{TRUE} or
-\code{FALSE} to override this. Has no effect for other model families.}
+\item{intercepts}{Show ordinal threshold intercepts. By default (`NULL`),
+they are shown when there are fewer than 10 thresholds; use `TRUE` or
+`FALSE` to override this. Has no effect for other model families.}
 
-\item{...}{Additional print arguments. Use \code{digits} to choose the number
+\item{...}{Additional print arguments. Use `digits` to choose the number
 of decimal places for displayed values (default 3); FP powers and
 degrees of freedom retain their own formatting.}
 }
 \value{
-Invisibly returns \code{x}, allowing the fitted object to be reused.
+Invisibly returns `x`, allowing the fitted object to be reused.
 }
 \description{
-Displays the choices made by \code{\link[=mfp2]{mfp2()}} and the resulting fitted model.
-Use \code{print(fit)} for the full report, or set \code{detailed_settings = FALSE}
+Displays the choices made by [mfp2()] and the resulting fitted model.
+Use `print(fit)` for the full report, or set `detailed_settings = FALSE`
 for a shorter view.
 }
 \details{
@@ -36,20 +36,22 @@ The report shows the original call and model details, selected and excluded
 variables, preprocessing, selected functions, final coefficients with
 standard errors, and model-fit statistics.
 Preprocessing shifts and scales display without unnecessary trailing
-zeros, independently of the \code{digits} print setting.
+zeros, independently of the `digits` print setting.
 
 Function choices are grouped by type: standard MFP, approximate cumulative
 distribution (ACD), and spike-at-zero (SAZ). Selected variables appear
-before excluded variables in each table. In the SAZ table, \code{prop_zero}
+before excluded variables in each table. In the SAZ table, `prop_zero`
 is the proportion of fitting observations with a structural zero;
-\code{binary} denotes an indicator for \code{x = 0}. For SAZ variables, the
-continuous component is transformed only when \code{x > 0}.
+`binary` denotes an indicator for `x = 0`. For SAZ variables, the
+continuous component is transformed only when `x > 0`.
 
 The optional Detailed Settings table shows each variable's initial and
 final degrees of freedom, selection settings, and transformation flags.
 The coefficients table labels each fitted basis term and its standard
 error. If the fit was centered, it also displays the centering constant
 and explains how to read the estimate.
+Selected RCS and B-spline terms are labelled with their spline form and
+fitted coefficient count.
 
 Model-fit measures depend on the family. GLMs report deviances, Cox models
 report minus twice the partial log likelihood, and other families display
@@ -64,5 +66,5 @@ print(fit, detailed_settings = FALSE)
 
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=summary.mfp2]{summary.mfp2()}}
+[mfp2()], [summary.mfp2()]
 }

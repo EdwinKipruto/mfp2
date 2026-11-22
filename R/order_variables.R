@@ -103,6 +103,18 @@ order_variables <- function(xorder = "ascending",
     term_to_columns <- stats::setNames(as.list(colnames(x)), colnames(x))
   }
 
+  # The reference and ordering tests use the linear spline component.
+  spline_specs <- attr(term_to_columns, "spline_specs", exact = TRUE)
+  if (length(spline_specs) > 0L) {
+    for (term in names(spline_specs)) {
+      spec <- spline_specs[[term]]
+      term_to_columns[[term]] <- term_to_columns[[term]][
+        c(1L, if (isTRUE(spec$indicator)) spec$df + 1L)
+      ]
+    }
+    x <- x[, unlist(term_to_columns, use.names = FALSE), drop = FALSE]
+  }
+
   predictor_names <- names(term_to_columns)
   n_predictors <- length(term_to_columns)
 

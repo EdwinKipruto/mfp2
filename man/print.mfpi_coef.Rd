@@ -10,17 +10,17 @@
 \method{print}{mfpi_coef_list}(x, digits = max(3L, getOption("digits") - 3L), ...)
 }
 \arguments{
-\item{x}{An object returned by \code{\link[=coef.mfpi]{coef.mfpi()}}.}
+\item{x}{An object returned by [coef.mfpi()].}
 
 \item{digits}{Number of significant digits used for coefficient estimates.}
 
 \item{...}{Not used.}
 }
 \value{
-Invisibly returns \code{x}.
+Invisibly returns `x`.
 }
 \description{
-Prints coefficients returned by \code{\link[=coef.mfpi]{coef.mfpi()}} in a user-facing form. For
+Prints coefficients returned by [coef.mfpi()] in a user-facing form. For
 each interaction model, the selected interaction powers are shown for every
 group level, followed by separate tables for group-specific FP terms,
 group-variable coefficients, and adjustment coefficients. These methods are

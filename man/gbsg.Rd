@@ -7,18 +7,18 @@
 \format{
 A dataset with 686 observations and 12 variables.
 \describe{
-\item{id}{Patient identifier.}
-\item{age}{Age in years.}
-\item{meno}{Menopausal status (0 = premeno, 1 = postmeno).}
-\item{size}{Tumor size (mm).}
-\item{grade}{Tumor grade.}
-\item{nodes}{Number of positive lymph nodes.}
-\item{enodes}{exp(-0.12*nodes).}
-\item{pgr}{Progesterone receptor status.}
-\item{er}{Estrogen receptor status.}
-\item{hormon}{Tamoxifen treatment.}
-\item{rectime}{Time (days) to death or cancer recurrence.}
-\item{censrec}{Censoring (0 = censored, 1 = event).}
+  \item{id}{Patient identifier.}
+  \item{age}{Age in years.}
+  \item{meno}{Menopausal status (0 = premeno, 1 = postmeno).}
+  \item{size}{Tumor size (mm).}
+  \item{grade}{Tumor grade.}
+  \item{nodes}{Number of positive lymph nodes.}
+  \item{enodes}{exp(-0.12*nodes).}
+  \item{pgr}{Progesterone receptor status.}
+  \item{er}{Estrogen receptor status.}
+  \item{hormon}{Tamoxifen treatment.}
+  \item{rectime}{Time (days) to death or cancer recurrence.}
+  \item{censrec}{Censoring (0 = censored, 1 = event).}
 }
 }
 \usage{

@@ -115,6 +115,99 @@ plots <- plot(fit)
 plots[[1]]
 ```
 
+### Restricted cubic splines
+
+Splines can be mixed with fractional polynomials in one model:
+
+```r
+fit_splines <- mfp2(
+  lpsa ~ rcs(age, df = 4) + mfp2::bs(cavol, df = 6) + fp(weight),
+  data = prostate, select = 1, verbose = FALSE
+)
+summary(fit_splines)
+predict(fit_splines, newdata = prostate[1:5, ])
+spline_plots <- plot(fit_splines, terms = c("age", "cavol"),
+                      partial_only = TRUE)
+print(spline_plots[["age"]])
+print(spline_plots[["cavol"]])
+```
+
+`select = 1` retains each predictor while allowing its functional form to
+simplify. See the **Restricted cubic and B-spline terms** section in
+`vignette("mfp2-user-guide", package = "mfp2")` for a reproducible worked
+example with RCS, B-spline, and matrix-interface plots.
+
+Use `rcs()` in a formula to select a spline with up to `df` coefficients.
+Knots are chosen from the fitting observations once and reused for every
+candidate model and prediction. The optional `catzero` and `spike` arguments
+handle an exact-zero category; both require a nonnegative predictor.
+Spline basis columns are centered by default, as with `fp()`; set
+`rcs(x, df = 4, center = FALSE)` to leave this term uncentered.
+
+```r
+fit_rcs <- mfp2(
+  lpsa ~ rcs(age, df = 4) + rcs(cavol, df = 3),
+  data = prostate, verbose = FALSE
+)
+predict(fit_rcs, newdata = prostate[1:3, ], type = "response")
+predict(fit_rcs, type = "terms", terms = "age", nseq = 50)
+plot(fit_rcs, terms = "age")
+```
+
+For `spike = TRUE`, selection can retain the spline, the zero indicator,
+both components, or neither. `catzero = TRUE` keeps the indicator whenever
+the spline term remains in the model. If tied values reduce the usable number
+of knots, `mfp2()` warns and lowers the maximum spline `df`.
+
+### Cubic B-splines
+
+Use `bs()` for cubic B-splines with fixed interior and boundary knots.
+For `df = 6`, selection compares exclusion, a linear effect, a four-coefficient
+spline using the middle knot, and a six-coefficient spline using all three
+interior knots. The spline candidates use nested knot sets; no knotless cubic
+polynomial is fitted. Knot locations are resolved from the fitting rows and
+reused for prediction.
+
+```r
+fit_bs <- mfp2(lpsa ~ bs(age, df = 6),
+               data = prostate, verbose = FALSE)
+predict(fit_bs, newdata = prostate[1:3, ])
+summary(fit_bs, basis = TRUE)
+plot(fit_bs, terms = "age", partial_only = TRUE)
+```
+
+As with `rcs()`, `catzero` and `spike` can model exact zeros separately.
+Use `bs(x, df = 6, center = FALSE)` to turn off the default centering
+for this term. Centering changes the intercept but not fitted predictions.
+`bspline()` remains available for existing formulas. `mfp2::bs()` selects
+among nested models; `splines::bs()` constructs a basis directly.
+With `verbose = TRUE`, each cycle prints spline candidates and their total
+model degrees of freedom; plot titles show the selected form, for example
+`age: bs(df=4)`.
+
+The numeric matrix interface can select splines alongside ordinary fractional
+polynomials. Give the raw columns in `x`; knots are chosen on the fitting rows
+and reused for prediction and plots.
+Use the existing `center` argument to control spline columns individually,
+for example `center = c(age = FALSE, cavol = TRUE)`; unspecified columns
+remain centered by default. For example:
+
+```r
+x <- as.matrix(prostate[c("age", "cavol", "lweight")])
+fit_matrix <- mfp2(x, prostate$lpsa,
+                   splines = c(age = "bspline", cavol = "rcs"),
+                   df = c(age = 6, cavol = 3),
+                   center = c(age = FALSE, cavol = TRUE),
+                   verbose = FALSE)
+predict(fit_matrix, newdata = x[1:3, , drop = FALSE])
+plot(fit_matrix, terms = "age", partial_only = TRUE)
+```
+
+For fixed knots, pass `splines = list(age = bs_spec(knots = c(45, 55, 65),
+boundary_knots = c(30, 80)))`. `rcs_spec(knots = ...)` accepts the full knot
+vector including boundaries. The existing `catzero_vars` and `spike_vars`
+arguments apply to these raw columns.
+
 The matrix interface is available when the predictors have already been
 prepared as a numeric matrix.
 

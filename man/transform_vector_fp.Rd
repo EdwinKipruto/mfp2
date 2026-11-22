@@ -17,53 +17,53 @@ transform_vector_fp(
 \arguments{
 \item{x}{A numeric vector of predictor values.}
 
-\item{power}{A numeric vector of FP powers. Default is 1 (linear). \code{NA}
-values are ignored; if all powers are \code{NA}, \code{NULL} is returned.}
+\item{power}{A numeric vector of FP powers. Default is 1 (linear). `NA`
+values are ignored; if all powers are `NA`, `NULL` is returned.}
 
-\item{scale}{Positive numeric scaling factor applied to \code{x} after shifting.
-Default \code{1} (no scaling). If \code{NULL}, the scale factor is estimated
+\item{scale}{Positive numeric scaling factor applied to `x` after shifting.
+Default `1` (no scaling). If `NULL`, the scale factor is estimated
 automatically. Scaling does not change the selected powers.}
 
 \item{shift}{shift required for shifting x to positive values. Default is 0,
-meaning no shift is applied. If \code{NULL} then the shift is estimated
-automatically using the Royston and Sauerbrei formula iff any \code{x} <= 0.
-Ignored when \code{zero = TRUE}.}
+meaning no shift is applied. If `NULL` then the shift is estimated
+automatically using the Royston and Sauerbrei formula iff any `x` <= 0.
+Ignored when `zero = TRUE`.}
 
 \item{name}{character used to define names for the output matrix. Default
-is \code{NULL}, meaning the output will have unnamed columns.}
+is `NULL`, meaning the output will have unnamed columns.}
 
-\item{zero}{Logical indicating whether only values with \code{x > 0} should be
+\item{zero}{Logical indicating whether only values with `x > 0` should be
 transformed, with exact-zero values retained as structural zeros. If
-\code{TRUE}, \code{x} must be nonnegative and must have been validated by the caller;
+`TRUE`, `x` must be nonnegative and must have been validated by the caller;
 negative values must be explicitly recoded if they should represent the zero
-group. No shift is applied when \code{zero = TRUE}. If \code{FALSE}
+group. No shift is applied when `zero = TRUE`. If `FALSE`
 (default), all values are shifted (if needed) to ensure positivity.}
 
-\item{check_binary}{a logical indicating whether or not input \code{x} is checked
+\item{check_binary}{a logical indicating whether or not input `x` is checked
 if it is a binary variable (i.e. has only two distinct values). The default
-\code{TRUE} usually only needs to changed when this function is to be used to
+`TRUE` usually only needs to changed when this function is to be used to
 transform data for predictions. See Details.}
 }
 \value{
 Returns a matrix of transformed variable(s). The number of columns
 depends on the number of powers provided, the number of rows is equal to the
-length of \code{x}. The columns are sorted by increased power.
-If all powers are \code{NA}, then this function returns \code{NULL}. Binary \code{x}
-with \code{check_binary = TRUE} is returned untransformed as a one-column
+length of `x`. The columns are sorted by increased power.
+If all powers are `NA`, then this function returns `NULL`. Binary `x`
+with `check_binary = TRUE` is returned untransformed as a one-column
 matrix.
 }
 \description{
 Constructs fractional-polynomial design columns from specified powers,
-analogous to \code{fracgen} in Stata.
+analogous to `fracgen` in Stata.
 }
 \details{
 This is a low-level utility for constructing fractional-polynomial design
 columns from specified powers. It does not perform model or power selection.
-Most users should specify continuous variables with \code{\link[=fp]{fp()}} inside an
-\code{\link[=mfp2]{mfp2()}} formula instead.
+Most users should specify continuous variables with [fp()] inside an
+[mfp2()] formula instead.
 
 The FP transformation constructs design columns as follows. For each power
-pi in \code{power} = (p1, p2, ..., pn) it computes x^pi and returns the
+pi in `power` = (p1, p2, ..., pn) it computes x^pi and returns the
 collection as a matrix. The input may be shifted and scaled before
 transformation. Centering, if desired, should be applied separately
 after transformation (see the Data processing section).
@@ -76,8 +76,8 @@ x^pi * log(x)^2.
 
 Note that the powers pi are assumed to be sorted. That is, this function
 sorts them, then proceeds to compute the transformation. For example,
-the output will be the same for \code{power = c(1, 1, 2)} and
-\code{power = c(1, 2, 1)}. This is done to make sense of repeated powers and
+the output will be the same for `power = c(1, 1, 2)` and
+`power = c(1, 2, 1)`. This is done to make sense of repeated powers and
 to uniquely define FPs. In case an ACD transformation is used, there is a
 specific order in which powers are processed, which is always the same (but
 not necessarily sorted).
@@ -86,10 +86,10 @@ in either sorted, or ACD specific order and the columns of the matrix
 returned by this function will always align with the powers used
 throughout this package.
 
-Binary variables are not transformed unless \code{check_binary = FALSE}. With
-\code{check_binary = FALSE}, the requested FP power is applied even when \code{x} has
+Binary variables are not transformed unless `check_binary = FALSE`. With
+`check_binary = FALSE`, the requested FP power is applied even when `x` has
 one or two distinct values; use the fitted shift and scale parameters when
-transforming prediction values. For model fit, \code{check_binary} should always
+transforming prediction values. For model fit, `check_binary` should always
 be at its default value.
 }
 \section{Data processing}{
@@ -101,12 +101,12 @@ extreme magnitudes. Scaling does not change the selected powers.
 Centering is not performed by this function. When centering is desired, it
 should be applied after transformation, because centering before
 transformation alters the correlation structure among predictors. In
-\code{\link[=mfp2]{mfp2()}}, centering is applied only to the final selected model when
-\code{center = TRUE}. See Sauerbrei et al (2006) for discussion.
+[mfp2()], centering is applied only to the final selected model when
+`center = TRUE`. See Sauerbrei et al (2006) for discussion.
 
-If \code{zero = TRUE}, \code{x} must be nonnegative. Exact-zero values are not shifted
+If `zero = TRUE`, `x` must be nonnegative. Exact-zero values are not shifted
 and their transformed components remain zero; transformation is applied only
-to values with \code{x > 0}. Structural-zero membership is determined before the
+to values with `x > 0`. Structural-zero membership is determined before the
 power transformation, so a positive value that transforms to zero is still
 part of the positive component. For performance, this low-level helper assumes that
 callers have already enforced the nonnegative-input contract. The public
@@ -119,28 +119,28 @@ transformation work.
 Fractional-polynomial transformations are applied after shifting and scaling.
 Users should ensure that the shifted and scaled values are in the domain
 required by the specified powers. In particular, powers involving logarithms
-require strictly positive input. This includes \code{power = 0}, which represents
-\code{log(x)}, and repeated powers such as \code{c(2, 2)}, where the second transformed
-variable is proportional to \code{x^2 * log(x)}.
+require strictly positive input. This includes `power = 0`, which represents
+`log(x)`, and repeated powers such as `c(2, 2)`, where the second transformed
+variable is proportional to `x^2 * log(x)`.
 
 Negative powers are undefined at zero, and non-integer powers are not
-real-valued for negative input. Therefore, when using powers such as \code{0},
-\code{-1}, \code{-0.5}, \code{0.5}, or repeated powers, the values of \code{(x + shift) / scale}
-should be strictly positive unless \code{zero = TRUE}.
+real-valued for negative input. Therefore, when using powers such as `0`,
+`-1`, `-0.5`, `0.5`, or repeated powers, the values of `(x + shift) / scale`
+should be strictly positive unless `zero = TRUE`.
 
-Positive integer powers such as \code{1}, \code{2}, and \code{3} can be evaluated at zero
+Positive integer powers such as `1`, `2`, and `3` can be evaluated at zero
 and negative values, provided they are not part of a repeated-power FP basis.
 
-These low-level transformation functions assume that the supplied \code{x},
-\code{shift}, \code{scale}, and \code{power} values are compatible. If incompatible values
+These low-level transformation functions assume that the supplied `x`,
+`shift`, `scale`, and `power` values are compatible. If incompatible values
 are supplied, the transformation may produce non-finite values or fail with
-an error from the underlying numerical code. In normal use through \code{mfp2()},
+an error from the underlying numerical code. In normal use through `mfp2()`,
 shift and scale parameters are estimated and checked during model fitting.
-During prediction, \code{predict.mfp2()} checks the fitted powers and stops with
+During prediction, `predict.mfp2()` checks the fitted powers and stops with
 an informative error if new data fall outside the required transformation
 domain.
 
-If \code{zero = TRUE}, exact-zero values are treated structurally: they are not
+If `zero = TRUE`, exact-zero values are treated structurally: they are not
 shifted, and their transformed continuous components are set to zero.
 }
 

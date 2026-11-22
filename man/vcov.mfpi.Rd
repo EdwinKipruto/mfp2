@@ -7,45 +7,45 @@
 \method{vcov}{mfpi}(object, term = NULL, model = c("best", "all"), ...)
 }
 \arguments{
-\item{object}{A fitted \code{\link[=mfpi]{mfpi()}} object.}
+\item{object}{A fitted [mfpi()] object.}
 
 \item{term}{Optional character vector naming continuous variables whose
-term-specific interaction models should be extracted. When \code{NULL}, all
-available terms in the requested \code{model} scope are returned.}
+term-specific interaction models should be extracted. When `NULL`, all
+available terms in the requested `model` scope are returned.}
 
 \item{model}{Character scalar indicating which stored interaction models are
-eligible. \code{"best"} (the default) uses interactions retained by the MFPI
-selection criterion; \code{"all"} uses every evaluated term-specific winner,
+eligible. `"best"` (the default) uses interactions retained by the MFPI
+selection criterion; `"all"` uses every evaluated term-specific winner,
 whether retained or not.}
 
 \item{...}{Not used. Supplying additional arguments produces an error.}
 }
 \value{
 If one interaction model is requested, a numeric square matrix with row and
-column names matching \code{\link[=coef.mfpi]{coef.mfpi()}}. If several interaction models are
-requested, a named list with class \code{"mfpi_vcov_list"}, containing one matrix
+column names matching [coef.mfpi()]. If several interaction models are
+requested, a named list with class `"mfpi_vcov_list"`, containing one matrix
 per interaction. The original fitted coefficient names are retained in the
-\code{raw_names} attribute of each matrix.
+`raw_names` attribute of each matrix.
 }
 \description{
 Extracts estimated variance-covariance matrices from the term-specific
-interaction models stored in an \code{\link[=mfpi]{mfpi()}} fit. The method uses the same model
+interaction models stored in an [mfpi()] fit. The method uses the same model
 scope, term selection, coefficient order, and user-facing labels as
-\code{\link[=coef.mfpi]{coef.mfpi()}}.
+[coef.mfpi()].
 }
 \details{
-Each continuous variable evaluated by \code{mfpi()} has a separate interaction
+Each continuous variable evaluated by `mfpi()` has a separate interaction
 model. There is therefore no single covariance matrix spanning coefficients
-from different MFPI interactions. When one term is requested, \code{vcov.mfpi()}
+from different MFPI interactions. When one term is requested, `vcov.mfpi()`
 returns that model's ordinary covariance matrix. When several terms are
 requested, it returns a named list containing one covariance matrix per
 term-specific model.
 
-Row and column names correspond exactly to \code{names(coef(object, ...))} for the
+Row and column names correspond exactly to `names(coef(object, ...))` for the
 same interaction model. Group-specific FP coefficients are labelled using the
 original group levels and readable FP transformations. Group-variable
-coefficients use labels such as \verb{treatment [Drug A]}; the reference level is
-shown by the \code{coef()} print method rather than encoded as a pairwise contrast
+coefficients use labels such as `treatment [Drug A]`; the reference level is
+shown by the `coef()` print method rather than encoded as a pairwise contrast
 in the coefficient name.
 
 The covariance matrices are conditional on the functional forms and model
@@ -75,5 +75,5 @@ vcov(fit, term = "cavol", model = "all")
 
 }
 \seealso{
-\code{\link[=coef.mfpi]{coef.mfpi()}}, \code{\link[=mfpi]{mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=predict.mfpi]{predict.mfpi()}}
+[coef.mfpi()], [mfpi()], [summary.mfpi()], [predict.mfpi()]
 }

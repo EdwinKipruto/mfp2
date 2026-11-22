@@ -7,44 +7,44 @@
 \method{coef}{mfpi}(object, term = NULL, model = c("best", "all"), ...)
 }
 \arguments{
-\item{object}{A fitted \code{\link[=mfpi]{mfpi()}} object.}
+\item{object}{A fitted [mfpi()] object.}
 
 \item{term}{Optional character vector naming continuous variables whose
-term-specific interaction models should be extracted. When \code{NULL}, all
-available terms in the requested \code{model} scope are returned.}
+term-specific interaction models should be extracted. When `NULL`, all
+available terms in the requested `model` scope are returned.}
 
 \item{model}{Character scalar indicating which stored interaction models are
-eligible. \code{"best"} (the default) uses interactions retained by the MFPI
-selection criterion; \code{"all"} uses every evaluated term-specific winner,
+eligible. `"best"` (the default) uses interactions retained by the MFPI
+selection criterion; `"all"` uses every evaluated term-specific winner,
 whether retained or not.}
 
 \item{...}{Not used. Supplying additional arguments produces an error.}
 }
 \value{
 If one interaction model is requested, a named numeric vector of regression
-coefficients with class \code{"mfpi_coef"}. If several interaction models are
-requested, a named list with class \code{"mfpi_coef_list"}, with one coefficient
+coefficients with class `"mfpi_coef"`. If several interaction models are
+requested, a named list with class `"mfpi_coef_list"`, with one coefficient
 vector per interaction. The printed labels are user-facing; the original
-fitted coefficient names are retained in the \code{raw_names} attribute of each
+fitted coefficient names are retained in the `raw_names` attribute of each
 coefficient vector.
 }
 \description{
 Extracts regression coefficients from the term-specific interaction models
-stored in an \code{\link[=mfpi]{mfpi()}} fit. Because MFPI evaluates each continuous variable in
+stored in an [mfpi()] fit. Because MFPI evaluates each continuous variable in
 a separate interaction model, the method returns one coefficient vector when
 a single interaction is requested and a named collection when several
 interactions are requested.
 }
 \details{
-\code{mfpi()} does not fit all selected interactions together in one joint final
-model. Each variable in \code{interaction_vars} has its own term-specific interaction
-model. Consequently, \code{coef.mfpi()} reports coefficients from those stored
+`mfpi()` does not fit all selected interactions together in one joint final
+model. Each variable in `interaction_vars` has its own term-specific interaction
+model. Consequently, `coef.mfpi()` reports coefficients from those stored
 interaction models rather than from the first-stage MFP adjustment model.
 
 By default, only interactions retained by the MFPI selection criterion are
-available (\code{model = "best"}). Set \code{model = "all"} to extract the fitted
+available (`model = "best"`). Set `model = "all"` to extract the fitted
 interaction model for every evaluated variable, including interactions that
-were not retained. Use \code{term} to select one or more continuous variables.
+were not retained. Use `term` to select one or more continuous variables.
 
 The printed representation is designed for interpretation. For each
 interaction it reports the interaction variable, grouping variable, FLEX
@@ -68,7 +68,7 @@ MFP metadata to recover readable variable or transformation labels where
 available. A model intercept, when present, is also shown separately.
 
 Transformation labels identify the FP basis before centering. When the MFPI
-fit uses \code{center = TRUE}, the corresponding fitted design columns are centered
+fit uses `center = TRUE`, the corresponding fitted design columns are centered
 using the stored MFPI centering constants; the coefficient estimates are
 therefore coefficients of those centered design columns.
 
@@ -80,10 +80,10 @@ Multinomial results contain the slope coefficients for each non-reference
 logit; their class-specific intercepts are not included.
 
 The transformation labels reflect the interaction model actually fitted.
-Thus, under \code{flex4}, different group levels can display different FP
+Thus, under `flex4`, different group levels can display different FP
 transformations. Repeated FP powers use the standard repeated-power form;
-for example, powers \code{c(-2, -2)} are displayed as \code{x^-2} and
-\code{x^-2 * log(x)} (with any fitted shift included in \code{x}).
+for example, powers `c(-2, -2)` are displayed as `x^-2` and
+`x^-2 * log(x)` (with any fitted shift included in `x`).
 }
 \examples{
 data("prostate", package = "mfp2")
@@ -111,5 +111,5 @@ coef(fit, term = "cavol", model = "all")
 
 }
 \seealso{
-\code{\link[=mfpi]{mfpi()}}, \code{\link[=vcov.mfpi]{vcov.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=predict.mfpi]{predict.mfpi()}}
+[mfpi()], [vcov.mfpi()], [summary.mfpi()], [predict.mfpi()]
 }

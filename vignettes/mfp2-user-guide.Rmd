@@ -608,6 +608,119 @@ mfp2(
   family = gaussian()
 )
 ```
+
+# Restricted cubic and B-spline terms
+
+In the formula interface, `rcs(x, df = 4)` fits restricted cubic splines
+with linear tails. `bs(x, df = 6)` fits cubic B-splines with fixed
+interior and boundary knots. The `df` in these terms counts spline
+coefficients; it is separate from the FP complexity setting described above.
+The basis columns of both splines are centered by default, as for `fp()`.
+Set `rcs(x, df = 4, center = FALSE)` or
+`bs(x, df = 6, center = FALSE)` to leave one spline uncentered.
+Centering changes the intercept but leaves fitted predictions unchanged.
+`bspline()` remains an alias for earlier formulas. `mfp2::bs()` selects
+nested models; `splines::bs()` constructs a basis directly. When supplied,
+`Boundary.knots` uses the familiar `splines::bs()` argument spelling.
+
+For a six-coefficient B-spline, the selection compares exclusion, a linear
+effect, a four-coefficient spline with one interior knot, and a
+six-coefficient spline with three interior knots. The one-knot model uses
+the middle knot of the full model. Both models use the same boundaries;
+knots are chosen from the fitting rows and saved for prediction. There is
+no candidate that is a single cubic polynomial without an interior knot.
+
+## Fit splines alongside fractional polynomials
+
+This reproducible example has a curved association for `age` and a
+logarithmic association for `size`. Fit the same data using either RCS or
+B-splines for age, while selecting an FP transformation for size.
+`select = 1` retains both predictors; functional-form selection still runs,
+so a spline can simplify to a linear effect.
+
+```{r spline-example-data}
+set.seed(624)
+spline_data <- data.frame(
+  age = seq(20, 80, length.out = 240),
+  size = runif(240, 1, 5)
+)
+spline_data$y <- with(spline_data,
+  2 + sin((age - 20) / 10) + log(size) + rnorm(240, sd = 0.25))
+
+fit_rcs <- mfp2(y ~ rcs(age, df = 4) + fp(size),
+                data = spline_data, select = 1, verbose = FALSE)
+fit_bs <- mfp2(y ~ mfp2::bs(age, df = 6) + fp(size),
+               data = spline_data, select = 1, verbose = FALSE)
+summary(fit_rcs)
+summary(fit_bs)
+```
+
+The following plots show each fitted age contribution and its pointwise
+95% confidence interval, adjusting for size. The selected form appears in
+the title. Extracting and printing the individual ggplot objects ensures
+that the figures appear in the rendered vignette.
+
+```{r spline-rcs-plot, fig.cap="Restricted cubic spline: selected age effect adjusted for size."}
+rcs_plots <- plot(fit_rcs, terms = "age", partial_only = TRUE)
+print(rcs_plots[["age"]])
+```
+
+```{r spline-bs-plot, fig.cap="Cubic B-spline: selected age effect adjusted for size."}
+bs_plots <- plot(fit_bs, terms = "age", partial_only = TRUE)
+print(bs_plots[["age"]])
+```
+
+Supply raw predictors for prediction. The knots and basis representation
+saved during fitting are reused, even for a single new observation.
+RCS has linear tails; cubic B-spline extrapolation beyond its boundaries
+is polynomial and can become extreme.
+
+```{r spline-prediction}
+new_patients <- data.frame(age = c(30, 50, 70), size = 3)
+data.frame(new_patients,
+           rcs = as.numeric(predict(fit_rcs, newdata = new_patients)),
+           bs = as.numeric(predict(fit_bs, newdata = new_patients)))
+```
+
+With `verbose = TRUE`, each cycle prints the RCS or B-spline candidates
+from highest to lowest complexity, ending with `null`. The `DF` column counts the complete
+model's degrees of freedom. P-value selection prints the comparisons used
+against the maximum spline; AIC and BIC selection print candidate scores.
+Spline plot titles use the selected form, such as `age: bs(df=4)`.
+
+Both spline terms accept `catzero = TRUE` for a retained exact-zero
+indicator and `spike = TRUE` to select the continuous and zero components
+separately. These options require a nonnegative predictor; automatic
+interior knots then use positive fitting observations.
+
+The matrix interface also selects RCS and B-spline forms in the same model
+as fractional polynomials. Supply raw numeric columns and name the spline
+columns in `splines`; omitted knots are resolved from the fitting rows.
+The matrix interface's `center` setting also applies to splines: use one
+logical value for all columns or a named value such as
+`center = c(age = FALSE, cavol = TRUE)` for selected predictors. For example:
+
+```{r matrix-spline-example}
+spline_x <- as.matrix(spline_data[c("age", "size")])
+fit_matrix_spline <- mfp2(spline_x, spline_data$y,
+                          splines = c(age = "bspline"),
+                          df = c(age = 6), select = 1,
+                          center = c(age = FALSE, size = TRUE),
+                          verbose = FALSE)
+predict(fit_matrix_spline, newdata = as.matrix(new_patients))
+```
+
+```{r matrix-spline-plot, fig.cap="Matrix interface: B-spline age effect with uncentered basis columns."}
+matrix_spline_plots <- plot(fit_matrix_spline, terms = "age", partial_only = TRUE)
+print(matrix_spline_plots[["age"]])
+```
+
+For specified knots, use `splines = list(age = bs_spec(knots = c(45, 55, 65),
+boundary_knots = c(30, 80)))` or `rcs_spec(knots = ...)`. B-spline knots are
+interior knots; RCS knots include boundaries. Existing `catzero_vars` and
+`spike_vars` apply to the raw matrix column names. The fitted knots are reused
+when predicting from new raw matrices, including rows beyond the fitted range.
+
 # Tuning parameters for MFP
 
 MFP selects predictors and their functional forms through iterative

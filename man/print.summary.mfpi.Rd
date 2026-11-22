@@ -20,10 +20,10 @@ print-helper default is used.}
 \code{x} invisibly.
 }
 \description{
-Displays the four-step MFPI summary produced by \code{\link[=summary.mfpi]{summary.mfpi()}}.
+Displays the four-step MFPI summary produced by [summary.mfpi()].
 }
 \details{
-Steps 1--3 are delegated to \code{\link[=print.mfpi]{print.mfpi()}} so that \code{print(fit)} and
+Steps 1--3 are delegated to [print.mfpi()] so that \code{print(fit)} and
 \code{print(summary(fit))} use the same adjustment-model and interaction-
 selection output. Step 4 adds a compact regression display for each retained
 interaction model.
@@ -57,5 +57,5 @@ stored fitted regression model when required, but they are not part of the
 MFPI interaction-selection result.
 }
 \seealso{
-\code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=print.mfpi]{print.mfpi()}}, \code{\link[=coef.mfpi]{coef.mfpi()}}, \code{\link[=vcov.mfpi]{vcov.mfpi()}}
+[summary.mfpi()], [print.mfpi()], [coef.mfpi()], [vcov.mfpi()]
 }

@@ -2,12 +2,12 @@
 % Please edit documentation in R/mfp2.R
 \name{coef.mfp2}
 \alias{coef.mfp2}
-\title{Extract Coefficients from an \code{mfp2} Model}
+\title{Extract Coefficients from an `mfp2` Model}
 \usage{
 \method{coef}{mfp2}(object, ...)
 }
 \arguments{
-\item{object}{A fitted \code{\link[=mfp2]{mfp2()}} object.}
+\item{object}{A fitted [mfp2()] object.}
 
 \item{...}{Not used.}
 }
@@ -17,8 +17,8 @@ a matrix with one row per non-reference outcome and one column per fitted
 term; powers are common across rows but coefficients are outcome specific.
 }
 \description{
-Returns coefficients from a fitted \code{\link[=mfp2]{mfp2()}} model. This is a method for the
-generic \code{\link[stats:coef]{stats::coef()}} function.
+Returns coefficients from a fitted [mfp2()] model. This is a method for the
+generic [stats::coef()] function.
 }
 \examples{
 data("prostate")
@@ -31,5 +31,5 @@ coef(fit)
 
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=predict.mfp2]{predict.mfp2()}}
+[mfp2()], [summary.mfp2()], [predict.mfp2()]
 }

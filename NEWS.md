@@ -1,3 +1,29 @@
+# TODO
+High — zero-handled scaling may change the fitted model. Explicit 
+scaling can make selection score a different log-transformed model from
+the final refit. Confirmed by source and an algebraic counterexample. Preserve 
+the selected design or reject affected non-unit scales. 
+(preprocessing.R:77, fit_mfp.R:847).
+The simplest safe solution is to require scale = 1 for zero-handled predictors
+that can use log terms without a retained zero indicator
+
+# mfp2 (development)
+
+* Added RCS and nested cubic B-splines to the numeric matrix interface, so
+  spline terms can be selected alongside fractional polynomials. Use the new
+  `splines` argument with named spline types for automatic knots or `bs_spec()`
+  and `rcs_spec()` for user-supplied knots. Existing `catzero_vars` and
+  `spike_vars` apply; prediction and plotting use the fitted knots.
+* Added cubic B-spline formula terms with fixed boundary knots and nested
+  interior-knot subsets. Selection compares exclusion and linearity with
+  spline candidates; fitted knots are reused for prediction.
+* Added B-spline support to term predictions, plots, printed results, and
+  summaries, including separate exact-zero indicators and spike selection.
+* Added per-cycle RCS and B-spline progress tables for verbose fitting, with
+  total model DF, deviance, and the active selection criterion. Spline plot
+  titles now identify the variable and selected form.
+* Expanded RCS and spline documentation, examples, and tests.
+
 # mfp2 1.1.1
 
 * Restored the mfp2 vignette (mfp2-user-guide.Rmd), which was inadvertently omitted from version 1.1.0.

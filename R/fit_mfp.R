@@ -516,7 +516,9 @@ fit_mfp <- function(x,
   prop_zero    <- prop_zero[variables_ordered]
   catzero_mat_list <- catzero_mat_list[variables_ordered]
 
+  spline_specs <- attr(term_to_columns, "spline_specs", exact = TRUE)
   term_to_columns <- term_to_columns[variables_ordered]
+  attr(term_to_columns, "spline_specs") <- spline_specs
   raw_columns_ordered <- unlist(term_to_columns, use.names = FALSE)
   if (!identical(colnames(x), raw_columns_ordered)) {
     x <- x[, raw_columns_ordered, drop = FALSE]
@@ -595,6 +597,13 @@ fit_mfp <- function(x,
     rep(saz_decision_codes[["continuous_only"]], length(variables_ordered)),
     variables_ordered
   )
+  if (length(spline_specs) > 0L) {
+    for (term in names(spline_specs)) {
+      if (isTRUE(spline_specs[[term]]$spike)) {
+        spike_decision[[term]] <- saz_decision_codes[["cont_binary"]]
+      }
+    }
+  }
   searched_fp_current <- stats::setNames(
     rep(FALSE, length(variables_ordered)),
     variables_ordered
@@ -864,6 +873,26 @@ fit_mfp <- function(x,
     }
   }
 
+  # Retain only the selected prefix of each nested spline basis. Keep the
+  # selected spline count separate from the named FP df settings: those
+  # settings are still needed when assembling the final fit's metadata.
+  if (length(spline_specs) > 0L) {
+    for (term in names(spline_specs)) {
+      state <- powers_current[[term]]
+      if (!all(is.na(state))) {
+        spec <- spline_specs[[term]]
+        spline_df <- as.integer(state[[1L]])
+        cols <- if (spline_df == 0L) character(0L) else
+          term_to_columns[[term]][seq_len(spline_df)]
+        if (isTRUE(spec$indicator) &&
+            (spline_df == 0L || !isTRUE(spec$spike) ||
+             spike_decision[[term]] == saz_decision_codes[["cont_binary"]])) {
+          cols <- c(cols, term_to_columns[[term]][[spec$df + 1L]])
+        }
+        term_to_columns[[term]] <- cols
+      }
+    }
+  }
   if (has_mapped_terms) {
     expanded_final <- expand_term_metadata_to_columns(
       term_to_columns = term_to_columns,
@@ -906,7 +935,7 @@ fit_mfp <- function(x,
     spike              = spike_final,
     reset_zero         = FALSE,
     spike_decision     = spike_decision_final,
-    center_method      = center_method
+    center_method      = center_method[names(power_list_final)]
   )
 
   # Update catzero for final metadata.
@@ -1076,6 +1105,11 @@ fit_mfp <- function(x,
     transformations = data.frame(
       shift = shift, scale = scale, center = center
     ),
+    spline_specs       = spline_specs,
+    spline_selected_df = vapply(names(spline_specs), function(term) {
+      state <- powers_current[[term]]
+      if (all(is.na(state))) NA_integer_ else as.integer(state[[1L]])
+    }, integer(1L)),
     fp_powers       = powers_current,
     acd             = acdx,
     zero            = zero,
@@ -1101,6 +1135,21 @@ fit_mfp <- function(x,
 
   fit <- modelfit$fit
   fit[names(metadata)] <- metadata
+  fit$rcs_specs <- Filter(function(spec) identical(spec$type, "rcs"), spline_specs)
+  fit$bspline_specs <- Filter(function(spec) identical(spec$type, "bspline"), spline_specs)
+  fit$rcs_selected_df <- fit$spline_selected_df[names(fit$rcs_specs)]
+  fit$bspline_selected_df <- fit$spline_selected_df[names(fit$bspline_specs)]
+  if (length(spline_specs) > 0L) {
+    fit$fp_terms$spline_df <- rep(NA_integer_, nrow(fit$fp_terms))
+    for (term in names(spline_specs)) {
+      fit$fp_terms[term, "df_setting"] <- spline_specs[[term]]$df
+      fit$fp_terms[term, "df_initial"] <-
+        (spline_specs[[term]]$df + as.integer(spline_specs[[term]]$indicator)) * fit$n_logits
+      fit$fp_terms[term, "spline_df"] <- fit$spline_selected_df[[term]]
+      power_cols <- grep("^power[0-9]+$", names(fit$fp_terms), value = TRUE)
+      fit$fp_terms[term, power_cols] <- NA_real_
+    }
+  }
 
   # Store the complete conceptual-term lookup for every fit. Identity mappings
   # are required by prediction just as explicit categorical mappings are, and
@@ -1271,7 +1320,8 @@ find_best_fp_cycle <- function(x,
     # Explicitly mapped terms have one conceptual linear/null state even when
     # a binary factor contributes only one non-identity dummy column.
     power_best <- fit_best_fp_step$power_best
-    if (term_uses_column_mapping(xi, term_to_columns[[xi]])) {
+    if (term_uses_column_mapping(xi, term_to_columns[[xi]]) &&
+        !xi %in% names(attr(term_to_columns, "spline_specs", exact = TRUE))) {
       power_best <- if (all(is.na(power_best))) NA_real_ else 1
       fit_best_fp_step$searched_fp <- FALSE
     }

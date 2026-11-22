@@ -2,7 +2,7 @@
 % Please edit documentation in R/predict.mfp2.R
 \name{predict.mfp2}
 \alias{predict.mfp2}
-\title{Predict from an \code{mfp2} Model}
+\title{Predict from an `mfp2` Model}
 \usage{
 \method{predict}{mfp2}(
   object,
@@ -24,106 +24,106 @@
 )
 }
 \arguments{
-\item{object}{A fitted object of class \code{"mfp2"}.}
+\item{object}{A fitted object of class `"mfp2"`.}
 
 \item{newdata}{An optional data frame or matrix containing observations to
-predict. See \strong{Supplying prediction data}.}
+predict. See **Supplying prediction data**.}
 
 \item{type}{A character value selecting the prediction type. See
-\strong{Choosing the prediction type}.}
+**Choosing the prediction type**.}
 
 \item{se.fit}{Logical; return standard errors for complete-model predictions.
 Not available for multinomial class labels. Ignored for term and contrast
 predictions, which always include standard errors and confidence limits.
-See \strong{Choosing the prediction type}.}
+See **Choosing the prediction type**.}
 
 \item{terms}{An optional character vector naming terms to return with
-\code{type = "terms"} or \code{type = "contrasts"}. Use original variable or group
-names. If \code{NULL}, all terms included in the final model are used.}
+`type = "terms"` or `type = "contrasts"`. Use original variable or group
+names. If `NULL`, all terms included in the final model are used.}
 
 \item{terms_seq}{For term and contrast predictions, choose which values
-to predict at. \code{"equidistant"} (the default) uses \code{nseq} evenly spaced
-values between the variable's minimum and maximum. \code{"data"} uses the
-observed values. Both use \code{newdata} when supplied, otherwise the fitting
-data. Factors and grouped terms always use the supplied or fitted rows.}
+to predict at. `"equidistant"` (the default) uses `nseq` evenly spaced
+values between the variable's minimum and maximum. `"data"` uses the
+observed values. Both use `newdata` when supplied, otherwise the fitting
+data. Spline terms use the saved knots; factors and other grouped terms
+always use the supplied or fitted rows.}
 
 \item{alpha}{A single finite number strictly between 0 and 1 used to
-calculate confidence intervals for term and contrast results. The confidence level is \code{1 - alpha}. The
-default \code{alpha = 0.05} gives 95 percent confidence intervals.}
+calculate confidence intervals for term and contrast results. The confidence level is `1 - alpha`. The
+default `alpha = 0.05` gives 95 percent confidence intervals.}
 
 \item{ref}{A named list of reference values used with
-\code{type = "contrasts"}. Numeric references must be supplied on the original
-variable scale. See \strong{Contrasts and reference values}.}
+`type = "contrasts"`. Numeric references must be supplied on the original
+variable scale. See **Contrasts and reference values**.}
 
-\item{strata}{Strata for new rows of a Cox or \code{survreg} model fitted with
+\item{strata}{Strata for new rows of a Cox or `survreg` model fitted with
 separately supplied strata. Supply a vector for one stratification
 variable, or a matrix or data frame for several. For formula strata,
-include the variables in \code{newdata} instead. See \strong{Proportional-hazards
-predictions} and \strong{Parametric survival predictions}.}
+include the variables in `newdata` instead. See **Proportional-hazards
+predictions** and **Parametric survival predictions**.}
 
 \item{newoffset}{Offsets for new rows: one finite numeric value per row,
 or, for multinomial models, a matrix with one column per category or
-non-reference category. See \strong{Offsets}.}
+non-reference category. See **Offsets**.}
 
 \item{times}{Time points for Fine--Gray cumulative-incidence predictions,
 in the same units as the fitted follow-up time. Required for
-\code{type = "response"} in Fine--Gray models; unavailable otherwise.
-See \strong{Proportional-hazards predictions}.}
+`type = "response"` in Fine--Gray models; unavailable otherwise.
+See **Proportional-hazards predictions**.}
 
 \item{nseq}{A single finite positive integer giving the number of equally
-spaced values used when \code{terms_seq = "equidistant"}. The default is 100.}
+spaced values used when `terms_seq = "equidistant"`. The default is 100.}
 
-\item{add_intercept}{Logical; defaults to \code{TRUE}. Includes the fitted
+\item{add_intercept}{Logical; defaults to `TRUE`. Includes the fitted
 intercept in term predictions where applicable and the reference-cutoff
-intercept in full-model ordinal link predictions. See \strong{Choosing the
-prediction type}.}
+intercept in full-model ordinal link predictions. See **Choosing the
+prediction type**.}
 
-\item{cox_reference}{Reference for Cox or Fine--Gray \code{"lp"} and \code{"risk"}
-predictions: \code{"zero"} (default), \code{"sample"}, or \code{"strata"}.
-See \strong{Proportional-hazards predictions}.}
+\item{cox_reference}{Reference for Cox or Fine--Gray `"lp"` and `"risk"`
+predictions: `"zero"` (default), `"sample"`, or `"strata"`.
+See **Proportional-hazards predictions**.}
 
 \item{ordinal_cutoff}{Cutoff number for ordinal term predictions. Includes
 the chosen cutoff's intercept and accounts for its uncertainty.
-The default, \code{NULL}, omits cutoff intercepts. See \strong{Choosing the
-prediction type}.}
+The default, `NULL`, omits cutoff intercepts. See **Choosing the
+prediction type**.}
 
 \item{...}{Additional arguments for the underlying prediction method,
-such as \code{p = 0.5} for \code{survreg} quantiles. Internal prediction methods
+such as `p = 0.5` for `survreg` quantiles. Internal prediction methods
 ignore these arguments; negative-binomial predictions reject unknown
-arguments. See \strong{Choosing the prediction type}.}
+arguments. See **Choosing the prediction type**.}
 }
 \value{
 Complete-model predictions usually return a numeric vector, or a list
-containing predictions and standard errors when \code{se.fit = TRUE}.
+containing predictions and standard errors when `se.fit = TRUE`.
 Where a native prediction method is used, its return format is retained.
 
-GEE predictions with \code{se.fit = TRUE} return a list containing \code{fit},
-\code{se.fit}, and \code{residual.scale}.
+GEE predictions with `se.fit = TRUE` return a list containing `fit`,
+`se.fit`, and `residual.scale`.
 
 Multinomial link and response predictions return matrices; class predictions
 return a factor. Ordinal link and mean predictions return numeric vectors;
 response predictions return a matrix with one column per ordered category.
-For these numeric predictions, \code{se.fit = TRUE} returns a list containing
-\code{fit} and \code{se.fit} with matching dimensions and observation names.
-See \strong{Choosing the prediction type}.
+For these numeric predictions, `se.fit = TRUE` returns a list containing
+`fit` and `se.fit` with matching dimensions and observation names.
+See **Choosing the prediction type**.
 
 Term and contrast predictions return a named list with one data frame per
 requested term, containing:
-\itemize{
-\item \code{variable}: the evaluated value or factor level;
-\item \code{variable_pre}: for a single numeric term, the shifted value before the
-final transformation; for an indicator-only spike term, the zero indicator;
-\item \code{value}: the fitted term value or contrast;
-\item \code{se}: its standard error;
-\item \code{lower}, \code{upper}: its confidence limits.
-}
+
+- `variable`: the evaluated value or factor level;
+- `variable_pre`: for a single numeric term, the shifted value before the
+  final transformation; for an indicator-only spike term, the zero indicator;
+- `value`: the fitted term value or contrast;
+- `se`: its standard error;
+- `lower`, `upper`: its confidence limits.
 
 Grouped terms may also include their member columns. Multinomial term and
-contrast results include a \code{logit} column identifying the non-reference
+contrast results include a `logit` column identifying the non-reference
 category.
 }
 \description{
-Obtain predictions from a model fitted with \code{\link[=mfp2]{mfp2()}}. The function can
+Obtain predictions from a model fitted with [mfp2()]. The function can
 return predictions from the complete model, term-specific fitted values,
 or differences from chosen reference values.
 }
@@ -149,60 +149,65 @@ cannot be calculated.
 }
 \section{Supplying prediction data}{
 
-Supply \code{newdata} with one row for each observation to predict.
+Supply `newdata` with one row for each observation to predict.
 
 If you fitted the model using the formula interface, supply the variables
 named in the formula. For example, for a model fitted with
-\code{y ~ age + race}, prediction data could be:
+`y ~ age + race`, prediction data could be:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{newdata <- data.frame(
+```r
+newdata <- data.frame(
   age = c(50, 60, 70),
   race = c("A", "B", "C")
 )
-}\if{html}{\out{</div>}}
+```
 
-Supply \code{race} itself; you do not need to create separate columns for its
-categories. The race categories \code{"A"}, \code{"B"}, and \code{"C"} must have been
+Supply `race` itself; you do not need to create separate columns for its
+categories. The race categories `"A"`, `"B"`, and `"C"` must have been
 available during fitting.
 
 If you fitted the model using the matrix interface, supply the same
 column names and use the same coding as in the fitting matrix.
+For matrix models fitted with `splines`, supply the original raw spline
+columns; their fitted knots reconstruct the required basis automatically.
 For example, if race had three categories during fitting, with race
 category A as the reference category, the fitting matrix could contain
-\code{age}, \code{raceB}, and \code{raceC}. The same prediction data would then be:
+`age`, `raceB`, and `raceC`. The same prediction data would then be:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{newdata <- cbind(
+```r
+newdata <- cbind(
   age   = c(50, 60, 70),
   raceB = c(0, 1, 0),
   raceC = c(0, 0, 1)
 )
-}\if{html}{\out{</div>}}
+```
 
 The first row represents an observation aged 50 in race category A;
 the second, an observation aged 60 in race category B; and the third,
 an observation aged 70 in race category C.
-Race category A has zero in both \code{raceB} and \code{raceC}.
+Race category A has zero in both `raceB` and `raceC`.
 
 If you grouped these columns during fitting with
-\code{term_groups = list(race = c("raceB", "raceC"))}, include both \code{raceB}
-and \code{raceC} when predicting the group. In \code{terms}, use the group name
-\code{"race"}, rather than the column names. For example:
+`term_groups = list(race = c("raceB", "raceC"))`, include both `raceB`
+and `raceC` when predicting the group. In `terms`, use the group name
+`"race"`, rather than the column names. For example:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{predict(fit, newdata = newdata, type = "terms", terms = "race")
-}\if{html}{\out{</div>}}
+```r
+predict(fit, newdata = newdata, type = "terms", terms = "race")
+```
 
 For predictions from the whole model, include all variables kept in the
 final model. For term or contrast predictions, include only the variables
 needed for the requested terms.
 
-Extra columns may be needed for offsets or survival groups (\code{strata})
-specified in the formula. For Cox \code{type = "expected"} or \code{"survival"},
-also include the time and event-status variables in \code{newdata}, using the
+Extra columns may be needed for offsets or survival groups (`strata`)
+specified in the formula. For Cox `type = "expected"` or `"survival"`,
+also include the time and event-status variables in `newdata`, using the
 names from the fitting formula. The time values specify when predictions
 are evaluated.
 
-Values needed for prediction must not be missing or contain \code{Inf} or
-\code{-Inf}. Extra columns that are not used are ignored.
+Values needed for prediction must not be missing or contain `Inf` or
+`-Inf`. Extra columns that are not used are ignored.
 
 Supply values on their original scale; fitted shifts and transformations
 are applied automatically. Prediction stops if a transformation cannot
@@ -212,127 +217,124 @@ after the fitted shift is added.
 
 \section{Choosing the prediction type}{
 
-The default is \code{"lp"} for Cox and Fine--Gray models and \code{"link"} for
-all other models. \code{"link"} and \code{"lp"} are interchangeable.
+The default is `"lp"` for Cox and Fine--Gray models and `"link"` for
+all other models. `"link"` and `"lp"` are interchangeable.
 
 For GLM (including negative-binomial) and GEE models:
-\itemize{
-\item \code{type = "link"} returns the linear predictor.
-\item \code{type = "response"} returns the predicted mean on the response scale.
-}
+
+- `type = "link"` returns the linear predictor.
+- `type = "response"` returns the predicted mean on the response scale.
 
 For GEE models, standard errors use the covariance estimator chosen
 during fitting. Response-scale standard errors are approximated from
 those on the link scale.
 
-For parametric \code{survreg} models:
-\itemize{
-\item \code{type = "link"} returns the fitted location (linear predictor).
-\code{"linear"} is also accepted.
-\item \code{type = "response"} returns the fitted location transformed back to
-the response scale. This is not generally the mean survival time.
-\item \code{type = "quantile"} returns predicted quantiles on the response scale.
-\item \code{type = "uquantile"} returns predicted quantiles on the linear-predictor
-scale.
-}
+For parametric `survreg` models:
 
-For \code{"quantile"} and \code{"uquantile"}, supply probabilities using \code{p},
-for example, \code{p = 0.5} for the median. See \code{\link[survival:predict.survreg]{survival::predict.survreg()}}.
+- `type = "link"` returns the fitted location (linear predictor).
+  `"linear"` is also accepted.
+- `type = "response"` returns the fitted location transformed back to
+  the response scale. This is not generally the mean survival time.
+- `type = "quantile"` returns predicted quantiles on the response scale.
+- `type = "uquantile"` returns predicted quantiles on the linear-predictor
+  scale.
+
+For `"quantile"` and `"uquantile"`, supply probabilities using `p`,
+for example, `p = 0.5` for the median. See [survival::predict.survreg()].
 
 For Cox models:
-\itemize{
-\item \code{type = "lp"} returns the relative log-hazard.
-\item \code{type = "risk"} returns the relative hazard, calculated as \code{exp(lp)}.
-\item \code{type = "expected"} returns the predicted cumulative hazard up to
-the supplied follow-up time.
-\item \code{type = "survival"} returns the survival probability at that time,
-calculated as \code{exp(-expected)}.
-}
+
+- `type = "lp"` returns the relative log-hazard.
+- `type = "risk"` returns the relative hazard, calculated as `exp(lp)`.
+- `type = "expected"` returns the predicted cumulative hazard up to
+  the supplied follow-up time.
+- `type = "survival"` returns the survival probability at that time,
+  calculated as `exp(-expected)`.
 
 For Fine--Gray models:
-\itemize{
-\item \code{type = "lp"} returns the relative log subdistribution hazard.
-\item \code{type = "risk"} returns the relative subdistribution hazard,
-calculated as \code{exp(lp)}.
-\item \code{type = "response"} returns cumulative-incidence probabilities at
-the times supplied in \code{times}.
-}
+
+- `type = "lp"` returns the relative log subdistribution hazard.
+- `type = "risk"` returns the relative subdistribution hazard,
+  calculated as `exp(lp)`.
+- `type = "response"` returns cumulative-incidence probabilities at
+  the times supplied in `times`.
 
 For ordinal models:
-\itemize{
-\item \code{type = "link"} returns the linear predictor including the cutoff
-intercept selected by \code{rms::orm()}. Set \code{add_intercept = FALSE} to
-return only the predictor effects and any offset.
-\item \code{type = "response"} returns category probabilities, with one row per
-observation and one column per category.
-\item \code{type = "mean"} returns the expected category value. Numeric category
-labels are used when possible; otherwise, categories are scored
-\verb{1, ..., K}, where \code{K} is the number of categories.
-}
+
+- `type = "link"` returns the linear predictor including the cutoff
+  intercept selected by `rms::orm()`. Set `add_intercept = FALSE` to
+  return only the predictor effects and any offset.
+- `type = "response"` returns category probabilities, with one row per
+  observation and one column per category.
+- `type = "mean"` returns the expected category value. Numeric category
+  labels are used when possible; otherwise, categories are scored
+  `1, ..., K`, where `K` is the number of categories.
 
 For multinomial models:
-\itemize{
-\item \code{type = "link"} returns log-odds relative to the reference category,
-with one row per observation and one column per non-reference category.
-\item \code{type = "response"} returns category probabilities, with one row per
-observation and one column per category.
-\item \code{type = "class"} returns the category with the highest predicted
-probability.
-}
 
-Use \code{se.fit = TRUE} to also obtain standard errors for complete-model
+- `type = "link"` returns log-odds relative to the reference category,
+  with one row per observation and one column per non-reference category.
+- `type = "response"` returns category probabilities, with one row per
+  observation and one column per category.
+- `type = "class"` returns the category with the highest predicted
+  probability.
+
+Use `se.fit = TRUE` to also obtain standard errors for complete-model
 numeric predictions. Ordinal probability and mean standard errors and
 multinomial probability standard errors use a first-order approximation
 (the delta method). Multinomial class labels have no standard error;
-use \code{type = "response"} to obtain uncertainty for their probabilities.
+use `type = "response"` to obtain uncertainty for their probabilities.
 
 For all supported models:
-\itemize{
-\item \code{type = "terms"} returns each requested term's contribution on the
-linear-predictor scale.
-\item \code{type = "contrasts"} returns the difference between each term's
-contribution and its contribution at a reference value.
-}
+
+- `type = "terms"` returns each requested term's contribution on the
+  linear-predictor scale.
+- `type = "contrasts"` returns the difference between each term's
+  contribution and its contribution at a reference value.
 
 Term predictions include the intercept by default for GLM, GEE,
-\code{survreg}, and multinomial models. Set \code{add_intercept = FALSE} to omit it.
+`survreg`, and multinomial models. Set `add_intercept = FALSE` to omit it.
 Cox and Fine--Gray terms have no intercept. Ordinal terms omit cutoff
-intercepts unless \code{ordinal_cutoff} is supplied. Intercepts cancel from
+intercepts unless `ordinal_cutoff` is supplied. Intercepts cancel from
 contrast predictions.
 
 Term and contrast predictions include standard errors and confidence
 intervals. For multinomial models, each term's result contains separate
-predictions for each non-reference category, identified by the \code{logit}
+predictions for each non-reference category, identified by the `logit`
 column.
 }
 
 \section{Term predictions}{
 
-A single term result can represent an FP2 function, a factor, a zero-handled
-variable, or several matrix columns grouped with \code{term_groups}. Contributions
+A single term result can represent an FP2 function, an RCS or B-spline, a factor, a zero-handled
+variable, or several matrix columns grouped with `term_groups`. Contributions
 from all parts of the term are combined in that result.
 
-Use the original variable or group name in \code{terms}. Use
-\code{\link[=get_selected_variable_names]{get_selected_variable_names()}} to see the terms included in the final model.
+Use the original variable or group name in `terms`. Use
+[get_selected_variable_names()] to see the terms included in the final model.
 A requested term that is not in the final model is omitted with a warning.
 
 For a single numeric term:
-\itemize{
-\item \code{terms_seq = "equidistant"} uses \code{nseq} equally spaced values between the
-smallest and largest available values.
-\item \code{terms_seq = "data"} uses the values in \code{newdata}, or the fitted values
-when \code{newdata = NULL}.
-}
 
+- `terms_seq = "equidistant"` uses `nseq` equally spaced values between the
+  smallest and largest available values.
+- `terms_seq = "data"` uses the values in `newdata`, or the fitted values
+  when `newdata = NULL`.
+
+RCS and B-spline terms use their fitted knots for both sequences. For a
+zero-handled spline,
+an equidistant sequence includes the exact-zero endpoint separately from
+the positive curve. An indicator-only spike uses 1 for x = 0 and 0 for
+x > 0 in its returned `variable` column. `ref` still accepts original x.
 Factors and other grouped terms are evaluated row by row.
 
-For GLM (including negative-binomial), GEE, and \code{survreg} models,
-\code{add_intercept = TRUE} includes the fitted intercept in each term result;
-for multinomial models it includes each logit's own intercept. Set \code{add_intercept = FALSE} to return only the
+For GLM (including negative-binomial), GEE, and `survreg` models,
+`add_intercept = TRUE` includes the fitted intercept in each term result;
+for multinomial models it includes each logit's own intercept. Set `add_intercept = FALSE` to return only the
 contribution from the requested term. This argument does not affect Cox,
 Fine--Gray, or contrast predictions.
 
-Ordinal term predictions without \code{ordinal_cutoff} return the common term
+Ordinal term predictions without `ordinal_cutoff` return the common term
 contribution and calculate its standard error from the covariance of that
 term's coefficients. Selecting a cutoff adds that cutoff's fitted intercept
 and includes its variance and covariance with the term coefficients in the
@@ -341,24 +343,25 @@ standard error. Ordinal contrasts cancel the intercept at every cutoff.
 
 \section{Contrasts and reference values}{
 
-Use \code{type = "contrasts"} to compare a term's contribution at different
+Use `type = "contrasts"` to compare a term's contribution at different
 values with its contribution at a chosen reference value.
 Each contrast is calculated as:
 
-\verb{term contribution at the prediction value - term contribution at the reference}.
+`term contribution at the prediction value - term contribution at the reference`.
 
 The contrast is zero at the reference value. A positive contrast means
 a larger contribution than at the reference; a negative contrast means
 a smaller contribution. Differences are reported on the model's
 linear-predictor scale, such as log-odds for logistic regression.
 
-\strong{Example using the formula interface}
+**Example using the formula interface**
 
-For a model that includes \code{age} and the factor \code{race}, compare ages
+For a model that includes `age` and the factor `race`, compare ages
 50, 60, and 70 with age 50, and race categories A, B, and C with
 race category A:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{newdata <- data.frame(
+```r
+newdata <- data.frame(
   age = c(50, 60, 70),
   race = c("A", "B", "C")
 )
@@ -371,33 +374,34 @@ predict(
   terms_seq = "data",
   ref = list(age = 50, race = "A")
 )
-}\if{html}{\out{</div>}}
+```
 
 The result contains separate age and race comparisons. The age contrasts
 compare each age with 50; the race contrasts compare each category with A.
 The contrast for age 50 is zero, as is the contrast for race category A.
 For example, if the fitted age contributions at ages 60 and 50 are
-0.8 and 0.3, the contrast at age 60 is \code{0.8 - 0.3 = 0.5}.
+0.8 and 0.3, the contrast at age 60 is `0.8 - 0.3 = 0.5`.
 
 Supply references as a named list: each name identifies a term, and its
 value specifies the reference. For formula factors, use a category label
-that was available during fitting, such as \code{"A"}.
+that was available during fitting, such as `"A"`.
 
-\strong{Numeric references}
+**Numeric references**
 
 Supply numeric references on the original variable scale. Any fitted
 shift, FP or ACD transformation, and centering are applied automatically.
-For example, if the fitted function uses \code{log(age + 10)}, supply
-\code{ref = list(age = 50)}, not 60 or \code{log(60)}.
+For example, if the fitted function uses `log(age + 10)`, supply
+`ref = list(age = 50)`, not 60 or `log(60)`.
 
-\strong{References for grouped matrix columns}
+**References for grouped matrix columns**
 
-If race was represented by \code{raceB} and \code{raceC}, with race category A
+If race was represented by `raceB` and `raceC`, with race category A
 as the reference category, and grouped during fitting using
-\code{term_groups = list(race = c("raceB", "raceC"))}, compare with
+`term_groups = list(race = c("raceB", "raceC"))`, compare with
 race category A by supplying both column values as zero:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{newdata <- cbind(
+```r
+newdata <- cbind(
   raceB = c(0, 1, 0),
   raceC = c(0, 0, 1)
 )
@@ -409,29 +413,28 @@ predict(
   terms = "race",
   ref = list(race = c(raceB = 0, raceC = 0))
 )
-}\if{html}{\out{</div>}}
+```
 
 The rows compare race categories A, B, and C with race category A.
 For comparison with race category B instead, use
-\code{ref = list(race = c(raceB = 1, raceC = 0))}.
+`ref = list(race = c(raceB = 1, raceC = 0))`.
 
 For other grouped terms, including formula interactions, supply one
 numeric reference value for every member column. Use the column names
-supplied in \code{term_groups}, or those shown in the term prediction result.
+supplied in `term_groups`, or those shown in the term prediction result.
 
-\strong{Default references}
+**Default references**
 
 If a reference is not supplied for a term, the function uses:
-\itemize{
-\item the smaller value for a numeric term with two distinct values;
-\item the mean for another single numeric term;
-\item the first fitted category for a formula factor;
-\item the first available row for another grouped term.
-}
 
-Numeric and grouped-row defaults use \code{newdata} when supplied, otherwise
+- the smaller value for a numeric term with two distinct values;
+- the mean for another single numeric term;
+- the first fitted category for a formula factor;
+- the first available row for another grouped term.
+
+Numeric and grouped-row defaults use `newdata` when supplied, otherwise
 the fitting data. Formula factors always use their first fitted category.
-Supply \code{ref} explicitly to keep the same comparison when \code{newdata} changes.
+Supply `ref` explicitly to keep the same comparison when `newdata` changes.
 
 The model intercept cancels from the comparison and is not included
 in contrasts.
@@ -443,8 +446,8 @@ Supply zero-handled and spike-at-zero variables on their original scale.
 Do not create a separate zero-indicator column.
 
 The zero handling selected during fitting is reused during prediction. These
-options require nonnegative covariates: \code{x = 0} belongs to the zero component
-and \code{x > 0} belongs to the positive component. Negative values in \code{newdata}
+options require nonnegative covariates: `x = 0` belongs to the zero component
+and `x > 0` belongs to the positive component. Negative values in `newdata`
 are rejected; recode them explicitly before prediction if they should
 scientifically represent the zero group.
 
@@ -462,49 +465,51 @@ and a positive reference as indicator 0. Negative references are rejected.
 Offsets are included in predictions from the whole model. They are not
 included in term or contrast predictions.
 
-When \code{newdata = NULL}, the offsets used during fitting are reused.
+When `newdata = NULL`, the offsets used during fitting are reused.
 For new observations, provide offsets as described below.
 
-\strong{Offset in the formula}
+**Offset in the formula**
 
-If the fitting formula contains \code{offset(...)}, include the variables
-needed to calculate it in \code{newdata}. The offset is calculated automatically.
+If the fitting formula contains `offset(...)`, include the variables
+needed to calculate it in `newdata`. The offset is calculated automatically.
 For example, for a model fitted with
-\code{count ~ age + offset(log(exposure))}:
+`count ~ age + offset(log(exposure))`:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{newdata <- data.frame(
+```r
+newdata <- data.frame(
   age = c(50, 60),
   exposure = c(1, 2)
 )
 
 predict(fit_formula, newdata = newdata, type = "response")
-}\if{html}{\out{</div>}}
+```
 
-Here, \code{log(exposure)} is calculated separately for each new observation.
+Here, `log(exposure)` is calculated separately for each new observation.
 
-\strong{Offset supplied separately}
+**Offset supplied separately**
 
-If the offset was supplied through the \code{offset} argument during fitting,
-supply the new offset values through \code{newoffset}. For example, if the
-fitting offset was \code{log(exposure)}:
+If the offset was supplied through the `offset` argument during fitting,
+supply the new offset values through `newoffset`. For example, if the
+fitting offset was `log(exposure)`:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{predict(
+```r
+predict(
   fit_offset,
   newdata = newdata["age"],
   newoffset = log(newdata$exposure),
   type = "response"
 )
-}\if{html}{\out{</div>}}
+```
 
-Supply the calculated offset, such as \code{log(exposure)}, rather than
-\code{exposure} itself. An explicit \code{newoffset} overrides a formula offset;
+Supply the calculated offset, such as `log(exposure)`, rather than
+`exposure` itself. An explicit `newoffset` overrides a formula offset;
 the variables used only by that formula offset can then be omitted.
 
-For most models, supply one finite \code{newoffset} value per prediction row.
-For example, \code{newoffset = c(0.1, 0.2)} supplies offsets for two observations.
-\code{newoffset} requires \code{newdata} and a model fitted with an offset.
+For most models, supply one finite `newoffset` value per prediction row.
+For example, `newoffset = c(0.1, 0.2)` supplies offsets for two observations.
+`newoffset` requires `newdata` and a model fitted with an offset.
 
-\strong{Multinomial offsets}
+**Multinomial offsets**
 
 For multinomial models, offsets must form a matrix with one row per
 observation. Columns can represent all response categories or only
@@ -513,7 +518,8 @@ the non-reference categories. Values are offsets on the logit scale.
 A formula offset must produce such a matrix. For example, for response
 categories A, B, and C, with A as the reference category:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{fit_multinomial <- mfp2(
+```r
+fit_multinomial <- mfp2(
   outcome ~ age + offset(cbind(A = off_A, B = off_B, C = off_C)),
   data = training,
   family = multinomial_family(reference = "A")
@@ -527,16 +533,17 @@ newdata <- data.frame(
 )
 
 predict(fit_multinomial, newdata = newdata, type = "response")
-}\if{html}{\out{</div>}}
+```
 
 The offset matrix is calculated automatically from the columns in
-\code{newdata}. The offset for reference category A is subtracted from
+`newdata`. The offset for reference category A is subtracted from
 those for categories B and C.
 
-Alternatively, supply the matrix directly through \code{newoffset}.
-This overrides the formula offset, so only \code{age} is needed in \code{newdata}:
+Alternatively, supply the matrix directly through `newoffset`.
+This overrides the formula offset, so only `age` is needed in `newdata`:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{newoffset <- cbind(
+```r
+newoffset <- cbind(
   A = newdata$off_A,
   B = newdata$off_B,
   C = newdata$off_C
@@ -548,18 +555,19 @@ predict(
   newoffset = newoffset,
   type = "response"
 )
-}\if{html}{\out{</div>}}
+```
 
 Because the offsets for reference category A are zero here, supplying
 only columns B and C gives the same predictions:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{predict(
+```r
+predict(
   fit_multinomial,
   newdata = newdata["age"],
   newoffset = newoffset[, c("B", "C"), drop = FALSE],
   type = "response"
 )
-}\if{html}{\out{</div>}}
+```
 
 With columns for only the non-reference categories, supply offsets
 relative to the reference category. Name the columns using the
@@ -569,115 +577,120 @@ when the offset was supplied separately during fitting.
 
 \section{Proportional-hazards predictions}{
 
-Cox and Fine--Gray \code{type = "lp"} predictions are relative log-hazards;
-\code{type = "risk"} returns their exponentials. For Fine--Gray models,
+Cox and Fine--Gray `type = "lp"` predictions are relative log-hazards;
+`type = "risk"` returns their exponentials. For Fine--Gray models,
 these refer to the subdistribution hazard. Neither type returns an
 absolute hazard or a survival probability.
 
-\strong{Reference for relative predictions}
+**Reference for relative predictions**
 
-Use \code{cox_reference} with \code{"lp"} or \code{"risk"}:
-\itemize{
-\item \code{"zero"} uses zero on the fitted predictor scale and is the default.
-\item \code{"sample"} uses the average fitted predictor values in the fitting sample.
-\item \code{"strata"} uses separate averages within each fitted stratum.
-}
+Use `cox_reference` with `"lp"` or `"risk"`:
+
+- `"zero"` uses zero on the fitted predictor scale and is the default.
+- `"sample"` uses the average fitted predictor values in the fitting sample.
+- `"strata"` uses separate averages within each fitted stratum.
 
 For example:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{predict(
+```r
+predict(
   fit_cox,
   newdata = data.frame(age = c(50, 60)),
   type = "risk",
   cox_reference = "sample"
 )
-}\if{html}{\out{</div>}}
+```
 
 Changing the reference changes the reported log-hazards and risk scores.
 Ratios of risk scores remain unchanged when a common reference is used.
-With \code{"strata"}, make comparisons within the same stratum.
-\code{cox_reference} is used only with \code{"lp"} and \code{"risk"}.
+With `"strata"`, make comparisons within the same stratum.
+`cox_reference` is used only with `"lp"` and `"risk"`.
 
-\strong{Cox survival probabilities and cumulative hazards}
+**Cox survival probabilities and cumulative hazards**
 
-Use \code{type = "survival"} for survival probabilities and
-\code{type = "expected"} for cumulative hazards.
-When supplying \code{newdata}, also include the variables used in the fitted
-\code{Surv()} response. The time values specify when predictions are evaluated.
+Use `type = "survival"` for survival probabilities and
+`type = "expected"` for cumulative hazards.
+When supplying `newdata`, also include the variables used in the fitted
+`Surv()` response. The time values specify when predictions are evaluated.
 
 For example, suppose the model was fitted with
-\code{Surv(time, event) ~ age}, with time measured in days and event coded 0/1.
+`Surv(time, event) ~ age`, with time measured in days and event coded 0/1.
 To predict survival at 365 days:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{newdata <- data.frame(
+```r
+newdata <- data.frame(
   age = c(50, 60),
   time = c(365, 365),
   event = c(0, 0)
 )
 
 predict(fit_cox, newdata = newdata, type = "survival")
-}\if{html}{\out{</div>}}
+```
 
-The event-status column is required to construct the \code{Surv()} response,
+The event-status column is required to construct the `Surv()` response,
 but its values do not affect these predictions. Use valid status values.
-With \code{type = "expected"}, the same data give cumulative hazards at 365 days.
+With `type = "expected"`, the same data give cumulative hazards at 365 days.
 
-Alternatively, include exactly one \code{Surv} column:
+Alternatively, include exactly one `Surv` column:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{newdata <- data.frame(
+```r
+newdata <- data.frame(
   age = c(50, 60),
   followup = I(survival::Surv(c(365, 365), c(0, 0)))
 )
-}\if{html}{\out{</div>}}
+```
 
 For matrix-interface fits, supply follow-up information this way.
-When \code{newdata = NULL}, the follow-up times used during fitting are reused.
+When `newdata = NULL`, the follow-up times used during fitting are reused.
 
-\strong{Stratified models}
+**Stratified models**
 
 Each observation must belong to a stratum available during fitting.
-If the formula contains \code{strata(...)}, include its variables in \code{newdata}.
+If the formula contains `strata(...)`, include its variables in `newdata`.
 For example, for a model fitted with
-\code{Surv(time, event) ~ age + strata(sex)}:
+`Surv(time, event) ~ age + strata(sex)`:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{newdata <- data.frame(
+```r
+newdata <- data.frame(
   age = c(50, 60),
   sex = c("F", "M")
 )
 
 predict(fit_stratified, newdata = newdata, type = "risk")
-}\if{html}{\out{</div>}}
+```
 
-Here, \code{"F"} and \code{"M"} must match fitted stratum labels.
-Do not also supply the \code{strata} argument for formula-level strata.
+Here, `"F"` and `"M"` must match fitted stratum labels.
+Do not also supply the `strata` argument for formula-level strata.
 
 If strata were supplied separately during matrix-interface fitting,
 supply them separately for the new observations:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{predict(
+```r
+predict(
   fit_matrix,
   newdata = as.matrix(newdata["age"]),
   strata = newdata$sex,
   type = "risk"
 )
-}\if{html}{\out{</div>}}
+```
 
 Strata are matched by their labels, not by numeric positions.
 For several stratification variables, supply the same variables in
 the same column order used during fitting. New strata are not allowed.
 
-\strong{Fine--Gray cumulative incidence}
+**Fine--Gray cumulative incidence**
 
-Use \code{type = "response"} with \code{times} to predict cumulative incidence.
+Use `type = "response"` with `times` to predict cumulative incidence.
 Supply times in the same units used during fitting. For example:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{predict(
+```r
+predict(
   fit_finegray,
   newdata = data.frame(age = c(50, 60)),
   type = "response",
   times = c(365, 730)
 )
-}\if{html}{\out{</div>}}
+```
 }
 
 \examples{
@@ -1012,6 +1025,6 @@ predict(
 )
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=get_selected_variable_names]{get_selected_variable_names()}}, \code{\link[stats:predict.glm]{stats::predict.glm()}},
-\code{\link[survival:predict.coxph]{survival::predict.coxph()}}, \code{\link[geepack:geeglm]{geepack::geeglm()}}
+[mfp2()], [get_selected_variable_names()], [stats::predict.glm()],
+[survival::predict.coxph()], [geepack::geeglm()]
 }

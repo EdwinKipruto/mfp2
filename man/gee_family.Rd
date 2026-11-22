@@ -28,7 +28,7 @@ the same group: \code{"exchangeable"} (default),
 \code{"fij"}. \code{"san.se"} gives robust sandwich standard errors
 with the finite-cluster correction \eqn{K/(K-1)}, where \eqn{K} is the
 number of clusters, as in Stata's \code{xtgee}; they are therefore
-slightly larger than those reported by \code{\link[geepack:geeglm]{geepack::geeglm()}}. The
+slightly larger than those reported by [geepack::geeglm()]. The
 jackknife estimators are used unchanged.}
 
 \item{reference_dispersion}{Optional positive value that scales the
@@ -45,21 +45,21 @@ or p-value selection.}
 }
 \value{
 A family specification to supply as the \code{family} argument
-of \code{\link[=mfp2]{mfp2()}}.
+  of [mfp2()].
 }
 \description{
-Use \code{gee_family()} with \code{\link[=mfp2]{mfp2()}} to model outcomes measured more
+Use \code{gee_family()} with [mfp2()] to model outcomes measured more
 than once within independent groups, such as repeated measurements from
 the same person. Supply the group identifier through \code{mfp2()}'s
 \code{id} argument. If measurement order matters, supply \code{waves}.
 }
 \details{
-All three selection criteria in \code{\link[=mfp2]{mfp2()}} are available for GEE models.
+All three selection criteria in [mfp2()] are available for GEE models.
 The default is \code{criterion = "aic"}, which uses QICu. BIC selection
 uses a BIC-like score based on quasi-likelihood, and p-value selection
 uses approximate tests for GEE. Under AIC or BIC selection,
 \code{select = 1} does not force a predictor into the model; use the
-\code{keep} argument of \code{\link[=mfp2]{mfp2()}} instead.
+\code{keep} argument of [mfp2()] instead.
 }
 \examples{
 set.seed(1)
@@ -87,5 +87,5 @@ for generalized estimating equations. \emph{Journal of Statistical
 Software}, 15(2), 1--11.
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[geepack:geeglm]{geepack::geeglm()}}
+[mfp2()], [geepack::geeglm()]
 }

@@ -25,6 +25,9 @@ S3method(residuals,mfp2)
 S3method(summary,mfp2)
 S3method(summary,mfpi)
 S3method(vcov,mfpi)
+export(bs)
+export(bs_spec)
+export(bspline)
 export(finegray_family)
 export(fp)
 export(fp2)
@@ -36,6 +39,8 @@ export(mfpi)
 export(multinomial_family)
 export(negbin_family)
 export(ordinal_family)
+export(rcs)
+export(rcs_spec)
 export(survreg_family)
 export(transform_vector_fp)
 import(stats)
@@ -45,5 +50,8 @@ importFrom(stats,
   family,
   setNames
 )
-importFrom(utils,modifyList)
+importFrom(utils,
+  modifyList,
+  tail
+)
 useDynLib(mfp2, .registration = TRUE)

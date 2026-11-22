@@ -11,22 +11,23 @@ negbin_family(link = c("log", "sqrt", "identity"))
 linear predictor \eqn{\eta}. One of \code{"log"} (the default,
 \eqn{\log\mu = \eta}), \code{"sqrt"} (\eqn{\sqrt{\mu} = \eta}), or
 \code{"identity"} (\eqn{\mu = \eta}). These are the links supported by
-\code{\link[fastglm:fastglm_nb]{fastglm::fastglm_nb()}}.}
+[fastglm::fastglm_nb()].}
 }
 \value{
 A family specification to supply as the \code{family} argument
-of \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}}.
+  of [mfp2()] or [mfpi()].
 }
 \description{
-Use \code{negbin_family()} with \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} for overdispersed
+Use \code{negbin_family()} with [mfp2()] or [mfpi()] for overdispersed
 count outcomes. The regression coefficients and the negative-binomial
 dispersion parameter \eqn{\theta} are estimated jointly by maximum
-likelihood with \code{\link[fastglm:fastglm_nb]{fastglm::fastglm_nb()}}, using the variance function
+likelihood with [fastglm::fastglm_nb()], using the variance function
 \eqn{\mu + \mu^2 / \theta}.
 }
 \details{
 \code{family = "negbin"} is shorthand for
 \code{negbin_family(link = "log")} and gives the same model.
+
 
 The response must contain finite, nonnegative integer counts.
 
@@ -51,7 +52,7 @@ a positive \code{shift}, help keep these links valid.
 
 Negative-binomial models require the suggested \pkg{fastglm} package
 (version 0.1.1 or later). Generalized estimating equations via
-\code{\link[=gee_family]{gee_family()}} do not support negative-binomial responses.
+[gee_family()] do not support negative-binomial responses.
 }
 \examples{
 negbin_family()
@@ -79,5 +80,5 @@ if (requireNamespace("fastglm", quietly = TRUE) &&
 
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}, \code{\link[fastglm:fastglm_nb]{fastglm::fastglm_nb()}}
+[mfp2()], [mfpi()], [fastglm::fastglm_nb()]
 }

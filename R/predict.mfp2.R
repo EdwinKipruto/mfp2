@@ -44,6 +44,8 @@
 #'
 #' If you fitted the model using the matrix interface, supply the same
 #' column names and use the same coding as in the fitting matrix.
+#' For matrix models fitted with `splines`, supply the original raw spline
+#' columns; their fitted knots reconstruct the required basis automatically.
 #' For example, if race had three categories during fitting, with race
 #' category A as the reference category, the fitting matrix could contain
 #' `age`, `raceB`, and `raceC`. The same prediction data would then be:
@@ -176,7 +178,7 @@
 #' column.
 #'
 #' @section Term predictions:
-#' A single term result can represent an FP2 function, a factor, a zero-handled
+#' A single term result can represent an FP2 function, an RCS or B-spline, a factor, a zero-handled
 #' variable, or several matrix columns grouped with `term_groups`. Contributions
 #' from all parts of the term are combined in that result.
 #'
@@ -191,6 +193,11 @@
 #' - `terms_seq = "data"` uses the values in `newdata`, or the fitted values
 #'   when `newdata = NULL`.
 #'
+#' RCS and B-spline terms use their fitted knots for both sequences. For a
+#' zero-handled spline,
+#' an equidistant sequence includes the exact-zero endpoint separately from
+#' the positive curve. An indicator-only spike uses 1 for x = 0 and 0 for
+#' x > 0 in its returned `variable` column. `ref` still accepts original x.
 #' Factors and other grouped terms are evaluated row by row.
 #'
 #' For GLM (including negative-binomial), GEE, and `survreg` models,
@@ -570,7 +577,8 @@
 #'   to predict at. `"equidistant"` (the default) uses `nseq` evenly spaced
 #'   values between the variable's minimum and maximum. `"data"` uses the
 #'   observed values. Both use `newdata` when supplied, otherwise the fitting
-#'   data. Factors and grouped terms always use the supplied or fitted rows.
+#'   data. Spline terms use the saved knots; factors and other grouped terms
+#'   always use the supplied or fitted rows.
 #'
 #' @param alpha A single finite number strictly between 0 and 1 used to
 #'   calculate confidence intervals for term and contrast results. The confidence level is `1 - alpha`. The
@@ -1269,6 +1277,13 @@ predict.mfp2 <- function(object,
     prediction_terms,
     active_zero_option_names(object$zero, object$catzero, object$spike)
   )
+  if (length(object$matrix_spline_specs)) {
+    indicator_splines <- names(object$matrix_spline_specs)[
+      vapply(object$matrix_spline_specs, function(spec) isTRUE(spec$indicator), logical(1L))
+    ]
+    zero_option_terms <- union(zero_option_terms,
+                               intersect(prediction_terms, indicator_splines))
+  }
 
   if (!is.null(newdata_raw)) {
     validate_zero_option_covariates(newdata_raw, zero_option_terms)
@@ -1405,6 +1420,7 @@ predict.mfp2 <- function(object,
         NULL
       }
       block_term <- term_uses_column_mapping(t, term_columns) || !is.null(factor_info)
+      spline_spec <- prediction_spline_spec(object, t)
 
       if (block_term) {
         # Grouped terms are predicted as complete design blocks. This includes
@@ -1439,6 +1455,12 @@ predict.mfp2 <- function(object,
         }
 
         source_block <- as.matrix(source_block)
+        if (!is.null(spline_spec)) {
+          spline_data <- prediction_spline_term_block(
+            object, t, source_block, terms_seq, nseq
+          )
+          source_block <- spline_data$block
+        }
         x_trafo <- as.matrix(prepare_newdata_for_predict(
           object,
           source_block,
@@ -1455,11 +1477,9 @@ predict.mfp2 <- function(object,
         term_coef <- stats::coef(object)[model_columns]
         term_coef[is.na(term_coef)] <- 0
 
-        labels <- decode_grouped_term_values(
-          object,
-          term = t,
-          block = source_block
-        )
+        labels <- if (is.null(spline_spec)) {
+          decode_grouped_term_values(object, term = t, block = source_block)
+        } else spline_data$variable
 
         res <- data.frame(
           variable = labels,
@@ -1472,12 +1492,11 @@ predict.mfp2 <- function(object,
 
         x_ref_trafo <- NULL
         if (type == "contrasts") {
-          reference_block <- resolve_grouped_reference(
-            object,
-            term = t,
-            reference = if (display_term %in% names(ref)) ref[[display_term]] else ref[[t]],
-            block = source_block
-          )
+          reference_value <- if (display_term %in% names(ref)) ref[[display_term]] else ref[[t]]
+          reference_block <- if (is.null(spline_spec)) {
+            resolve_grouped_reference(object, term = t,
+                                      reference = reference_value, block = source_block)
+          } else prediction_spline_reference(object, t, reference_value, spline_data$variable)
           x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
             object,
             reference_block,
@@ -2329,6 +2348,7 @@ mfp2_predict_multinomial_terms <- function(object,
       NULL
     }
     block_term <- term_uses_column_mapping(t, term_columns) || !is.null(factor_info)
+    spline_spec <- prediction_spline_spec(object, t)
 
     x_ref_trafo <- NULL
 
@@ -2358,22 +2378,30 @@ mfp2_predict_multinomial_terms <- function(object,
         object$x_original[, term_columns, drop = FALSE]
       }
       source_block <- as.matrix(source_block)
+      if (!is.null(spline_spec)) {
+        spline_data <- prediction_spline_term_block(
+          object, t, source_block, terms_seq, nseq
+        )
+        source_block <- spline_data$block
+      }
       x_trafo <- as.matrix(prepare_newdata_for_predict(
         object, source_block, terms = t,
         apply_pre = source_needs_preprocessing,
         allow_missing_predictors = TRUE, check_binary = FALSE
       ))
-      labels <- decode_grouped_term_values(object, term = t, block = source_block)
+      labels <- if (is.null(spline_spec)) {
+        decode_grouped_term_values(object, term = t, block = source_block)
+      } else spline_data$variable
       base_frame <- data.frame(
         variable = labels, variable_pre = labels, source_block,
         check.names = FALSE, stringsAsFactors = FALSE
       )
       if (type == "contrasts") {
-        reference_block <- resolve_grouped_reference(
-          object, term = t,
-          reference = if (display_term %in% names(ref)) ref[[display_term]] else ref[[t]],
-          block = source_block
-        )
+        reference_value <- if (display_term %in% names(ref)) ref[[display_term]] else ref[[t]]
+        reference_block <- if (is.null(spline_spec)) {
+          resolve_grouped_reference(object, term = t,
+                                    reference = reference_value, block = source_block)
+        } else prediction_spline_reference(object, t, reference_value, spline_data$variable)
         x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
           object, reference_block, terms = t, apply_pre = TRUE,
           allow_missing_predictors = TRUE, check_binary = FALSE
@@ -3169,6 +3197,73 @@ prediction_term_to_columns <- function(object, terms = NULL) {
   lookup
 }
 
+#' Build prediction values for a selected spline term
+#'
+#' @param object A fitted `mfp2` model.
+#' @param term The conceptual spline term name.
+#' @param block Selected raw design columns for the evaluation rows.
+#' @param terms_seq Either `"data"` or `"equidistant"`.
+#' @param nseq Number of grid values.
+#' @return A list with the evaluation block and its original-scale values.
+#' @keywords internal
+#' @noRd
+prediction_spline_term_block <- function(object, term, block, terms_seq, nseq) {
+  spec <- prediction_spline_spec(object, term)
+  selected_df <- prediction_spline_selected_df(object, term)
+  binary_only <- !is.na(selected_df) && selected_df == 0L
+  values <- if (binary_only) {
+    as.numeric(block[, 1L])
+  } else {
+    as.numeric(block[, 1L]) # The linear spline column is the original x.
+  }
+  if (terms_seq == "equidistant" && !binary_only) {
+    positive <- values[is.finite(values) & values > 0]
+    grid <- if (isTRUE(spec$indicator) && length(positive)) {
+      seq(min(positive), max(positive), length.out = nseq)
+    } else {
+      seq(min(values), max(values), length.out = nseq)
+    }
+    if (isTRUE(spec$indicator) && any(values == 0)) grid <- c(0, grid)
+    values <- grid
+    full_columns <- object$formula_term_to_columns[[term]]
+    basis <- spline_basis_from_spec(values, spec)
+    colnames(basis) <- full_columns
+    block <- basis[, colnames(block), drop = FALSE]
+  }
+  list(block = block, variable = values)
+}
+
+#' Build a spline reference row from a raw x value
+#'
+#' @param object A fitted `mfp2` model.
+#' @param term The conceptual spline term name.
+#' @param reference Optional original-scale numeric reference.
+#' @param values Evaluation values in the plotted scale.
+#' @return A one-row matrix of the selected spline columns.
+#' @keywords internal
+#' @noRd
+prediction_spline_reference <- function(object, term, reference, values) {
+  spec <- prediction_spline_spec(object, term)
+  binary_only <- identical(prediction_spline_selected_df(object, term), 0L)
+  if (is.null(reference)) {
+    reference <- if (binary_only) 0 else mean(values, na.rm = TRUE)
+  }
+  if (!is.numeric(reference) || length(reference) != 1L ||
+      is.na(reference) || !is.finite(reference) ||
+      (isTRUE(spec$indicator) && reference < 0)) {
+    stop("Spline reference must be one finite numeric predictor value.", call. = FALSE)
+  }
+  if (binary_only) {
+    # A binary-only model still accepts the original x, not its indicator.
+    reference <- as.integer(reference == 0)
+    return(matrix(reference, nrow = 1L,
+                  dimnames = list(NULL, object$term_to_columns[[term]])))
+  }
+  basis <- spline_basis_from_spec(reference, spec)
+  colnames(basis) <- object$formula_term_to_columns[[term]]
+  basis[, object$term_to_columns[[term]], drop = FALSE]
+}
+
 #' Resolve Transformed Design Columns to Fitted Coefficient Names
 #'
 #' Maps a vector of transformed design-column names to the exact
@@ -3593,7 +3688,7 @@ prediction_formula_source_name <- function(term_label) {
     return(factor_source)
   }
 
-  formula_fp_source_name(term_label)
+  formula_transform_source_name(term_label)
 }
 
 
@@ -3702,8 +3797,13 @@ prediction_formula_terms <- function(object, terms) {
 #' @keywords internal
 #' @noRd
 reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
-  # Matrix-interface fits already receive raw design columns and need no formula
-  # evaluation. Formula fits are reconstructed with stored levels and contrasts.
+  if (length(object$matrix_spline_specs)) {
+    if (is.null(terms)) terms <- get_selected_variable_names(object)
+    return(reconstruct_matrix_spline_newdata(object, newdata, terms))
+  }
+  # Ordinary matrix fits already receive raw design columns. Matrix splines
+  # above rebuild their design from saved knots; formula fits below use stored
+  # levels and contrasts.
   if (!isTRUE(object$formula_interface)) {
     return(newdata)
   }
@@ -3781,6 +3881,16 @@ reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
   active_contrasts <- object$formula_contrasts[
     intersect(names(object$formula_contrasts), names(mf))
   ]
+  fitted_splines <- if (is.null(object$formula_spline_specs)) {
+    object$formula_rcs_specs
+  } else object$formula_spline_specs
+  if (length(fitted_splines) > 0L) {
+    for (spec in fitted_splines) {
+      if (spec$label %in% names(mf)) {
+        mf[[spec$label]] <- spline_basis_from_spec(mf[[spec$label]][, 1L], spec)
+      }
+    }
+  }
   mm <- stats::model.matrix(
     active_formula_terms,
     data = mf,
